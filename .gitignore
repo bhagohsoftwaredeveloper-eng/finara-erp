@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# Logs
+logs/
+*.log
+backend/logs/
+
+# Build output
+.next/
+frontend/.next/
+dist/
+build/
+
+# Prisma generated client
+**/.prisma/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Misc
+*.tmp
+git-error-*
