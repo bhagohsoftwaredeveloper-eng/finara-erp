@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { journal as jApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock } from 'lucide-react';
+import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock, Printer } from 'lucide-react';
+import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 const STATUS_BADGE = { DRAFT:'badge-yellow', POSTED:'badge-green', VOIDED:'badge-gray' };
@@ -191,6 +192,45 @@ function VoidModal({ entry, onClose, onVoided }) {
   );
 }
 
+function printEntry(entry) {
+  const lines = (entry.lines || []);
+  const totalDr = lines.reduce((s, l) => s + Number(l.debit), 0);
+  const totalCr = lines.reduce((s, l) => s + Number(l.credit), 0);
+
+  const linesHTML = lines.map((l) => `
+    <tr>
+      <td class="mono blue small">${l.account?.accountCode || '—'}</td>
+      <td>${l.account?.accountName || '—'}</td>
+      <td class="right mono">${Number(l.debit) > 0 ? phpFmt(l.debit) : ''}</td>
+      <td class="right mono">${Number(l.credit) > 0 ? phpFmt(l.credit) : ''}</td>
+      <td class="gray small">${l.description || ''}</td>
+    </tr>`).join('');
+
+  const body = `
+    <div class="info-grid">
+      <div class="info-box"><div class="info-lbl">Entry No.</div><div class="info-val mono">${entry.entryNo}</div></div>
+      <div class="info-box"><div class="info-lbl">Date</div><div class="info-val">${dateFmt(entry.entryDate)}</div></div>
+      <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(entry.status)}</div></div>
+      <div class="info-box"><div class="info-lbl">Reference</div><div class="info-val mono small">${entry.reference || '—'}</div></div>
+      <div class="info-box" style="grid-column:span 2"><div class="info-lbl">Description</div><div class="info-val">${entry.description || '—'}</div></div>
+    </div>
+    <div class="section-title">Journal Lines</div>
+    <table>
+      <thead><tr><th>Account Code</th><th>Account Name</th><th class="right">Debit</th><th class="right">Credit</th><th>Memo</th></tr></thead>
+      <tbody>${linesHTML}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" class="right gray">TOTALS</td>
+          <td class="right mono">${phpFmt(totalDr)}</td>
+          <td class="right mono">${phpFmt(totalCr)}</td>
+          <td class="${Math.abs(totalDr - totalCr) < 0.01 ? 'green' : 'red'}">${Math.abs(totalDr - totalCr) < 0.01 ? '✓ Balanced' : '✗ Not balanced'}</td>
+        </tr>
+      </tfoot>
+    </table>`;
+
+  printDocument(`Journal Entry — ${entry.entryNo}`, dateFmt(entry.entryDate), body);
+}
+
 function JournalModal({ entry, accounts, onClose, onSaved }) {
   const [form, setForm] = useState(entry || {
     entryDate: new Date().toISOString().split('T')[0],
@@ -248,48 +288,41 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
             </div>
             <div className="form-group">
               <label className="label">Description *</label>
-              <input className="input" required value={form.description} onChange={(e) => setForm(f => ({...f, description: e.target.value}))} placeholder="e.g. Payment received for Invoice INV-000001" />
+              <input className="input" required value={form.description} onChange={(e) => setForm(f => ({...f, description: e.target.value}))} placeholder="e.g. Payment received from client" />
             </div>
-
             {/* Lines */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="label mb-0">Journal Lines</label>
-                <button type="button" onClick={addLine} className="btn-secondary btn-sm"><Plus className="w-3 h-3" /> Add Line</button>
+                <button type="button" onClick={addLine} className="btn-secondary btn-sm">+ Add Line</button>
               </div>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="table">
-                  <thead>
-                    <tr><th>Account</th><th>Description</th><th className="text-right">Debit (₱)</th><th className="text-right">Credit (₱)</th><th /></tr>
-                  </thead>
+              <div className="overflow-x-auto">
+                <table className="table text-sm">
+                  <thead><tr><th>Account</th><th className="w-28">Debit</th><th className="w-28">Credit</th><th>Memo</th><th className="w-8"></th></tr></thead>
                   <tbody>
                     {form.lines.map((line, i) => (
                       <tr key={i}>
-                        <td className="py-2">
-                          <select className="select text-xs" value={line.accountId} onChange={(e) => setLine(i, 'accountId', e.target.value)}>
-                            <option value="">Select account...</option>
+                        <td>
+                          <select className="select w-full text-xs" value={line.accountId} onChange={(e) => setLine(i, 'accountId', e.target.value)} required>
+                            <option value="">-- Select Account --</option>
                             {accounts.map(a => <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>)}
                           </select>
                         </td>
-                        <td className="py-2">
-                          <input className="input text-xs" value={line.description} onChange={(e) => setLine(i, 'description', e.target.value)} placeholder="Optional" />
-                        </td>
-                        <td className="py-2">
-                          <input type="number" step="0.01" min="0" className="input text-right text-xs" value={line.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} placeholder="0.00" />
-                        </td>
-                        <td className="py-2">
-                          <input type="number" step="0.01" min="0" className="input text-right text-xs" value={line.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} placeholder="0.00" />
-                        </td>
-                        <td className="py-2">
-                          {form.lines.length > 2 && <button type="button" onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600"><XCircle className="w-4 h-4" /></button>}
-                        </td>
+                        <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={line.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} placeholder="0.00" /></td>
+                        <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={line.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} placeholder="0.00" /></td>
+                        <td><input className="input w-full text-xs" value={line.description} onChange={(e) => setLine(i, 'description', e.target.value)} placeholder="Optional memo" /></td>
+                        <td>{form.lines.length > 2 && <button type="button" onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>}</td>
                       </tr>
                     ))}
-                    <tr className={`font-semibold text-sm ${balanced ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'}`}>
-                      <td colSpan={2} className="px-4 py-2">Totals {balanced ? '✓ Balanced' : '✗ Not Balanced'}</td>
-                      <td className="px-4 py-2 text-right">{formatCurrency(totalDebit)}</td>
-                      <td className="px-4 py-2 text-right">{formatCurrency(totalCredit)}</td>
-                      <td />
+                    <tr className="bg-gray-50 font-semibold text-sm">
+                      <td className="text-right text-gray-500">Totals</td>
+                      <td className="text-right font-mono">{totalDebit.toFixed(2)}</td>
+                      <td className="text-right font-mono">{totalCredit.toFixed(2)}</td>
+                      <td colSpan={2}>
+                        {balanced
+                          ? <span className="text-green-600 text-xs">✓ Balanced</span>
+                          : <span className="text-red-500 text-xs">✗ Off by {Math.abs(totalDebit - totalCredit).toFixed(2)}</span>}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -298,6 +331,11 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            {entry?.id && (
+              <button type="button" onClick={() => printEntry(entry)} className="btn-secondary">
+                <Printer className="w-4 h-4" /> Print
+              </button>
+            )}
             <button type="submit" disabled={saving || !balanced} className="btn-primary">{saving ? 'Saving...' : 'Save Entry'}</button>
           </div>
         </form>
@@ -306,14 +344,17 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
   );
 }
 
+const today = new Date().toISOString().split('T')[0];
+
 export default function JournalPage() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState([]);
   const [modal, setModal] = useState(null);
-  const [filter, setFilter] = useState({ status: '', from: '', to: '' });
+  const [filter, setFilter] = useState({ status: '', from: today, to: '' });
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [voidEntry, setVoidEntry] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -328,7 +369,35 @@ export default function JournalPage() {
     catch (err) { toast.error(err.response?.data?.error || 'Cannot post'); }
   };
 
-  const [voidEntry, setVoidEntry] = useState(null);
+  const handlePrintList = () => {
+    if (!entries.length) { toast.error('No entries to print'); return; }
+    const rows = entries.map((e) => {
+      const dr = e.lines?.reduce((s, l) => s + Number(l.debit), 0) || 0;
+      return `<tr>
+        <td class="mono blue small">${e.entryNo}</td>
+        <td>${dateFmt(e.entryDate)}</td>
+        <td>${e.description}</td>
+        <td class="mono small gray">${e.reference || '—'}</td>
+        <td class="right mono">${phpFmt(dr)}</td>
+        <td class="center">${badge(e.status)}</td>
+      </tr>`;
+    }).join('');
+    const totalDr = entries.reduce((s, e) => s + (e.lines?.reduce((ss, l) => ss + Number(l.debit), 0) || 0), 0);
+    const subtitle = [
+      filter.status && `Status: ${filter.status}`,
+      filter.from   && `From: ${dateFmt(filter.from)}`,
+      filter.to     && `To: ${dateFmt(filter.to)}`,
+    ].filter(Boolean).join('  ·  ') || 'All entries';
+
+    const body = `
+      <table>
+        <thead><tr><th>Entry No.</th><th>Date</th><th>Description</th><th>Reference</th><th class="right">Debit</th><th class="center">Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4" class="right">TOTAL (${entries.length} entries)</td><td class="right mono">${phpFmt(totalDr)}</td><td></td></tr></tfoot>
+      </table>`;
+
+    printDocument('Journal Entries', subtitle, body);
+  };
 
   return (
     <div>
@@ -337,7 +406,10 @@ export default function JournalPage() {
           <h1 className="page-title">Journal Entries</h1>
           <p className="page-subtitle">{total} total entries</p>
         </div>
-        <button className="btn-primary" onClick={() => setModal('new')}><Plus className="w-4 h-4" /> New Entry</button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={handlePrintList}><Printer className="w-4 h-4" /> Print List</button>
+          <button className="btn-primary" onClick={() => setModal('new')}><Plus className="w-4 h-4" /> New Entry</button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -347,9 +419,16 @@ export default function JournalPage() {
             <option value="">All Status</option>
             <option>DRAFT</option><option>POSTED</option><option>VOIDED</option>
           </select>
-          <input type="date" className="input w-40" value={filter.from} onChange={(e) => setFilter(f => ({...f, from: e.target.value}))} />
-          <input type="date" className="input w-40" value={filter.to} onChange={(e) => setFilter(f => ({...f, to: e.target.value}))} />
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">From</label>
+            <input type="date" className="input w-40" value={filter.from} onChange={(e) => setFilter(f => ({...f, from: e.target.value}))} />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">To</label>
+            <input type="date" className="input w-40" value={filter.to} onChange={(e) => setFilter(f => ({...f, to: e.target.value}))} />
+          </div>
           <button className="btn-secondary" onClick={load}><Filter className="w-4 h-4" /> Filter</button>
+          <button className="btn-secondary" onClick={() => setFilter({ status: '', from: today, to: '' })}>Reset</button>
         </div>
       </div>
 
@@ -363,7 +442,7 @@ export default function JournalPage() {
               {loading ? (
                 <tr><td colSpan={7} className="text-center py-8 text-gray-400">Loading...</td></tr>
               ) : entries.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-8 text-gray-400">No journal entries yet.</td></tr>
+                <tr><td colSpan={7} className="text-center py-8 text-gray-400">No journal entries found.</td></tr>
               ) : entries.map(e => {
                 const totalDr = e.lines?.reduce((s, l) => s + Number(l.debit), 0) || 0;
                 return (

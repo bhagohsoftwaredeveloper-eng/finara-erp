@@ -11,6 +11,7 @@ import {
   AlertCircle, ChevronDown, ChevronUp, Printer, Info,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 
 // ─── Config ───────────────────────────────────────────────────
 const SECTION_CONFIG = {
@@ -265,6 +266,70 @@ export default function BalanceSheetPage() {
     { name: 'Liab + Equity', value: totalLiabEquity, fill: totalLiabEquity <= totalAssets ? '#22c55e' : '#ef4444' },
   ];
 
+  const handlePrint = () => {
+    const makeRows = (accts) => accts.map((a) => `
+      <tr>
+        <td class="mono blue small">${a.code || a.accountCode || ''}</td>
+        <td>${a.name || a.accountName || ''}</td>
+        <td class="right mono">${phpFmt(a.balance ?? a.debitBalance ?? a.creditBalance ?? 0)}</td>
+      </tr>`).join('');
+
+    const section = (title, accts, total, colorClass = '') => `
+      <tr class="section-row"><td colspan="3">${title}</td></tr>
+      ${makeRows(accts)}
+      <tr style="background:#f8faff;font-weight:700;font-size:9.5px">
+        <td colspan="2" class="right gray">Total ${title}</td>
+        <td class="right mono ${colorClass}">${phpFmt(total)}</td>
+      </tr>`;
+
+    const body = `
+      <div class="sum-row">
+        <div class="sum-box"><div class="sum-lbl">Total Assets</div><div class="sum-val">${phpFmt(totalAssets)}</div></div>
+        <div class="sum-box sum-red"><div class="sum-lbl">Total Liabilities</div><div class="sum-val">${phpFmt(totalLiab)}</div></div>
+        <div class="sum-box sum-green"><div class="sum-lbl">Total Equity</div><div class="sum-val">${phpFmt(totalEquity)}</div></div>
+        <div class="sum-box ${isBalanced ? 'sum-green' : 'sum-red'}"><div class="sum-lbl">Balance Check</div><div class="sum-val">${isBalanced ? '✓ OK' : `Off ${phpFmt(diff)}`}</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px">
+        <!-- ASSETS -->
+        <div>
+          <div class="section-title">Assets</div>
+          <table>
+            <thead><tr><th>Code</th><th>Account</th><th class="right">Amount (₱)</th></tr></thead>
+            <tbody>
+              ${section('Current Assets', currentAssets, totalCurrentAssets, 'blue')}
+              ${section('Non-Current Assets', nonCurrentAssets, totalNonCurrentAssets, 'blue')}
+            </tbody>
+            <tfoot>
+              <tr><td colspan="2" class="right">TOTAL ASSETS</td><td class="right mono blue">${phpFmt(totalAssets)}</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <!-- LIAB + EQUITY -->
+        <div>
+          <div class="section-title">Liabilities & Equity</div>
+          <table>
+            <thead><tr><th>Code</th><th>Account</th><th class="right">Amount (₱)</th></tr></thead>
+            <tbody>
+              ${section('Current Liabilities', currentLiab, totalCurrentLiab, 'red')}
+              ${section('Non-Current Liabilities', nonCurrentLiab, totalNonCurrentLiab, 'red')}
+              ${section('Equity', equity, totalEquity, 'green')}
+            </tbody>
+            <tfoot>
+              <tr><td colspan="2" class="right">TOTAL LIAB. & EQUITY</td><td class="right mono ${isBalanced ? 'green' : 'red'}">${phpFmt(totalLiabEquity)}</td></tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="desc-box" style="margin-top:12px;font-size:8.5px;">
+        Assets = Liabilities + Equity (Fundamental Accounting Equation).
+        ${isBalanced ? '✓ This balance sheet is balanced.' : `⚠ Difference of ${phpFmt(diff)} detected — please review posted journal entries.`}
+      </div>`;
+
+    printDocument('Balance Sheet', `Statement of Financial Position · As of ${dateFmt(asOf)}`, body);
+  };
+
   return (
     <div className="space-y-5 print:space-y-3">
       {/* Header */}
@@ -274,7 +339,7 @@ export default function BalanceSheetPage() {
           <p className="page-subtitle">Statement of Financial Position · As of {formatDate(asOf)}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="btn-secondary">
+          <button onClick={handlePrint} disabled={!data} className="btn-secondary">
             <Printer className="w-4 h-4" /> Print
           </button>
           <button onClick={load} disabled={loading} className="btn-secondary">

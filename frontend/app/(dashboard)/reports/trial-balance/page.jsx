@@ -12,6 +12,7 @@ import {
   ChevronDown, ChevronUp, Search, Printer,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 
 // ─── Account type config ──────────────────────────────────────
 const TYPE_CONFIG = {
@@ -171,6 +172,55 @@ export default function TrialBalancePage() {
 
   const accountCount = (data?.accounts || []).filter((a) => a.debitBalance > 0 || a.creditBalance > 0).length;
 
+  const handlePrint = () => {
+    const accounts = data?.accounts || [];
+    const visible  = showZero ? accounts : accounts.filter((a) => a.debitBalance > 0 || a.creditBalance > 0);
+
+    const rowsByType = TYPE_ORDER.map((type) => {
+      const typeAccts = visible.filter((a) => a.accountType === type || a.type === type);
+      if (!typeAccts.length) return '';
+      const cfg = TYPE_CONFIG[type];
+      const typeRows = typeAccts.map((a) => `
+        <tr>
+          <td class="mono blue small" style="width:100px">${a.accountCode}</td>
+          <td>${a.accountName}</td>
+          <td class="center small">${a.accountType || type}</td>
+          <td class="right mono">${a.debitBalance > 0 ? phpFmt(a.debitBalance) : ''}</td>
+          <td class="right mono">${a.creditBalance > 0 ? phpFmt(a.creditBalance) : ''}</td>
+        </tr>`).join('');
+      const subtotalDr = typeAccts.reduce((s, a) => s + Number(a.debitBalance), 0);
+      const subtotalCr = typeAccts.reduce((s, a) => s + Number(a.creditBalance), 0);
+      return `
+        <tr class="section-row"><td colspan="5">${cfg.label}</td></tr>
+        ${typeRows}
+        <tr style="background:#f8faff;font-weight:600;font-size:9.5px">
+          <td colspan="3" class="right gray">Subtotal — ${cfg.label}</td>
+          <td class="right mono">${phpFmt(subtotalDr)}</td>
+          <td class="right mono">${phpFmt(subtotalCr)}</td>
+        </tr>`;
+    }).join('');
+
+    const body = `
+      <div class="info-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px">
+        <div class="info-box"><div class="info-lbl">As of Date</div><div class="info-val">${dateFmt(asOf)}</div></div>
+        <div class="info-box"><div class="info-lbl">Active Accounts</div><div class="info-val">${accountCount}</div></div>
+        <div class="info-box"><div class="info-lbl">Balance Status</div><div class="info-val ${isBalanced ? 'green' : 'red'}">${isBalanced ? '✓ Balanced' : `⚠ Off by ${phpFmt(diff)}`}</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Code</th><th>Account Name</th><th class="center">Type</th><th class="right">Debit (₱)</th><th class="right">Credit (₱)</th></tr></thead>
+        <tbody>${rowsByType}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" class="right">GRAND TOTAL</td>
+            <td class="right mono">${phpFmt(totalDebit)}</td>
+            <td class="right mono">${phpFmt(totalCredit)}</td>
+          </tr>
+        </tfoot>
+      </table>`;
+
+    printDocument('Trial Balance', `As of ${dateFmt(asOf)}`, body);
+  };
+
   return (
     <div className="space-y-5 print:space-y-3">
       {/* Header */}
@@ -180,7 +230,7 @@ export default function TrialBalancePage() {
           <p className="page-subtitle">As of {formatDate(asOf)} · {accountCount} active accounts</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="btn-secondary">
+          <button onClick={handlePrint} className="btn-secondary">
             <Printer className="w-4 h-4" /> Print
           </button>
           <button onClick={load} disabled={loading} className="btn-secondary">

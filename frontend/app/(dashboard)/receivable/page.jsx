@@ -7,6 +7,7 @@ import {
   AlertCircle, Clock, CheckCircle2, FileText, Receipt,
   Printer, ChevronDown, ChevronUp,
 } from 'lucide-react';
+import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -43,6 +44,65 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid }) {
   const isOverdue =
     ['OPEN', 'PARTIAL'].includes(invoice.status) &&
     new Date(invoice.dueDate) < new Date();
+
+  const handlePrint = () => {
+    const linesHTML = (invoice.lines || []).map((l) => `
+      <tr>
+        <td class="mono blue small">${l.account?.accountCode || '—'}</td>
+        <td>${l.description || '—'}</td>
+        <td class="center"><span class="badge ${l.vatCode === 'VAT' ? 'b-blue' : l.vatCode === 'ZERO' ? 'b-gray' : 'b-yellow'}">${l.vatCode}</span></td>
+        <td class="right">${Number(l.quantity).toLocaleString()}</td>
+        <td class="right mono">${phpFmt(l.unitPrice)}</td>
+        <td class="right mono bold">${phpFmt(l.amount)}</td>
+      </tr>`).join('');
+
+    const paymentsHTML = (invoice.payments || []).length > 0 ? `
+      <div class="section-title">Collection History</div>
+      <table>
+        <thead><tr><th>Date</th><th>Reference No.</th><th>Method</th><th class="right">Amount</th></tr></thead>
+        <tbody>${invoice.payments.map((p) => `
+          <tr>
+            <td>${dateFmt(p.paymentDate)}</td>
+            <td class="mono small">${p.paymentNo || p.reference || '—'}</td>
+            <td>${p.paymentMethod}</td>
+            <td class="right mono green bold">${phpFmt(p.amount)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '';
+
+    const overdueNote = isOverdue
+      ? `<div class="desc-box" style="border-color:#fecaca;background:#fff5f5;color:#b91c1c;">
+           ⚠ This invoice is overdue by ${Math.floor((new Date() - new Date(invoice.dueDate)) / 86400000)} day(s). Due: ${dateFmt(invoice.dueDate)}
+         </div>` : '';
+
+    const body = `
+      <div class="info-grid">
+        <div class="info-box"><div class="info-lbl">Invoice No.</div><div class="info-val mono">${invoice.invoiceNo}</div></div>
+        <div class="info-box"><div class="info-lbl">Customer</div><div class="info-val">${invoice.customer?.name || '—'}</div></div>
+        <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(invoice.status)}</div></div>
+        <div class="info-box"><div class="info-lbl">Invoice Date</div><div class="info-val">${dateFmt(invoice.invoiceDate)}</div></div>
+        <div class="info-box"><div class="info-lbl">Due Date</div><div class="info-val">${dateFmt(invoice.dueDate)}</div></div>
+        <div class="info-box"><div class="info-lbl">Customer TIN</div><div class="info-val mono small">${invoice.customer?.tin || '—'}</div></div>
+      </div>
+      ${invoice.description ? `<div class="desc-box">${invoice.description}</div>` : ''}
+      ${overdueNote}
+      <div class="section-title">Line Items</div>
+      <table>
+        <thead><tr><th>Account</th><th>Description</th><th class="center">VAT</th><th class="right">Qty</th><th class="right">Unit Price</th><th class="right">Amount</th></tr></thead>
+        <tbody>${linesHTML}</tbody>
+      </table>
+      <div class="totals-block" style="max-width:320px;margin-left:auto;margin-top:12px;">
+        <div class="totals-row"><span class="gray">Subtotal (ex-VAT)</span><span class="mono">${phpFmt(invoice.subtotal)}</span></div>
+        <div class="totals-row"><span class="gray">VAT (12%)</span><span class="mono">${phpFmt(invoice.vatAmount)}</span></div>
+        <div class="totals-divider"></div>
+        <div class="totals-row totals-total"><span>Total Amount</span><span class="mono">${phpFmt(invoice.totalAmount)}</span></div>
+        <div class="totals-row green"><span>Collected</span><span class="mono">(${phpFmt(invoice.paidAmount)})</span></div>
+        <div class="totals-row ${balance > 0 ? 'red' : 'green'} bold"><span>Balance Receivable</span><span class="mono">${phpFmt(balance)}</span></div>
+      </div>
+      ${paymentsHTML}`;
+
+    printDocument(`Invoice — ${invoice.invoiceNo}`, `${invoice.customer?.name || ''} · ${dateFmt(invoice.invoiceDate)}`, body);
+  };
 
   return (
     <div className="modal-overlay">
@@ -213,6 +273,9 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid }) {
               )}
             </>
           )}
+          <button onClick={handlePrint} className="btn-secondary">
+            <Printer className="w-4 h-4" /> Print
+          </button>
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
@@ -595,6 +658,8 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved }) {
 }
 
 // ─── Main Invoices Page ───────────────────────────────────────
+const today = new Date().toISOString().split('T')[0];
+
 export default function InvoicesPage() {
   const [invoices, setInvoices]   = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -603,7 +668,7 @@ export default function InvoicesPage() {
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
   const [summary, setSummary]     = useState({ open: 0, overdue: 0, openCount: 0, collected: 0 });
-  const [filter, setFilter]       = useState({ status: '', customerId: '', from: '', to: '', search: '' });
+  const [filter, setFilter]       = useState({ status: '', customerId: '', from: today, to: '', search: '' });
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [modal, setModal]         = useState(null);
   const LIMIT = 15;
@@ -659,7 +724,7 @@ export default function InvoicesPage() {
     }
   };
 
-  const clearFilter = () => setFilter({ status: '', customerId: '', from: '', to: '', search: '' });
+  const clearFilter = () => setFilter({ status: '', customerId: '', from: today, to: '', search: '' });
   const activeFilters = Object.values(filter).filter(Boolean).length;
 
   return (

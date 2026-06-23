@@ -122,21 +122,8 @@ export default function Sidebar() {
   return (
     <aside className="flex flex-col w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0 z-30">
       {/* Logo */}
-      <div className="p-5 border-b border-gray-200">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <div className="font-bold text-gray-900 text-sm leading-tight">PH-ERP</div>
-            <div className="text-xs text-gray-400 leading-tight">Accounting System</div>
-          </div>
-        </div>
-        {/* PH flag accent */}
-        <div className="flex mt-3 rounded-full overflow-hidden h-0.5">
-          <div className="flex-1 bg-blue-600" />
-          <div className="flex-1 bg-red-600" />
-        </div>
+      <div className="px-4 py-4 border-b border-gray-200 flex items-center">
+        <img src="/finara-logo.svg" alt="Finara" className="h-10 w-auto" />
       </div>
 
       {/* Navigation */}

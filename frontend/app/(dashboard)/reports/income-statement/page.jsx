@@ -12,6 +12,7 @@ import {
   Target, Activity,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { printDocument, phpFmt } from '@/lib/print';
 
 // ─── Constants ─────────────────────────────────────────────────
 const CURRENT_YEAR  = new Date().getFullYear();
@@ -208,6 +209,58 @@ export default function IncomeStatementPage() {
     { name: 'Net Income',    value: netIncome,    fill: netIncome >= 0 ? '#22c55e' : '#ef4444' },
   ];
 
+  const handlePrint = () => {
+    const makeRows = (accts) => accts.map((a) => `
+      <tr>
+        <td class="mono blue small">${a.code || a.accountCode || ''}</td>
+        <td>${a.name || a.accountName || ''}</td>
+        <td class="right mono">${phpFmt(a.balance)}</td>
+      </tr>`).join('');
+
+    const sectionBlock = (title, accts, total, color = '') => `
+      <tr class="section-row"><td colspan="3">${title}</td></tr>
+      ${makeRows(accts)}
+      <tr style="background:#f8faff;font-weight:700;font-size:9.5px">
+        <td colspan="2" class="right gray">Total ${title}</td>
+        <td class="right mono ${color}">${phpFmt(total)}</td>
+      </tr>`;
+
+    const body = `
+      <div class="sum-row">
+        <div class="sum-box sum-green"><div class="sum-lbl">Revenue</div><div class="sum-val">${phpFmt(revenue)}</div></div>
+        <div class="sum-box ${grossProfit >= 0 ? '' : 'sum-red'}"><div class="sum-lbl">Gross Profit</div><div class="sum-val">${phpFmt(grossProfit)}</div></div>
+        <div class="sum-box ${netIncome >= 0 ? 'sum-green' : 'sum-red'}"><div class="sum-lbl">Net Income</div><div class="sum-val">${phpFmt(netIncome)}</div></div>
+        <div class="sum-box"><div class="sum-lbl">Gross Margin</div><div class="sum-val">${grossMargin.toFixed(1)}%</div></div>
+        <div class="sum-box"><div class="sum-lbl">Net Margin</div><div class="sum-val">${netMargin.toFixed(1)}%</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Code</th><th>Account</th><th class="right">Amount (₱)</th></tr></thead>
+        <tbody>
+          ${sectionBlock('Revenue', revenueAccounts, revenue, 'green')}
+          ${cogsAccounts.length ? sectionBlock('Cost of Goods Sold', cogsAccounts, cogs, 'red') : ''}
+          <tr style="background:#eff6ff;font-weight:800;font-size:11px">
+            <td colspan="2" class="right">GROSS PROFIT</td>
+            <td class="right mono ${grossProfit >= 0 ? 'green' : 'red'}">${phpFmt(grossProfit)}</td>
+          </tr>
+          ${sectionBlock('Operating Expenses', opexAccounts, opex, 'red')}
+          <tr style="background:#eff6ff;font-weight:800;font-size:11px">
+            <td colspan="2" class="right">OPERATING INCOME</td>
+            <td class="right mono ${opIncome >= 0 ? 'green' : 'red'}">${phpFmt(opIncome)}</td>
+          </tr>
+          ${otherIncAccounts.length ? sectionBlock('Other Income', otherIncAccounts, otherInc, 'green') : ''}
+          ${otherExpAccounts.length ? sectionBlock('Other Expenses', otherExpAccounts, otherExp, 'red') : ''}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="right">NET INCOME / (LOSS)</td>
+            <td class="right mono ${netIncome >= 0 ? 'green' : 'red'}">${phpFmt(netIncome)}</td>
+          </tr>
+        </tfoot>
+      </table>`;
+
+    printDocument('Income Statement', `${periodLabel()} · Profit & Loss`, body);
+  };
+
   // Pie: expense breakdown
   const pieData = [
     ...cogsAccounts.map((a) => ({ name: a.name, value: a.balance })),
@@ -223,7 +276,7 @@ export default function IncomeStatementPage() {
           <p className="page-subtitle">Statement of Profit & Loss · {periodLabel()}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="btn-secondary">
+          <button onClick={handlePrint} disabled={!data} className="btn-secondary">
             <Printer className="w-4 h-4" /> Print
           </button>
           <button onClick={load} disabled={loading} className="btn-secondary">

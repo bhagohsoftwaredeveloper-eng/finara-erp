@@ -408,6 +408,44 @@ export default function SettingsPage() {
           {activeTab === 'company' && (
             <>
               <SectionTitle icon={Building2}>Company Profile</SectionTitle>
+
+              {/* Logo upload */}
+              <Field label="Company Logo" sub="appears on printed documents — PNG/JPG, max 2 MB">
+                <div className="flex items-center gap-4">
+                  {form.companyLogo ? (
+                    <img src={form.companyLogo} alt="Logo" className="w-16 h-16 object-contain rounded-xl border border-gray-200 bg-gray-50 p-1 flex-shrink-0" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 flex-shrink-0">
+                      <Building2 className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label className="btn-secondary cursor-pointer text-sm py-1.5 px-3 inline-flex items-center gap-2">
+                      <Download className="w-4 h-4" />
+                      {form.companyLogo ? 'Replace Logo' : 'Upload Logo'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) { toast.error('Logo must be under 2 MB'); return; }
+                          const reader = new FileReader();
+                          reader.onload = (ev) => setForm((f) => ({ ...f, companyLogo: ev.target.result }));
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                    {form.companyLogo && (
+                      <button type="button" className="text-xs text-red-500 hover:text-red-700 text-left" onClick={() => setForm((f) => ({ ...f, companyLogo: '' }))}>
+                        Remove logo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </Field>
+
               <div className="form-grid">
                 <Field label="Company / Business Name" required>
                   <input className="input" value={form.companyName || ''} onChange={set('companyName')} placeholder="My Company Inc." />

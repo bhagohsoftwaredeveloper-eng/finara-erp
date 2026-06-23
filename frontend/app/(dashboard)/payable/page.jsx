@@ -7,6 +7,7 @@ import {
   Filter, X, Check, AlertCircle, Clock, CheckCircle2, FileText,
   Printer, Download
 } from 'lucide-react';
+import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -38,6 +39,59 @@ const computeVAT = (amount, code) =>
 function BillDetailModal({ bill, onClose, onPayment, onVoid }) {
   const balance = Number(bill.totalAmount) - Number(bill.paidAmount);
   const pct = bill.totalAmount > 0 ? (Number(bill.paidAmount) / Number(bill.totalAmount)) * 100 : 0;
+
+  const handlePrint = () => {
+    const linesHTML = (bill.lines || []).map((l) => `
+      <tr>
+        <td class="mono blue small">${l.account?.accountCode || '—'}</td>
+        <td>${l.description || '—'}</td>
+        <td class="center"><span class="badge ${l.vatCode === 'VAT' ? 'b-blue' : l.vatCode === 'ZERO' ? 'b-gray' : 'b-yellow'}">${l.vatCode}</span></td>
+        <td class="right">${Number(l.quantity).toLocaleString()}</td>
+        <td class="right mono">${phpFmt(l.unitPrice)}</td>
+        <td class="right mono bold">${phpFmt(l.amount)}</td>
+      </tr>`).join('');
+
+    const paymentsHTML = (bill.payments || []).length > 0 ? `
+      <div class="section-title">Payment History</div>
+      <table>
+        <thead><tr><th>Date</th><th>Reference</th><th>Method</th><th class="right">Amount</th></tr></thead>
+        <tbody>${bill.payments.map((p) => `
+          <tr>
+            <td>${dateFmt(p.paymentDate)}</td>
+            <td class="mono small">${p.reference || '—'}</td>
+            <td>${p.paymentMethod}</td>
+            <td class="right mono green bold">${phpFmt(p.amount)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '';
+
+    const body = `
+      <div class="info-grid">
+        <div class="info-box"><div class="info-lbl">Bill No.</div><div class="info-val mono">${bill.billNo}</div></div>
+        <div class="info-box"><div class="info-lbl">Vendor</div><div class="info-val">${bill.vendor?.name || '—'}</div></div>
+        <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(bill.status)}</div></div>
+        <div class="info-box"><div class="info-lbl">Bill Date</div><div class="info-val">${dateFmt(bill.billDate)}</div></div>
+        <div class="info-box"><div class="info-lbl">Due Date</div><div class="info-val">${dateFmt(bill.dueDate)}</div></div>
+        <div class="info-box"><div class="info-lbl">Vendor TIN</div><div class="info-val mono small">${bill.vendor?.tin || '—'}</div></div>
+      </div>
+      ${bill.description ? `<div class="desc-box">${bill.description}</div>` : ''}
+      <div class="section-title">Line Items</div>
+      <table>
+        <thead><tr><th>Account</th><th>Description</th><th class="center">VAT</th><th class="right">Qty</th><th class="right">Unit Price</th><th class="right">Amount</th></tr></thead>
+        <tbody>${linesHTML}</tbody>
+      </table>
+      <div class="totals-block" style="max-width:320px;margin-left:auto;margin-top:12px;">
+        <div class="totals-row"><span class="gray">Subtotal (ex-VAT)</span><span class="mono">${phpFmt(bill.subtotal)}</span></div>
+        <div class="totals-row"><span class="gray">VAT (12%)</span><span class="mono">${phpFmt(bill.vatAmount)}</span></div>
+        <div class="totals-divider"></div>
+        <div class="totals-row totals-total"><span>Total Amount</span><span class="mono">${phpFmt(bill.totalAmount)}</span></div>
+        <div class="totals-row green"><span>Amount Paid</span><span class="mono">(${phpFmt(bill.paidAmount)})</span></div>
+        <div class="totals-row ${balance > 0 ? 'red' : 'green'} bold"><span>Balance Due</span><span class="mono">${phpFmt(balance)}</span></div>
+      </div>
+      ${paymentsHTML}`;
+
+    printDocument(`Bill — ${bill.billNo}`, `${bill.vendor?.name || ''} · ${dateFmt(bill.billDate)}`, body);
+  };
 
   return (
     <div className="modal-overlay">
@@ -158,6 +212,9 @@ function BillDetailModal({ bill, onClose, onPayment, onVoid }) {
               )}
             </>
           )}
+          <button onClick={handlePrint} className="btn-secondary">
+            <Printer className="w-4 h-4" /> Print
+          </button>
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
@@ -491,6 +548,8 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved }) {
 }
 
 // ─── Main Bills Page ──────────────────────────────────────────
+const today = new Date().toISOString().split('T')[0];
+
 export default function BillsPage() {
   const [bills, setBills]         = useState([]);
   const [vendors, setVendors]     = useState([]);
@@ -500,7 +559,7 @@ export default function BillsPage() {
   const [page, setPage]           = useState(1);
   const [summary, setSummary]     = useState({ open: 0, overdue: 0, paid: 0, openCount: 0 });
 
-  const [filter, setFilter] = useState({ status: '', vendorId: '', from: '', to: '', search: '' });
+  const [filter, setFilter] = useState({ status: '', vendorId: '', from: today, to: '', search: '' });
   const [showFilter, setShowFilter] = useState(false);
 
   const [modal, setModal] = useState(null); // 'create' | { bill: ... } | { pay: ... }
@@ -559,7 +618,7 @@ export default function BillsPage() {
     } catch { toast.error('Failed to load bill details'); }
   };
 
-  const clearFilter = () => setFilter({ status: '', vendorId: '', from: '', to: '', search: '' });
+  const clearFilter = () => setFilter({ status: '', vendorId: '', from: today, to: '', search: '' });
   const activeFilters = Object.values(filter).filter(Boolean).length;
 
   return (

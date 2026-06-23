@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 // ─── Helpers ──────────────────────────────────────────────────
 const DEFAULTS = {
   // Company
+  companyLogo:        '',              // base64 data URL or https:// URL
   companyName:        'My Company Inc.',
   companyAddress:     '',
   companyCity:        '',
