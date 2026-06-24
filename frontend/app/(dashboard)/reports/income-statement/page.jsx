@@ -7,10 +7,11 @@ import {
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ReferenceLine,
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, DollarSign, Percent, RefreshCw,
+  TrendingUp, TrendingDown, Percent, RefreshCw,
   Printer, AlertCircle, ChevronDown, ChevronUp, ArrowUp, ArrowDown,
   Target, Activity,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import { printDocument, phpFmt } from '@/lib/print';
 
@@ -339,7 +340,7 @@ export default function IncomeStatementPage() {
           {/* KPI row */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 print:hidden">
             <KpiCard label="Total Revenue"  value={revenue}     sub="gross income"      icon={TrendingUp}   color="text-green-600"  borderColor="border-green-500" />
-            <KpiCard label="Gross Profit"   value={grossProfit} sub={`${grossMargin.toFixed(1)}% margin`} icon={DollarSign} color={grossProfit >= 0 ? 'text-blue-600' : 'text-red-600'} borderColor={grossProfit >= 0 ? 'border-blue-500' : 'border-red-500'} />
+            <KpiCard label="Gross Profit"   value={grossProfit} sub={`${grossMargin.toFixed(1)}% margin`} icon={PesoSign} color={grossProfit >= 0 ? 'text-blue-600' : 'text-red-600'} borderColor={grossProfit >= 0 ? 'border-blue-500' : 'border-red-500'} />
             <KpiCard label="Operating Income" value={opIncome}  sub={`${opMargin.toFixed(1)}% margin`}   icon={Activity}   color={opIncome >= 0 ? 'text-indigo-600' : 'text-red-600'}  borderColor={opIncome >= 0 ? 'border-indigo-500' : 'border-red-500'} />
             <KpiCard label="Net Income"     value={netIncome}   sub={`${netMargin.toFixed(1)}% net margin`} icon={netIncome >= 0 ? TrendingUp : TrendingDown} color={netIncome >= 0 ? 'text-green-600' : 'text-red-600'} borderColor={netIncome >= 0 ? 'border-green-500' : 'border-red-500'} />
           </div>

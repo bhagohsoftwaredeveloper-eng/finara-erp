@@ -4,8 +4,9 @@ import { dashboard as dashApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/auth';
 import {
   TrendingUp, TrendingDown, AlertCircle, Users, Building2,
-  ShoppingCart, FileText, CheckCircle, Clock, DollarSign
+  ShoppingCart, FileText, CheckCircle, Clock,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const StatCard = ({ label, value, sub, icon: Icon, color, trend }) => (
@@ -77,7 +78,7 @@ export default function DashboardPage() {
           label="Open Receivables"
           value={formatCurrency(d.receivables?.openAmount)}
           sub={`${d.receivables?.openCount || 0} invoices open`}
-          icon={DollarSign} color="bg-green-100 text-green-600"
+          icon={PesoSign} color="bg-green-100 text-green-600"
         />
         <StatCard
           label="Open Payables"

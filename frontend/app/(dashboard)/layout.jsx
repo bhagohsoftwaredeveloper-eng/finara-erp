@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import PageTransition from '@/components/layout/PageTransition';
 import { isAuthenticated } from '@/lib/auth';
 
 export default function DashboardLayout({ children }) {
@@ -29,7 +30,9 @@ export default function DashboardLayout({ children }) {
       <div className="flex-1 flex flex-col ml-64 min-h-screen overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
-          {children}
+          <PageTransition>
+            {children}
+          </PageTransition>
         </main>
       </div>
     </div>

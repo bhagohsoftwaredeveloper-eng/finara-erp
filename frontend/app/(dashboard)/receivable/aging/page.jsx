@@ -4,8 +4,9 @@ import { receivable as rApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   RefreshCw, AlertCircle, CheckCircle2, TrendingUp,
-  Users, ChevronDown, ChevronUp, Filter, DollarSign,
+  Users, ChevronDown, ChevronUp, Filter,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -479,7 +480,7 @@ export default function ARAgingPage() {
         <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
           <span>Aging calculated as of today · Only Open and Partial invoices are included</span>
           <span className="flex items-center gap-1">
-            <DollarSign className="w-3.5 h-3.5" /> Amounts in Philippine Peso (₱)
+            <PesoSign className="w-3.5 h-3.5" /> Amounts in Philippine Peso (₱)
           </span>
         </div>
       </div>

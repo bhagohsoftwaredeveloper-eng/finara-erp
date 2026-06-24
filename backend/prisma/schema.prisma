@@ -382,3 +382,18 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+// ─── Custom Reports ────────────────────────────────────────
+model CustomReport {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  reportType  String   @db.VarChar(50)
+  config      Json
+  createdBy   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdBy])
+  @@map("custom_reports")
+}

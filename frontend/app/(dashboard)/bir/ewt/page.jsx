@@ -7,9 +7,10 @@ import {
   ResponsiveContainer, Cell,
 } from 'recharts';
 import {
-  Building2, DollarSign, RefreshCw, AlertCircle, ChevronDown,
+  Building2, RefreshCw, AlertCircle, ChevronDown,
   ChevronUp, FileText, Hash, Info, TrendingDown, Calendar,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 const CURRENT_YEAR    = new Date().getFullYear();
@@ -241,7 +242,7 @@ export default function EwtSummaryPage() {
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             {[
               { label: 'Vendors Subject to EWT', value: data.vendorCount || 0,             sub: `of ${data.totalVendors || 0} total vendors`, icon: Building2,   color: 'text-blue-600'   },
-              { label: 'Total Payments Made',    value: formatCurrency(data.totalPayments), sub: 'gross amount (incl. VAT)',                   icon: DollarSign,  color: 'text-purple-600' },
+              { label: 'Total Payments Made',    value: formatCurrency(data.totalPayments), sub: 'gross amount (incl. VAT)',                   icon: PesoSign,  color: 'text-purple-600' },
               { label: 'VATable Payments',       value: formatCurrency(data.vatableAmount), sub: 'basis for EWT (excl. VAT)',                  icon: TrendingDown,color: 'text-orange-500' },
               { label: 'Total EWT to Remit',     value: formatCurrency(data.totalEwt),      sub: 'remit with 1601-EQ',                         icon: Hash,        color: 'text-red-600'    },
             ].map((s) => (

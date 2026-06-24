@@ -73,7 +73,8 @@ app.use('/api/receivable', routes.receivable);
 app.use('/api/payroll', routes.payroll);
 app.use('/api/bir', routes.bir);
 app.use('/api/dashboard', routes.dashboard);
-app.use('/api/settings', routes.settings);
+app.use('/api/settings',       routes.settings);
+app.use('/api/custom-reports', routes.customReports);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {

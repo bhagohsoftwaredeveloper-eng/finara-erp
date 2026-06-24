@@ -3,10 +3,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { receivable as rApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
-  Plus, Search, Eye, DollarSign, Ban, Filter, X,
+  Plus, Search, Eye, Ban, Filter, X,
   AlertCircle, Clock, CheckCircle2, FileText, Receipt,
   Printer, ChevronDown, ChevronUp,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
@@ -268,7 +269,7 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid }) {
               )}
               {invoice.status !== 'PAID' && (
                 <button onClick={onCollect} className="btn-success">
-                  <DollarSign className="w-4 h-4" /> Record Collection
+                  <PesoSign className="w-4 h-4" /> Record Collection
                 </button>
               )}
             </>
@@ -405,7 +406,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-success">
-              <DollarSign className="w-4 h-4" />
+              <PesoSign className="w-4 h-4" />
               {saving ? 'Recording...' : 'Record Collection'}
             </button>
           </div>
@@ -952,7 +953,7 @@ export default function InvoicesPage() {
                             className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Record collection"
                           >
-                            <DollarSign className="w-4 h-4" />
+                            <PesoSign className="w-4 h-4" />
                           </button>
                         )}
                         {inv.paidAmount == 0 && inv.status !== 'VOID' && (

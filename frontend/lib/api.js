@@ -134,6 +134,16 @@ export const bir = {
   alphalist: (params) => api.get('/bir/alphalist', { params }),
 };
 
+export const customReports = {
+  list:    ()           => api.get('/custom-reports'),
+  get:     (id)         => api.get(`/custom-reports/${id}`),
+  run:     (id)         => api.get(`/custom-reports/${id}/run`),
+  preview: (data)       => api.post('/custom-reports/preview', data),
+  create:  (data)       => api.post('/custom-reports', data),
+  update:  (id, data)   => api.put(`/custom-reports/${id}`, data),
+  remove:  (id)         => api.delete(`/custom-reports/${id}`),
+};
+
 export const settings = {
   getAll:         ()       => api.get('/settings'),
   saveAll:        (data)   => api.post('/settings', data),

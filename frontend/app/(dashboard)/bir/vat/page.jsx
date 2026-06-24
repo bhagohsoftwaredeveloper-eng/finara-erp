@@ -7,9 +7,10 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import {
-  Receipt, TrendingUp, TrendingDown, DollarSign, AlertCircle,
+  Receipt, TrendingUp, TrendingDown, AlertCircle,
   CheckCircle, FileText, Download, RefreshCw, Info,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -168,7 +169,7 @@ export default function VatSummaryPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <StatCard label="Total Sales (Net of VAT)" value={formatCurrency(data.totalSalesNet || 0)} sub="VATable + Zero + Exempt" icon={TrendingUp} color="text-blue-600" border="border-blue-500" />
-            <StatCard label="Output VAT Collected"    value={formatCurrency(data.outputVat)}    sub="12% on VATable sales"  icon={DollarSign}   color="text-purple-600" border="border-purple-500" />
+            <StatCard label="Output VAT Collected"    value={formatCurrency(data.outputVat)}    sub="12% on VATable sales"  icon={PesoSign}   color="text-purple-600" border="border-purple-500" />
             <StatCard label="Input VAT (Purchases)"   value={formatCurrency(data.inputVat)}     sub="12% on VATable purchases" icon={TrendingDown} color="text-orange-500" border="border-orange-400" />
             {vatPayable > 0 ? (
               <StatCard label="VAT Payable to BIR" value={formatCurrency(vatPayable)} sub="Output − Input" icon={AlertCircle} color="text-red-600" border="border-red-500" />

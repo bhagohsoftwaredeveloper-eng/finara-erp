@@ -7,10 +7,11 @@ import {
   ResponsiveContainer, Cell,
 } from 'recharts';
 import {
-  Users, DollarSign, AlertTriangle, CheckCircle, RefreshCw,
+  Users, AlertTriangle, CheckCircle, RefreshCw,
   Calendar, Clock, TrendingUp, Info, ChevronDown, ChevronUp,
   FileText, AlertCircle,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 const CURRENT_YEAR  = new Date().getFullYear();
@@ -240,7 +241,7 @@ export default function WithholdingPage() {
             {[
               { label: 'Employees This Period', value: data.employeeCount,                      sub: 'covered by 1601-C',          icon: Users,       color: 'text-blue-600'  },
               { label: 'Total Compensation',    value: formatCurrency(data.totalCompensation),   sub: 'gross pay + allowances',     icon: TrendingUp,  color: 'text-purple-600' },
-              { label: 'Total Tax Withheld',    value: formatCurrency(data.totalTaxWithheld),    sub: 'to remit to BIR',            icon: DollarSign,  color: 'text-red-600'   },
+              { label: 'Total Tax Withheld',    value: formatCurrency(data.totalTaxWithheld),    sub: 'to remit to BIR',            icon: PesoSign,  color: 'text-red-600'   },
               { label: 'Total Net Pay',         value: formatCurrency(data.totalNetPay),         sub: 'disbursed to employees',     icon: CheckCircle, color: 'text-green-600'  },
             ].map((s) => (
               <div key={s.label} className="card p-4 flex items-center gap-3">

@@ -4,9 +4,10 @@ import { payroll as pApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Calendar, ChevronDown, ChevronUp, Play, CheckCircle,
-  AlertCircle, Clock, DollarSign, Users, TrendingUp, Eye,
+  AlertCircle, Clock, Users, TrendingUp, Eye,
   FileText, MoreHorizontal, X, Loader2, ArrowRight, Printer,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
@@ -380,7 +381,7 @@ function PeriodCard({ period, onView, onAction }) {
             </div>
             {period.payDate && (
               <p className="text-xs text-blue-600 mt-0.5 flex items-center gap-1">
-                <DollarSign className="w-3 h-3" /> Pay date: {formatDate(period.payDate)}
+                <PesoSign className="w-3 h-3" /> Pay date: {formatDate(period.payDate)}
               </p>
             )}
           </div>

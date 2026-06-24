@@ -8,9 +8,10 @@ import {
 } from 'recharts';
 import {
   Scale, RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff,
-  TrendingUp, TrendingDown, DollarSign, Hash, Download,
+  TrendingUp, TrendingDown, Hash, Download,
   ChevronDown, ChevronUp, Search, Printer,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 

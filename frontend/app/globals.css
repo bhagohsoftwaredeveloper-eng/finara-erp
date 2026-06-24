@@ -64,3 +64,41 @@
   .form-group { @apply space-y-1; }
   .form-error { @apply text-xs text-red-500 mt-1; }
 }
+
+/* ─── Page stagger transition ──────────────────────────────────
+   .page-stagger   = PageTransition wrapper (remounts on every nav via key)
+   > *             = page root div  (e.g. <div className="space-y-5">)
+   > * > *         = each card / section / header inside that root div
+   ──────────────────────────────────────────────────────────── */
+@keyframes stagger-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-stagger > * > * {
+  animation: stagger-up 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.page-stagger > * > *:nth-child(1)  { animation-delay:   0ms; }
+.page-stagger > * > *:nth-child(2)  { animation-delay:  65ms; }
+.page-stagger > * > *:nth-child(3)  { animation-delay: 120ms; }
+.page-stagger > * > *:nth-child(4)  { animation-delay: 168ms; }
+.page-stagger > * > *:nth-child(5)  { animation-delay: 210ms; }
+.page-stagger > * > *:nth-child(6)  { animation-delay: 246ms; }
+.page-stagger > * > *:nth-child(7)  { animation-delay: 278ms; }
+.page-stagger > * > *:nth-child(8)  { animation-delay: 306ms; }
+.page-stagger > * > *:nth-child(9)  { animation-delay: 330ms; }
+.page-stagger > * > *:nth-child(10) { animation-delay: 350ms; }
+
+/* Don't animate inside print */
+@media print {
+  .page-stagger > * > * {
+    animation: none !important;
+  }
+}

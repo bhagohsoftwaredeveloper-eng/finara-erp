@@ -20,8 +20,8 @@ export const clearSession = () => {
 
 export const isAuthenticated = () => !!getToken();
 
-export const formatCurrency = (amount, currency = 'PHP') =>
-  new Intl.NumberFormat('en-PH', { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(amount || 0));
+export const formatCurrency = (amount) =>
+  '₱' + Number(amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const formatDate = (date) => {
   if (!date) return '-';

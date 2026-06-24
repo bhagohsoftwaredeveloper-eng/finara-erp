@@ -7,10 +7,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import {
-  Users, DollarSign, TrendingUp, RefreshCw, Download,
+  Users, TrendingUp, RefreshCw, Download,
   Search, Info, FileText, ChevronDown, ChevronUp, Award,
   AlertCircle,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency } from '@/lib/auth';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -255,7 +256,7 @@ export default function AlphalistPage() {
             {[
               { label: 'Total Employees',         value: data.employees?.length || 0, sub: 'in alphalist',               icon: Users,      color: 'text-blue-600'   },
               { label: 'Total Gross Compensation', value: formatCurrency(totalGross), sub: 'annual aggregate',             icon: TrendingUp, color: 'text-purple-600' },
-              { label: 'Total Tax Withheld',       value: formatCurrency(totalTax),  sub: 'remitted to BIR',              icon: DollarSign, color: 'text-red-600'    },
+              { label: 'Total Tax Withheld',       value: formatCurrency(totalTax),  sub: 'remitted to BIR',              icon: PesoSign, color: 'text-red-600'    },
               { label: 'Avg Effective Tax Rate',   value: `${avgEffRate}%`,           sub: 'across all employees',         icon: Award,      color: 'text-green-600'  },
             ].map((s) => (
               <div key={s.label} className="card p-4 flex items-center gap-3">
