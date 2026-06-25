@@ -49,9 +49,10 @@ model Account {
   journalLines     JournalLine[]
   billLines        BillLine[]
   invoiceLines     InvoiceLine[]
-  inventoryItems   InventoryItem[] @relation("InvAssetAccount")
-  cogsItems        InventoryItem[] @relation("InvCogsAccount")
-  revenueItems     InventoryItem[] @relation("InvRevenueAccount")
+  inventoryItems   InventoryItem[]     @relation("InvAssetAccount")
+  cogsItems        InventoryItem[]     @relation("InvCogsAccount")
+  revenueItems     InventoryItem[]     @relation("InvRevenueAccount")
+  expenseItems     ExpenseVoucherItem[]
 
   @@index([accountCode])
   @@index([accountType])
@@ -527,6 +528,64 @@ model RemittanceDetail {
   @@index([remittancePeriodId])
   @@index([employeeId])
   @@map("remittance_details")
+}
+
+// ─── Expense Vouchers ──────────────────────────────────────
+enum ExpenseType {
+  PETTY_CASH      // small cash purchases from petty cash fund
+  REIMBURSEMENT   // employee reimburses personal spend for company
+  DIRECT_PAYMENT  // company pays directly (utilities, rent, etc.)
+  CASH_ADVANCE    // advance given to employee/officer
+  LIQUIDATION     // liquidation report against a cash advance
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PAID
+  REJECTED
+}
+
+model ExpenseVoucher {
+  id            Int                  @id @default(autoincrement())
+  voucherNo     String               @unique @db.VarChar(30)
+  type          ExpenseType          @default(PETTY_CASH)
+  date          DateTime             @db.Date
+  payee         String               @db.VarChar(150)
+  category      String               @db.VarChar(60)
+  purpose       String               @db.Text
+  totalAmount   Decimal              @default(0) @db.Decimal(15, 2)
+  receiptNo     String?              @db.VarChar(100)
+  status        ExpenseStatus        @default(DRAFT)
+  requestedBy   String?              @db.VarChar(100)
+  approvedBy    String?              @db.VarChar(100)
+  paidDate      DateTime?            @db.Date
+  paidBy        String?              @db.VarChar(100)
+  rejectedReason String?             @db.Text
+  notes         String?              @db.Text
+  items         ExpenseVoucherItem[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([date])
+  @@index([status])
+  @@index([type])
+  @@map("expense_vouchers")
+}
+
+model ExpenseVoucherItem {
+  id          Int             @id @default(autoincrement())
+  voucherId   Int
+  voucher     ExpenseVoucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  description String          @db.VarChar(255)
+  accountId   Int?
+  account     Account?        @relation(fields: [accountId], references: [id])
+  amount      Decimal         @db.Decimal(15, 2)
+  receiptNo   String?         @db.VarChar(100)
+
+  @@index([voucherId])
+  @@map("expense_voucher_items")
 }
 
 // ─── Daily Remittance ──────────────────────────────────────

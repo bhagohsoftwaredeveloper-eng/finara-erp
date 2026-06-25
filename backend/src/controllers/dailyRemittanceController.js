@@ -18,7 +18,7 @@ exports.calculate = async (req, res, next) => {
 
     const range = dayRange(date);
 
-    const [invoices, arPayments, bills, apPayments, invTxns] = await Promise.all([
+    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers] = await Promise.all([
       prisma.invoice.findMany({
         where: { invoiceDate: range },
         include: { customer: { select: { name: true, customerCode: true } } },
@@ -44,14 +44,26 @@ exports.calculate = async (req, res, next) => {
         include: { item: { select: { name: true, sku: true } } },
         orderBy: { txnNo: 'asc' },
       }),
+      // Expense vouchers APPROVED or PAID on this date
+      prisma.expenseVoucher.findMany({
+        where: { date: range, status: { in: ['APPROVED', 'PAID'] } },
+        orderBy: { voucherNo: 'asc' },
+      }),
     ]);
+
+    // ── Expense voucher split ────────────────────────────────────
+    const paidVouchers     = expVouchers.filter(v => v.status === 'PAID');
 
     // ── Totals ──────────────────────────────────────────────────
     const totalSales    = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
     const vatCollected  = invoices.reduce((s, i) => s + Number(i.vatAmount),   0);
     const cashReceived  = arPayments.reduce((s, p) => s + Number(p.amount),    0);
-    const totalExpenses = bills.reduce((s, b) => s + Number(b.totalAmount),    0);
-    const cashDisbursed = apPayments.reduce((s, p) => s + Number(p.amount),    0);
+    // totalExpenses = AP Bills + ALL approved/paid expense vouchers
+    const totalExpenses = bills.reduce((s, b) => s + Number(b.totalAmount),    0)
+                        + expVouchers.reduce((s, v) => s + Number(v.totalAmount), 0);
+    // cashDisbursed = AP Payments + PAID expense vouchers (cash actually left)
+    const cashDisbursed = apPayments.reduce((s, p) => s + Number(p.amount),    0)
+                        + paidVouchers.reduce((s, v) => s + Number(v.totalAmount), 0);
     const netCash       = cashReceived - cashDisbursed;
 
     // ── Detail line items ────────────────────────────────────────
@@ -96,6 +108,22 @@ exports.calculate = async (req, res, next) => {
         amount:      Number(t.totalCost),
         meta:        JSON.stringify({ sku: t.item.sku, item: t.item.name, type: t.type, qty: Number(t.quantity), unitCost: Number(t.unitCost) }),
       })),
+      // Expense vouchers (APPROVED or PAID) — appear as EXPENSE items
+      ...expVouchers.map(v => ({
+        category:    'EXPENSE',
+        reference:   v.voucherNo,
+        description: `[${v.type.replace('_', ' ')}] ${v.payee} — ${v.purpose.slice(0, 80)}`,
+        amount:      Number(v.totalAmount),
+        meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, status: v.status, requestedBy: v.requestedBy }),
+      })),
+      // PAID vouchers also appear as DISBURSEMENT (cash left the company)
+      ...paidVouchers.map(v => ({
+        category:    'DISBURSEMENT',
+        reference:   v.voucherNo,
+        description: `Paid — ${v.payee} (${v.voucherNo})`,
+        amount:      Number(v.totalAmount),
+        meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, paidBy: v.paidBy }),
+      })),
     ];
 
     res.json({
@@ -103,11 +131,12 @@ exports.calculate = async (req, res, next) => {
       totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
       counts: {
-        invoices:   invoices.length,
-        collections: arPayments.length,
-        expenses:   bills.length,
-        disbursements: apPayments.length,
-        inventory:  invTxns.length,
+        invoices:      invoices.length,
+        collections:   arPayments.length,
+        expenses:      bills.length + expVouchers.length,
+        disbursements: apPayments.length + paidVouchers.length,
+        inventory:     invTxns.length,
+        vouchers:      expVouchers.length,
       },
       items,
     });

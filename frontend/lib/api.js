@@ -174,6 +174,20 @@ export const inventory = {
   },
 };
 
+export const expenses = {
+  categories: ()           => api.get('/expenses/categories'),
+  summary:    ()           => api.get('/expenses/summary'),
+  list:       (params)     => api.get('/expenses', { params }),
+  get:        (id)         => api.get(`/expenses/${id}`),
+  create:     (data)       => api.post('/expenses', data),
+  update:     (id, data)   => api.put(`/expenses/${id}`, data),
+  submit:     (id, data)   => api.post(`/expenses/${id}/submit`, data),
+  approve:    (id, data)   => api.post(`/expenses/${id}/approve`, data),
+  pay:        (id, data)   => api.post(`/expenses/${id}/pay`, data),
+  reject:     (id, data)   => api.post(`/expenses/${id}/reject`, data),
+  remove:     (id)         => api.delete(`/expenses/${id}`),
+};
+
 export const remittance = {
   summary:    ()           => api.get('/remittance/summary'),
   list:       (params)     => api.get('/remittance', { params }),

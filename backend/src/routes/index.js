@@ -11,4 +11,5 @@ module.exports = {
   customReports: require('./customReports'),
   inventory:     require('./inventory'),
   remittance:    require('./remittance'),
+  expense:       require('./expense'),
 };

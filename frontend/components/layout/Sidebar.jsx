@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, FileText, CreditCard, Receipt,
   Users, ClipboardList, Building2, ChevronDown, LogOut, Settings,
-  Package, Landmark,
+  Package, Landmark, Wallet,
 } from 'lucide-react';
 import { clearSession, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -50,6 +50,7 @@ const NAV = [
       { label: 'RELIEF Export',       href: '/bir/relief' },
     ],
   },
+  { label: 'Expense Vouchers', icon: Wallet, href: '/expenses' },
   {
     label: 'Remittances', icon: Landmark,
     children: [

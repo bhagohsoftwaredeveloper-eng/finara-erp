@@ -77,6 +77,7 @@ app.use('/api/settings',       routes.settings);
 app.use('/api/custom-reports', routes.customReports);
 app.use('/api/inventory',      routes.inventory);
 app.use('/api/remittance',     routes.remittance);
+app.use('/api/expenses',       routes.expense);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {
