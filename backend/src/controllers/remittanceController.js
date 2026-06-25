@@ -1,5 +1,14 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
+const glPost = require('../utils/glPost');
+
+// ── Type → GL payable account code mapping ───────────────────────
+const TYPE_GL = {
+  SSS:       { payable: '2050', expenseCode: '6120' },
+  PHILHEALTH:{ payable: '2060', expenseCode: '6130' },
+  PAGIBIG:   { payable: '2070', expenseCode: '6140' },
+  BIR_1601C: { payable: '2040', expenseCode: null   }, // BIR is a WTax payable, no separate expense line
+};
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -286,6 +295,10 @@ exports.markPaid = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { paidAmount, paidDate, referenceNo, penalty } = req.body;
+
+    const rp = await prisma.remittancePeriod.findUnique({ where: { id } });
+    if (!rp) throw createError('Remittance period not found', 404);
+
     const updated = await prisma.remittancePeriod.update({
       where: { id },
       data: {
@@ -296,6 +309,28 @@ exports.markPaid = async (req, res, next) => {
         referenceNo: referenceNo || undefined,
       },
     });
+
+    // ── Auto-post to GL ──────────────────────────────────────────────────────
+    const glMap  = TYPE_GL[rp.type];
+    const amount = Number(paidAmount ?? rp.totalAmount);
+    const entryDate = paidDate || new Date().toISOString().slice(0, 10);
+    const label  = `${rp.type.replace('_', ' ')} — ${rp.periodMonth}/${rp.periodYear}`;
+
+    if (glMap) {
+      await glPost.safePost({
+        entryDate,
+        description: `Remittance Payment — ${label}`,
+        reference:   referenceNo || `REM-${id}`,
+        lines: [
+          // DR Government Contributions Payable (clearing the liability)
+          { accountCode: glMap.payable, debit: amount, description: `Clear ${label}` },
+          // CR Cash / Bank
+          { accountCode: '1020', credit: amount, description: `Cash paid — ${label}` },
+        ],
+        userId: req.user?.id || 1,
+      });
+    }
+
     res.json(updated);
   } catch (err) { next(err); }
 };

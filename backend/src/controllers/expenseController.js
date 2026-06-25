@@ -1,5 +1,23 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
+const glPost = require('../utils/glPost');
+
+// Category → GL account code mapping
+const CATEGORY_ACCOUNT = {
+  TRANSPORTATION:  '6520',
+  MEALS:           '6510',
+  OFFICE_SUPPLIES: '6320',
+  UTILITIES:       '6220',
+  REPAIRS:         '6240',
+  PROFESSIONAL:    '6400',
+  BANK_CHARGES:    '6360',
+  ADVERTISING:     '6530',
+  EVENTS:          '6160',
+  COURIER:         '6330',
+  RENT:            '6210',
+  TAXES:           '6370',
+  MISCELLANEOUS:   '6390',
+};
 
 // ─── Expense categories (predefined for quick selection) ─────────
 exports.getCategories = (_req, res) => {
@@ -220,14 +238,57 @@ exports.pay = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { paidBy, paidDate } = req.body;
+
+    // Fetch voucher with items before updating
+    const voucher = await prisma.expenseVoucher.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    if (!voucher) throw createError('Expense voucher not found', 404);
+    if (voucher.status !== 'APPROVED') throw createError('Voucher must be APPROVED before marking paid', 400);
+
     const updated = await prisma.expenseVoucher.update({
       where: { id },
       data: {
-        status:  'PAID',
-        paidBy:  paidBy  || undefined,
+        status:   'PAID',
+        paidBy:   paidBy  || undefined,
         paidDate: paidDate ? new Date(paidDate + 'T00:00:00.000Z') : new Date(),
       },
     });
+
+    // ── Auto-post to GL ──────────────────────────────────────────────────────
+    // Determine cash account: PETTY_CASH type → 1011, all others → 1020
+    const cashCode = voucher.type === 'PETTY_CASH' ? '1011' : '1020';
+    const totalAmt = Number(voucher.totalAmount);
+
+    // Build DR lines: use item accountId if set, else fall back to category mapping
+    const drLines = [];
+    if (voucher.items.length > 0) {
+      for (const item of voucher.items) {
+        if (item.accountId) {
+          drLines.push({ accountId: item.accountId, debit: Number(item.amount), description: item.description });
+        } else {
+          const code = CATEGORY_ACCOUNT[voucher.category] || '6390';
+          drLines.push({ accountCode: code, debit: Number(item.amount), description: item.description });
+        }
+      }
+    } else {
+      // No items — post total to category account
+      const code = CATEGORY_ACCOUNT[voucher.category] || '6390';
+      drLines.push({ accountCode: code, debit: totalAmt, description: `${voucher.payee} — ${voucher.purpose.slice(0, 80)}` });
+    }
+
+    await glPost.safePost({
+      entryDate:   paidDate || new Date().toISOString().slice(0, 10),
+      description: `Expense Voucher — ${voucher.voucherNo} (${voucher.payee})`,
+      reference:   voucher.voucherNo,
+      lines: [
+        ...drLines,
+        { accountCode: cashCode, credit: totalAmt, description: `Cash paid — ${voucher.voucherNo}` },
+      ],
+      userId: req.user?.id || 1,
+    });
+
     res.json(updated);
   } catch (err) { next(err); }
 };

@@ -1,4 +1,5 @@
 const prisma = require('../config/database');
+const glPost = require('../utils/glPost');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function pad(n, len = 6) { return String(n).padStart(len, '0'); }
@@ -290,6 +291,37 @@ exports.createTransaction = async (req, res, next) => {
         },
       }),
     ]);
+
+    // ── Auto-post to GL ──────────────────────────────────────────────────────
+    // Only post when there's a cost value (free adjustments with no cost skip GL)
+    if (totalCost > 0) {
+      if (['IN', 'RETURN_IN'].includes(type)) {
+        // Stock received: DR Inventory, CR AP Trade (assume on account) or Cash
+        await glPost.safePost({
+          entryDate:   date,
+          description: `Inventory IN — ${item.name} (${txn.txnNo})`,
+          reference:   txn.txnNo,
+          lines: [
+            { accountCode: '1210', debit:  totalCost, description: `Stock in — ${item.sku} ×${Math.abs(delta)}` },
+            { accountCode: '2010', credit: totalCost, description: `Inventory payable — ${item.name}` },
+          ],
+          userId: req.user?.id || 1,
+        });
+      } else if (['OUT', 'RETURN_OUT'].includes(type)) {
+        // Stock out / sold: DR COGS, CR Inventory
+        await glPost.safePost({
+          entryDate:   date,
+          description: `Inventory OUT — ${item.name} (${txn.txnNo})`,
+          reference:   txn.txnNo,
+          lines: [
+            { accountCode: '5010', debit:  totalCost, description: `COGS — ${item.sku} ×${Math.abs(delta)}` },
+            { accountCode: '1210', credit: totalCost, description: `Inventory out — ${item.name}` },
+          ],
+          userId: req.user?.id || 1,
+        });
+      }
+      // ADJUSTMENT type: no GL post (manual balance correction; accountant handles separately)
+    }
 
     res.status(201).json(txn);
   } catch (e) {

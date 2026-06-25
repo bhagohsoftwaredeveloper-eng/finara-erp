@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { computeVAT } = require('../utils/phCompliance');
+const glPost = require('../utils/glPost');
 
 const genInvNo = async () => {
   const count = await prisma.invoice.count();
@@ -92,6 +93,36 @@ exports.createInvoice = async (req, res, next) => {
       },
       include: { customer: true, lines: true },
     });
+
+    // ── Auto-post to GL ──────────────────────────────────────────────────────
+    const glLines = [
+      // DR Accounts Receivable — Trade
+      {
+        accountCode: '1100',
+        debit:       Number(inv.totalAmount),
+        description: `AR — ${inv.customer.name} (${inv.invoiceNo})`,
+      },
+      // CR each revenue line
+      ...inv.lines.map((l) => ({
+        accountId:   l.accountId,
+        credit:      Number(l.amount),
+        description: l.description,
+      })),
+      // CR Output VAT (if any)
+      ...(Number(inv.vatAmount) > 0 ? [{
+        accountCode: '2030',
+        credit:      Number(inv.vatAmount),
+        description: 'Output VAT',
+      }] : []),
+    ];
+    await glPost.safePost({
+      entryDate:   inv.invoiceDate,
+      description: `AR Invoice — ${inv.customer.name} (${inv.invoiceNo})`,
+      reference:   inv.invoiceNo,
+      lines:       glLines,
+      userId:      req.user?.id || 1,
+    });
+
     res.status(201).json(inv);
   } catch (err) { next(err); }
 };
@@ -113,6 +144,20 @@ exports.recordPayment = async (req, res, next) => {
       prisma.paymentAR.create({ data: { paymentNo, invoiceId: id, paymentDate: new Date(paymentDate), amount: Number(amount), paymentMethod, reference, notes } }),
       prisma.invoice.update({ where: { id }, data: { paidAmount: newPaid, status } }),
     ]);
+
+    // ── Auto-post to GL ──────────────────────────────────────────────────────
+    const customer = await prisma.customer.findUnique({ where: { id: inv.customerId }, select: { name: true } });
+    await glPost.safePost({
+      entryDate:   paymentDate,
+      description: `AR Collection — ${customer?.name} (${inv.invoiceNo})`,
+      reference:   paymentNo,
+      lines: [
+        { accountCode: '1020', debit:  Number(amount), description: `Cash in — ${paymentNo}` },
+        { accountCode: '1100', credit: Number(amount), description: `Clear AR — ${customer?.name}` },
+      ],
+      userId: req.user?.id || 1,
+    });
+
     res.json({ message: 'Payment collected', remainingBalance: Math.max(0, remaining) });
   } catch (err) { next(err); }
 };

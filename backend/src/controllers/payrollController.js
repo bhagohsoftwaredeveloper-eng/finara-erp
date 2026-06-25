@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { computePayroll, computeSSS, computePhilHealth, computePagIBIG, computeWithholdingTax } = require('../utils/phCompliance');
+const glPost = require('../utils/glPost');
 
 exports.listEmployees = async (req, res, next) => {
   try {
@@ -126,7 +127,56 @@ exports.approvePeriod = async (req, res, next) => {
     const period = await prisma.payrollPeriod.findUnique({ where: { id: periodId } });
     if (!period) throw createError('Period not found', 404);
     if (period.status !== 'COMPUTED') throw createError('Period must be in COMPUTED status to approve', 400);
-    res.json(await prisma.payrollPeriod.update({ where: { id: periodId }, data: { status: 'APPROVED' } }));
+
+    const approved = await prisma.payrollPeriod.update({ where: { id: periodId }, data: { status: 'APPROVED' } });
+
+    // ── Auto-post payroll accrual to GL ──────────────────────────────────────
+    const items = await prisma.payrollItem.findMany({ where: { periodId } });
+    if (items.length > 0) {
+      const tot = items.reduce((s, i) => ({
+        grossPay:       s.grossPay       + Number(i.grossPay),
+        sssEmployee:    s.sssEmployee    + Number(i.sssEmployee),
+        sssEmployer:    s.sssEmployer    + Number(i.sssEmployer),
+        philhealthEe:   s.philhealthEe   + Number(i.philhealthEe),
+        philhealthEr:   s.philhealthEr   + Number(i.philhealthEr),
+        pagibigEe:      s.pagibigEe      + Number(i.pagibigEe),
+        pagibigEr:      s.pagibigEr      + Number(i.pagibigEr),
+        withholdingTax: s.withholdingTax + Number(i.withholdingTax),
+        netPay:         s.netPay         + Number(i.netPay),
+      }), { grossPay:0, sssEmployee:0, sssEmployer:0, philhealthEe:0, philhealthEr:0, pagibigEe:0, pagibigEr:0, withholdingTax:0, netPay:0 });
+
+      await glPost.safePost({
+        entryDate:   period.payDate,
+        description: `Payroll Accrual — ${period.periodName}`,
+        reference:   `PR-${String(periodId).padStart(6, '0')}`,
+        lines: [
+          // DR Salaries & Wages (gross pay)
+          { accountCode: '6110', debit: tot.grossPay,     description: 'Gross Salaries & Wages' },
+          // DR Employer contributions (expense side)
+          ...(tot.sssEmployer    > 0 ? [{ accountCode: '6120', debit: tot.sssEmployer,    description: 'SSS — Employer Share' }]      : []),
+          ...(tot.philhealthEr   > 0 ? [{ accountCode: '6130', debit: tot.philhealthEr,   description: 'PhilHealth — Employer Share' }] : []),
+          ...(tot.pagibigEr      > 0 ? [{ accountCode: '6140', debit: tot.pagibigEr,      description: 'Pag-IBIG — Employer Share' }]   : []),
+          // CR Government payables (employee + employer shares)
+          ...(tot.sssEmployee + tot.sssEmployer > 0 ? [{
+            accountCode: '2050', credit: tot.sssEmployee + tot.sssEmployer, description: 'SSS Contributions Payable',
+          }] : []),
+          ...(tot.philhealthEe + tot.philhealthEr > 0 ? [{
+            accountCode: '2060', credit: tot.philhealthEe + tot.philhealthEr, description: 'PhilHealth Contributions Payable',
+          }] : []),
+          ...(tot.pagibigEe + tot.pagibigEr > 0 ? [{
+            accountCode: '2070', credit: tot.pagibigEe + tot.pagibigEr, description: 'Pag-IBIG Contributions Payable',
+          }] : []),
+          ...(tot.withholdingTax > 0 ? [{
+            accountCode: '2040', credit: tot.withholdingTax, description: 'Withholding Tax Payable (1601-C)',
+          }] : []),
+          // CR Net pay payable (accrued salaries)
+          { accountCode: '2021', credit: tot.netPay, description: 'Accrued Net Pay to Employees' },
+        ],
+        userId: req.user?.id || 1,
+      });
+    }
+
+    res.json(approved);
   } catch (err) { next(err); }
 };
 

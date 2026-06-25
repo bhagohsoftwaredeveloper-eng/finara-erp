@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { computeVAT } = require('../utils/phCompliance');
+const glPost = require('../utils/glPost');
 
 const genBillNo = async () => {
   const count = await prisma.bill.count();
@@ -99,6 +100,36 @@ exports.createBill = async (req, res, next) => {
       },
       include: { vendor: true, lines: true },
     });
+
+    // ── Auto-post to GL ──────────────────────────────────────────────────────
+    const glLines = [
+      // DR each expense / cost line
+      ...bill.lines.map((l) => ({
+        accountId:   l.accountId,
+        debit:       Number(l.amount),
+        description: l.description,
+      })),
+      // DR Input VAT (if any)
+      ...(Number(bill.vatAmount) > 0 ? [{
+        accountCode: '1330',
+        debit:       Number(bill.vatAmount),
+        description: 'Input VAT',
+      }] : []),
+      // CR Accounts Payable — Trade
+      {
+        accountCode: '2010',
+        credit:      Number(bill.totalAmount),
+        description: `AP — ${bill.vendor.name} (${bill.billNo})`,
+      },
+    ];
+    await glPost.safePost({
+      entryDate:   bill.billDate,
+      description: `AP Bill — ${bill.vendor.name} (${bill.billNo})`,
+      reference:   bill.billNo,
+      lines:       glLines,
+      userId:      req.user?.id || 1,
+    });
+
     res.status(201).json(bill);
   } catch (err) { next(err); }
 };
@@ -120,6 +151,20 @@ exports.recordPayment = async (req, res, next) => {
       prisma.paymentAP.create({ data: { paymentNo, billId: id, paymentDate: new Date(paymentDate), amount: Number(amount), paymentMethod, reference, notes } }),
       prisma.bill.update({ where: { id }, data: { paidAmount: newPaid, status } }),
     ]);
+
+    // ── Auto-post to GL ──────────────────────────────────────────────────────
+    const vendor = await prisma.vendor.findUnique({ where: { id: bill.vendorId }, select: { name: true } });
+    await glPost.safePost({
+      entryDate:   paymentDate,
+      description: `AP Payment — ${vendor?.name} (${bill.billNo})`,
+      reference:   paymentNo,
+      lines: [
+        { accountCode: '2010', debit:  Number(amount), description: `Clear AP — ${vendor?.name}` },
+        { accountCode: '1020', credit: Number(amount), description: `Cash out — ${paymentNo}` },
+      ],
+      userId: req.user?.id || 1,
+    });
+
     res.json({ message: 'Payment recorded', remainingBalance: Math.max(0, remaining) });
   } catch (err) { next(err); }
 };
