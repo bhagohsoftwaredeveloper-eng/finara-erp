@@ -9,4 +9,6 @@ module.exports = {
   dashboard:     require('./dashboard'),
   settings:      require('./settings'),
   customReports: require('./customReports'),
+  inventory:     require('./inventory'),
+  remittance:    require('./remittance'),
 };

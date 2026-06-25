@@ -34,7 +34,7 @@ export function dateFmt(d) {
 }
 
 // ── Core: build full HTML page ────────────────────────────────
-export function buildPrintPage(company = {}, title = '', subtitle = '', bodyHTML = '') {
+export function buildPrintPage(company = {}, title = '', subtitle = '', bodyHTML = '', origin = '') {
   const {
     companyName    = '',
     companyAddress = '',
@@ -55,9 +55,12 @@ export function buildPrintPage(company = {}, title = '', subtitle = '', bodyHTML
     hour: '2-digit', minute: '2-digit',
   });
 
+  const fallbackLogo = origin ? `${origin}/finara-icon.svg` : '';
   const logoHTML = companyLogo
     ? `<img src="${companyLogo}" class="logo-img" alt="Logo" />`
-    : `<div class="logo-mono">${(companyName || 'C').slice(0, 2).toUpperCase()}</div>`;
+    : fallbackLogo
+      ? `<img src="${fallbackLogo}" class="logo-img" alt="Finara" />`
+      : `<div class="logo-mono">${(companyName || 'C').slice(0, 2).toUpperCase()}</div>`;
 
   const tinLine = [
     companyTin   ? `TIN: ${companyTin}`            : '',
@@ -195,7 +198,8 @@ export function buildPrintPage(company = {}, title = '', subtitle = '', bodyHTML
 // ── Main entry point ──────────────────────────────────────────
 export async function printDocument(title, subtitle, bodyHTML) {
   const company = await getCompanyProfile();
-  const html    = buildPrintPage(company, title, subtitle, bodyHTML);
+  const origin  = typeof window !== 'undefined' ? window.location.origin : '';
+  const html    = buildPrintPage(company, title, subtitle, bodyHTML, origin);
   const win     = window.open('', '_blank', 'width=950,height=720,scrollbars=yes');
   if (!win) {
     alert('Pop-ups are blocked. Please allow pop-ups for this page to enable printing.');

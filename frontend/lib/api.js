@@ -144,6 +144,60 @@ export const customReports = {
   remove:  (id)         => api.delete(`/custom-reports/${id}`),
 };
 
+export const inventory = {
+  // Categories
+  categories: {
+    list:   ()         => api.get('/inventory/categories'),
+    create: (data)     => api.post('/inventory/categories', data),
+    update: (id, data) => api.put(`/inventory/categories/${id}`, data),
+    remove: (id)       => api.delete(`/inventory/categories/${id}`),
+  },
+  // Items
+  items: {
+    list:   (params)   => api.get('/inventory', { params }),
+    get:    (id)       => api.get(`/inventory/${id}`),
+    create: (data)     => api.post('/inventory', data),
+    update: (id, data) => api.put(`/inventory/${id}`, data),
+    remove: (id)       => api.delete(`/inventory/${id}`),
+  },
+  // Transactions
+  transactions: {
+    list:   (params)   => api.get('/inventory/transactions', { params }),
+    create: (data)     => api.post('/inventory/transactions', data),
+  },
+  // Reports
+  reports: {
+    stockOnHand:      (params) => api.get('/inventory/reports/stock-on-hand', { params }),
+    valuation:        (params) => api.get('/inventory/reports/valuation', { params }),
+    lowStock:         ()       => api.get('/inventory/reports/low-stock'),
+    movementSummary:  (params) => api.get('/inventory/reports/movement-summary', { params }),
+  },
+};
+
+export const remittance = {
+  summary:    ()           => api.get('/remittance/summary'),
+  list:       (params)     => api.get('/remittance', { params }),
+  get:        (id)         => api.get(`/remittance/${id}`),
+  calculate:  (data)       => api.post('/remittance/calculate', data),
+  create:     (data)       => api.post('/remittance', data),
+  update:     (id, data)   => api.put(`/remittance/${id}`, data),
+  markFiled:  (id, data)   => api.post(`/remittance/${id}/file`, data),
+  markPaid:   (id, data)   => api.post(`/remittance/${id}/pay`, data),
+  remove:     (id)         => api.delete(`/remittance/${id}`),
+
+  // Daily Remittance
+  daily: {
+    calculate: (date)      => api.get('/remittance/daily/calculate', { params: { date } }),
+    list:      (params)    => api.get('/remittance/daily', { params }),
+    get:       (id)        => api.get(`/remittance/daily/${id}`),
+    create:    (data)      => api.post('/remittance/daily', data),
+    update:    (id, data)  => api.put(`/remittance/daily/${id}`, data),
+    submit:    (id, data)  => api.post(`/remittance/daily/${id}/submit`, data),
+    approve:   (id, data)  => api.post(`/remittance/daily/${id}/approve`, data),
+    remove:    (id)        => api.delete(`/remittance/daily/${id}`),
+  },
+};
+
 export const settings = {
   getAll:         ()       => api.get('/settings'),
   saveAll:        (data)   => api.post('/settings', data),

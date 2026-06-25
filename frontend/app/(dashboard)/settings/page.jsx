@@ -9,6 +9,7 @@ import {
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { clearCompanyCache } from '@/lib/print';
 
 // ─── Tabs config ──────────────────────────────────────────────
 const TABS = [
@@ -300,6 +301,7 @@ export default function SettingsPage() {
     try {
       await settingsApi.saveAll(form);
       setOriginal({ ...form });
+      clearCompanyCache();          // so next print fetches fresh company details
       toast.success('Settings saved successfully');
     } catch { toast.error('Failed to save settings'); }
     finally { setSaving(false); }

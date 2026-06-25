@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, FileText, CreditCard, Receipt,
   Users, ClipboardList, Building2, ChevronDown, LogOut, Settings,
+  Package, Landmark,
 } from 'lucide-react';
 import { clearSession, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -47,6 +48,23 @@ const NAV = [
       { label: 'EWT Summary (1601-EQ)',href: '/bir/ewt' },
       { label: 'Alphalist',           href: '/bir/alphalist' },
       { label: 'RELIEF Export',       href: '/bir/relief' },
+    ],
+  },
+  {
+    label: 'Remittances', icon: Landmark,
+    children: [
+      { label: 'Dashboard',    href: '/remittance' },
+      { label: 'Gov\'t Records', href: '/remittance/records' },
+      { label: 'Daily Report', href: '/remittance/daily' },
+    ],
+  },
+  {
+    label: 'Inventory', icon: Package,
+    children: [
+      { label: 'Stock on Hand',  href: '/inventory' },
+      { label: 'Items',          href: '/inventory/items' },
+      { label: 'Transactions',   href: '/inventory/transactions' },
+      { label: 'Reports',        href: '/inventory/reports' },
     ],
   },
   {
