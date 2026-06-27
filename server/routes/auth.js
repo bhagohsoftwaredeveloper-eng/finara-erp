@@ -14,6 +14,24 @@ router.post('/login',
 );
 
 router.post('/refresh', ctrl.refreshToken);
+
+router.post('/forgot-password',
+  [ body('email').isEmail().normalizeEmail() ],
+  validate,
+  ctrl.forgotPassword
+);
+
+router.post('/reset-password',
+  [
+    body('token').notEmpty(),
+    body('newPassword').isLength({ min: 8 })
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .withMessage('Password must have uppercase, lowercase, and number'),
+  ],
+  validate,
+  ctrl.resetPassword
+);
+
 router.get('/me', authenticate, ctrl.getMe);
 router.post('/logout', authenticate, ctrl.logout);
 router.put('/change-password', authenticate,

@@ -25,7 +25,7 @@ export default function DashboardLayout({ children }) {
   if (!authed) return null;
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
       <Sidebar />
       <div className="flex-1 flex flex-col ml-64 min-h-screen overflow-hidden">
         <Header />
