@@ -17,8 +17,19 @@ model User {
   role         Role      @default(ACCOUNTANT)
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+
+  // ── Auth hardening (account lockout) ──
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  // ── Password reset ──
+  resetToken          String?   @db.VarChar(255)
+  resetTokenExpiry    DateTime?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  auditLogs    AuditLog[]
 
   @@index([email])
   @@map("users")
@@ -29,6 +40,30 @@ enum Role {
   MANAGER
   ACCOUNTANT
   VIEWER
+}
+
+// ─── Audit Trail ───────────────────────────────────────────
+// Records every meaningful change (create / update / delete / status
+// transitions / auth events) for compliance and internal control.
+model AuditLog {
+  id         Int       @id @default(autoincrement())
+  userId     Int?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userEmail  String?   @db.VarChar(150) // denormalised so log survives user deletion
+  action     String    @db.VarChar(40)  // CREATE | UPDATE | DELETE | POST | VOID | LOGIN | LOGIN_FAILED | etc.
+  entity     String    @db.VarChar(60)  // e.g. JournalEntry, Invoice, User
+  entityId   String?   @db.VarChar(40)
+  summary    String?   @db.VarChar(255) // human-readable one-liner
+  changes    Json?                      // { before, after } diff or arbitrary metadata
+  ipAddress  String?   @db.VarChar(60)
+  userAgent  String?   @db.VarChar(255)
+  createdAt  DateTime  @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 // ─── Chart of Accounts ─────────────────────────────────────
@@ -129,6 +164,7 @@ model Vendor {
   updatedAt   DateTime  @updatedAt
 
   bills       Bill[]
+  purchaseOrders PurchaseOrder[]
 
   @@map("vendors")
 }
@@ -646,4 +682,240 @@ model CustomReport {
 
   @@index([createdBy])
   @@map("custom_reports")
+}
+
+// ─── File Attachments (Phase 3) ────────────────────────────
+// Polymorphic: any record can have attachments via (entity, entityId).
+model Attachment {
+  id           Int      @id @default(autoincrement())
+  entity       String   @db.VarChar(60)  // Bill | Invoice | ExpenseVoucher | JournalEntry | ...
+  entityId     Int
+  fileName     String   @db.VarChar(255) // stored (randomised) filename on disk
+  originalName String   @db.VarChar(255) // original upload name
+  mimeType     String   @db.VarChar(120)
+  size         Int
+  uploadedBy   Int?
+  createdAt    DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@map("attachments")
+}
+
+// ─── Purchase Orders (Phase 5) ─────────────────────────────
+enum POStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  RECEIVED
+  BILLED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id           Int       @id @default(autoincrement())
+  poNumber     String    @unique @db.VarChar(30)
+  vendorId     Int
+  vendor       Vendor    @relation(fields: [vendorId], references: [id])
+  orderDate    DateTime  @db.Date
+  expectedDate DateTime? @db.Date
+  status       POStatus  @default(DRAFT)
+  notes        String?   @db.Text
+  subtotal     Decimal   @default(0) @db.Decimal(15, 2)
+  taxAmount    Decimal   @default(0) @db.Decimal(15, 2)
+  total        Decimal   @default(0) @db.Decimal(15, 2)
+  billId       Int? // set once converted to a Bill
+  createdBy    Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lines        PurchaseOrderLine[]
+
+  @@index([vendorId])
+  @@index([status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id          Int           @id @default(autoincrement())
+  poId        Int
+  po          PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  description String        @db.VarChar(255)
+  quantity    Decimal       @db.Decimal(15, 2)
+  unitPrice   Decimal       @db.Decimal(15, 2)
+  receivedQty Decimal       @default(0) @db.Decimal(15, 2)
+  amount      Decimal       @db.Decimal(15, 2)
+  accountId   Int?
+  lineOrder   Int           @default(0)
+
+  @@index([poId])
+  @@map("purchase_order_lines")
+}
+
+// ─── Fixed Assets & Depreciation (Phase 5) ─────────────────
+enum DepreciationMethod {
+  STRAIGHT_LINE
+  DECLINING_BALANCE
+}
+
+enum AssetStatus {
+  ACTIVE
+  FULLY_DEPRECIATED
+  DISPOSED
+}
+
+model FixedAsset {
+  id                               Int                @id @default(autoincrement())
+  assetCode                        String             @unique @db.VarChar(30)
+  name                             String             @db.VarChar(150)
+  category                         String?            @db.VarChar(80)
+  acquisitionDate                  DateTime           @db.Date
+  cost                             Decimal            @db.Decimal(15, 2)
+  salvageValue                     Decimal            @default(0) @db.Decimal(15, 2)
+  usefulLifeMonths                 Int
+  method                           DepreciationMethod @default(STRAIGHT_LINE)
+  decliningRate                    Decimal?           @db.Decimal(7, 4) // annual %, declining balance only
+  accumulatedDepreciation          Decimal            @default(0) @db.Decimal(15, 2)
+  bookValue                        Decimal            @db.Decimal(15, 2)
+  status                           AssetStatus        @default(ACTIVE)
+  assetAccountId                   Int?
+  depreciationExpenseAccountId     Int?
+  accumulatedDepreciationAccountId Int?
+  disposalDate                     DateTime?          @db.Date
+  disposalAmount                   Decimal?           @db.Decimal(15, 2)
+  notes                            String?            @db.Text
+  createdAt                        DateTime           @default(now())
+  updatedAt                        DateTime           @updatedAt
+
+  depreciationEntries DepreciationEntry[]
+
+  @@index([status])
+  @@map("fixed_assets")
+}
+
+model DepreciationEntry {
+  id             Int        @id @default(autoincrement())
+  assetId        Int
+  asset          FixedAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  periodDate     DateTime   @db.Date // month-end being depreciated
+  amount         Decimal    @db.Decimal(15, 2)
+  bookValueAfter Decimal    @db.Decimal(15, 2)
+  journalEntryId Int?
+  createdAt      DateTime   @default(now())
+
+  @@unique([assetId, periodDate])
+  @@map("depreciation_entries")
+}
+
+// ─── Bank Reconciliation (Phase 5) ─────────────────────────
+model BankAccount {
+  id             Int       @id @default(autoincrement())
+  name           String    @db.VarChar(120)
+  bankName       String?   @db.VarChar(120)
+  accountNumber  String?   @db.VarChar(60)
+  glAccountId    Int? // linked Chart-of-Accounts cash/bank account
+  currentBalance Decimal   @default(0) @db.Decimal(15, 2)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  reconciliations BankReconciliation[]
+  transactions    BankTransaction[]
+
+  @@map("bank_accounts")
+}
+
+model BankReconciliation {
+  id                Int         @id @default(autoincrement())
+  bankAccountId     Int
+  bankAccount       BankAccount @relation(fields: [bankAccountId], references: [id])
+  statementDate     DateTime    @db.Date
+  statementBalance  Decimal     @db.Decimal(15, 2)
+  reconciledBalance Decimal     @default(0) @db.Decimal(15, 2)
+  status            String      @default("OPEN") @db.VarChar(20) // OPEN | COMPLETED
+  notes             String?     @db.Text
+  createdBy         Int?
+  createdAt         DateTime    @default(now())
+  completedAt       DateTime?
+
+  transactions BankTransaction[]
+
+  @@index([bankAccountId])
+  @@map("bank_reconciliations")
+}
+
+model BankTransaction {
+  id               Int                 @id @default(autoincrement())
+  bankAccountId    Int
+  bankAccount      BankAccount         @relation(fields: [bankAccountId], references: [id])
+  reconciliationId Int?
+  reconciliation   BankReconciliation? @relation(fields: [reconciliationId], references: [id], onDelete: SetNull)
+  txnDate          DateTime            @db.Date
+  description      String              @db.VarChar(255)
+  reference        String?             @db.VarChar(80)
+  amount           Decimal             @db.Decimal(15, 2) // signed: + deposit, - withdrawal
+  type             String              @db.VarChar(12) // DEBIT | CREDIT
+  isReconciled     Boolean             @default(false)
+  journalEntryId   Int?
+  createdAt        DateTime            @default(now())
+
+  @@index([bankAccountId])
+  @@index([reconciliationId])
+  @@map("bank_transactions")
+}
+
+// ─── Budgeting (Phase 5) ───────────────────────────────────
+model Budget {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(120)
+  fiscalYear Int
+  status     String   @default("ACTIVE") @db.VarChar(20) // ACTIVE | CLOSED
+  notes      String?  @db.Text
+  createdBy  Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  lines BudgetLine[]
+
+  @@unique([name, fiscalYear])
+  @@map("budgets")
+}
+
+model BudgetLine {
+  id           Int     @id @default(autoincrement())
+  budgetId     Int
+  budget       Budget  @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  accountId    Int
+  annualAmount Decimal @default(0) @db.Decimal(15, 2)
+
+  @@unique([budgetId, accountId])
+  @@map("budget_lines")
+}
+
+// ─── Recurring Templates (Phase 5) ─────────────────────────
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+}
+
+model RecurringTemplate {
+  id          Int                @id @default(autoincrement())
+  name        String             @db.VarChar(120)
+  type        String             @default("JOURNAL") @db.VarChar(20) // JOURNAL (extensible)
+  frequency   RecurringFrequency @default(MONTHLY)
+  startDate   DateTime           @db.Date
+  endDate     DateTime?          @db.Date
+  nextRunDate DateTime           @db.Date
+  lastRunDate DateTime?
+  isActive    Boolean            @default(true)
+  description String?            @db.VarChar(255)
+  reference   String?            @db.VarChar(80)
+  payload     Json // template line data: [{ accountId, debit, credit, description }]
+  createdBy   Int?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([isActive, nextRunDate])
+  @@map("recurring_templates")
 }

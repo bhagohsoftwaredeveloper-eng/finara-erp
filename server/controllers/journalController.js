@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const bcrypt = require('bcryptjs');
+const { recordAudit } = require('../utils/audit');
 
 const genEntryNo = async () => {
   const count = await prisma.journalEntry.count();
@@ -72,6 +73,7 @@ exports.create = async (req, res, next) => {
       },
       include: { lines: { include: { account: true } } },
     });
+    await recordAudit({ req, action: 'CREATE', entity: 'JournalEntry', entityId: entry.id, summary: `Created journal entry ${entry.entryNo}`, changes: { entryDate, reference, description, lineCount: lines.length } });
     res.status(201).json(entry);
   } catch (err) { next(err); }
 };
@@ -99,6 +101,7 @@ exports.update = async (req, res, next) => {
       }
       return tx.journalEntry.update({ where: { id }, data: { description, reference }, include: { lines: true } });
     });
+    await recordAudit({ req, action: 'UPDATE', entity: 'JournalEntry', entityId: id, summary: `Updated journal entry ${entry.entryNo}` });
     res.json(updated);
   } catch (err) { next(err); }
 };
@@ -113,6 +116,7 @@ exports.post = async (req, res, next) => {
       where: { id },
       data: { status: 'POSTED', postedAt: new Date() },
     });
+    await recordAudit({ req, action: 'POST', entity: 'JournalEntry', entityId: id, summary: `Posted journal entry ${entry.entryNo}` });
     res.json(updated);
   } catch (err) { next(err); }
 };
@@ -158,6 +162,7 @@ exports.void = async (req, res, next) => {
       },
     });
 
+    await recordAudit({ req, action: 'VOID', entity: 'JournalEntry', entityId: id, summary: `Voided journal entry ${entry.entryNo}`, changes: { reason } });
     res.json(updated);
   } catch (err) { next(err); }
 };

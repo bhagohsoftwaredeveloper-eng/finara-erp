@@ -12,7 +12,9 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "node prisma/seed.js",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:backup": "node scripts/backup.js",
+    "test": "jest"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -36,20 +38,25 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.395.0",
     "morgan": "^1.10.0",
+    "multer": "^2.2.0",
     "next": "^14.2.35",
+    "nodemailer": "^9.0.1",
     "prisma": "^5.14.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.52.1",
     "react-hot-toast": "^2.4.1",
     "recharts": "^2.12.7",
+    "swagger-ui-express": "^5.0.1",
     "winston": "^3.13.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.19",
+    "jest": "^30.4.2",
     "nodemon": "^3.1.4",
     "postcss": "^8.4.39",
+    "supertest": "^7.2.2",
     "tailwindcss": "^3.4.4"
   }
 }

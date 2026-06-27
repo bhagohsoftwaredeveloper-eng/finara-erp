@@ -26,6 +26,12 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Uploaded files (user attachments)
+uploads/
+
+# Database backups
+backups/
+
 # Misc
 *.tmp
 git-error-*

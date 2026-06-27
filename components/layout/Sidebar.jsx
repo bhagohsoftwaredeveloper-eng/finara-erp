@@ -4,7 +4,8 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, FileText, CreditCard, Receipt,
   Users, ClipboardList, Building2, ChevronDown, LogOut, Settings,
-  Package, Landmark, Wallet,
+  Package, Landmark, Wallet, ShieldCheck,
+  ShoppingCart, Banknote, BarChart3, Repeat,
 } from 'lucide-react';
 import { clearSession, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -50,6 +51,7 @@ const NAV = [
       { label: 'RELIEF Export',       href: '/bir/relief' },
     ],
   },
+  { label: 'Purchase Orders', icon: ShoppingCart, href: '/purchase-orders' },
   { label: 'Expense Vouchers', icon: Wallet, href: '/expenses' },
   {
     label: 'Remittances', icon: Landmark,
@@ -68,6 +70,10 @@ const NAV = [
       { label: 'Reports',        href: '/inventory/reports' },
     ],
   },
+  { label: 'Fixed Assets',     icon: Building2, href: '/assets' },
+  { label: 'Bank Reconciliation', icon: Banknote, href: '/bank' },
+  { label: 'Budgeting',        icon: BarChart3, href: '/budget' },
+  { label: 'Recurring Entries', icon: Repeat, href: '/recurring' },
   {
     label: 'Reports', icon: FileText,
     children: [
@@ -77,6 +83,7 @@ const NAV = [
       { label: 'Custom Reports',   href: '/reports/custom' },
     ],
   },
+  { label: 'Audit Trail', href: '/audit', icon: ShieldCheck, roles: ['ADMIN', 'MANAGER'] },
 ];
 
 function NavItem({ item }) {
@@ -140,15 +147,16 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="flex flex-col w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0 z-30">
+    <aside className="flex flex-col w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0 z-30 dark:bg-gray-900 dark:border-gray-800">
       {/* Logo */}
-      <div className="px-4 py-4 border-b border-gray-200 flex items-center">
-        <img src="/finara-logo.svg" alt="Finara" className="h-10 w-auto" />
+      <div className="px-4 py-4 border-b border-gray-200 flex items-center dark:border-gray-800">
+        <img src="/finara-logo.svg" alt="Finara" className="h-10 w-auto block dark:hidden" />
+        <img src="/finara-logo-white.svg" alt="Finara" className="h-10 w-auto hidden dark:block" />
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {NAV.map((item) => (
+        {NAV.filter((item) => !item.roles || item.roles.includes(user?.role)).map((item) => (
           <NavItem key={item.label} item={item} />
         ))}
       </nav>

@@ -17,6 +17,17 @@ const PORT = process.env.PORT || 5000;
 // is honored for correct client IPs and express-rate-limit.
 app.set('trust proxy', 1);
 
+// ─── API Docs (Swagger UI) ────────────────────────────────────
+// Mounted before helmet so the Swagger UI assets aren't blocked by CSP.
+try {
+  const swaggerUi = require('swagger-ui-express');
+  const openapiSpec = require('./docs/openapi');
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'Finara ERP API Docs' }));
+  app.get('/api/docs.json', (req, res) => res.json(openapiSpec));
+} catch (e) {
+  logger.error(`[docs] Swagger UI unavailable: ${e.message}`);
+}
+
 // ─── Security Middleware ──────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
@@ -112,6 +123,14 @@ app.use('/api/custom-reports', routes.customReports);
 app.use('/api/inventory',      routes.inventory);
 app.use('/api/remittance',     routes.remittance);
 app.use('/api/expenses',       routes.expense);
+app.use('/api/audit',          routes.audit);
+app.use('/api/attachments',    routes.attachments);
+app.use('/api/purchase-orders',routes.purchaseOrders);
+app.use('/api/assets',         routes.assets);
+app.use('/api/bank',           routes.bank);
+app.use('/api/budget',         routes.budget);
+app.use('/api/recurring',      routes.recurring);
+app.use('/api/notifications',  routes.notifications);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {
