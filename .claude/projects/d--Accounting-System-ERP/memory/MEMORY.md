@@ -1,0 +1,1 @@
+- [Railway deployment](railway-deployment.md) — backend deploys to Railway via push to main; DATABASE_URL wiring + project-token CLI auth
