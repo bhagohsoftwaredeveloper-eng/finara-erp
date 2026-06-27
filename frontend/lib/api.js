@@ -1,9 +1,12 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
+// Calls go to the SAME origin ('/api/...') and are proxied to the backend by
+// Next.js rewrites (see next.config.js). This eliminates CORS entirely and
+// keeps any backend URL out of the browser bundle, so it can never fall back
+// to localhost. The backend URL is configured once, server-side, via the
+// NEXT_PUBLIC_API_URL env var used in next.config.js.
 const api = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
   timeout: 30000,
 });
@@ -26,7 +29,7 @@ api.interceptors.response.use(
       original._retry = true;
       try {
         const refresh = localStorage.getItem('refreshToken');
-        const { data } = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken: refresh });
+        const { data } = await axios.post('/api/auth/refresh', { refreshToken: refresh });
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         original.headers.Authorization = `Bearer ${data.accessToken}`;

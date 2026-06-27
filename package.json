@@ -1,0 +1,15 @@
+{
+  "name": "finara-erp",
+  "version": "1.0.0",
+  "description": "Philippine ERP Accounting System - combined Express API + Next.js frontend (single service)",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix backend install && npm --prefix frontend install --include=dev && npm --prefix backend run db:generate && npm --prefix frontend run build",
+    "start": "concurrently -k -n api,web \"cross-env PORT=5000 npm --prefix backend start\" \"npm --prefix frontend start\"",
+    "dev": "concurrently -k -n api,web \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\""
+  },
+  "dependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3"
+  }
+}
