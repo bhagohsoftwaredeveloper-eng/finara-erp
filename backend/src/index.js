@@ -68,6 +68,36 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV });
 });
 
+// ─── DB Diagnostic (temporary) ─────────────────────────────
+// Tests the database connection with a short timeout so it can never hang.
+// Reports whether the DB is reachable and whether the admin user exists.
+app.get('/api/diag/db', async (req, res) => {
+  const prisma = require('./config/database');
+  const withTimeout = (p, ms, label) =>
+    Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms)),
+    ]);
+  const dbUrl = process.env.DATABASE_URL || '';
+  const dbHost = (dbUrl.match(/@([^/:]+)/) || [])[1] || 'NOT SET';
+  try {
+    await withTimeout(prisma.$queryRaw`SELECT 1`, 8000, 'DB connect');
+    let userCount = null;
+    let adminExists = null;
+    try { userCount = await withTimeout(prisma.user.count(), 8000, 'user.count'); } catch (e) { userCount = `err: ${e.message}`; }
+    try {
+      adminExists = !!(await withTimeout(
+        prisma.user.findUnique({ where: { email: 'admin@ph-erp.com' } }), 8000, 'find admin'));
+    } catch (e) { adminExists = `err: ${e.message}`; }
+    res.json({ db: 'ok', dbHost, hasDatabaseUrl: !!dbUrl, userCount, adminExists });
+  } catch (err) {
+    res.status(500).json({
+      db: 'error', dbHost, hasDatabaseUrl: !!dbUrl,
+      name: err.name, code: err.code, message: String(err.message).slice(0, 400),
+    });
+  }
+});
+
 // ─── API Routes ────────────────────────────────────────────
 app.use('/api/auth', authLimiter, routes.auth);
 app.use('/api/accounts', routes.accounts);
