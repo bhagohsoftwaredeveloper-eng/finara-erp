@@ -20,4 +20,5 @@ module.exports = {
   budget:        require('./budget'),
   recurring:     require('./recurring'),
   notifications: require('./notifications'),
+  search:        require('./search'),
 };
