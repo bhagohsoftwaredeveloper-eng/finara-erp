@@ -1,15 +1,55 @@
 {
   "name": "finara-erp",
   "version": "1.0.0",
-  "description": "Philippine ERP Accounting System - combined Express API + Next.js frontend (single service)",
+  "description": "Philippine-compliant ERP (Finara) - Next.js frontend + Express API in a single service",
   "private": true,
+  "main": "server/index.js",
   "scripts": {
-    "build": "npm --prefix backend install && npm --prefix frontend install --include=dev && npm --prefix backend run db:generate && npm --prefix frontend run build",
-    "start": "concurrently -k -n api,web \"cross-env PORT=5000 npm --prefix backend start\" \"npm --prefix frontend start\"",
-    "dev": "concurrently -k -n api,web \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\""
+    "dev": "concurrently -k -n api,web \"cross-env PORT=5000 nodemon server/index.js\" \"next dev\"",
+    "build": "next build",
+    "start": "concurrently -k -n api,web \"cross-env PORT=5000 node server/index.js\" \"next start\"",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@prisma/client": "^5.14.0",
+    "@tanstack/react-query": "^5.45.0",
+    "axios": "^1.7.2",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.4",
     "concurrently": "^9.1.2",
-    "cross-env": "^7.0.3"
+    "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
+    "date-fns": "^3.6.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "express-validator": "^7.1.0",
+    "framer-motion": "^12.41.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.395.0",
+    "morgan": "^1.10.0",
+    "next": "^14.2.35",
+    "prisma": "^5.14.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.52.1",
+    "react-hot-toast": "^2.4.1",
+    "recharts": "^2.12.7",
+    "winston": "^3.13.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.19",
+    "nodemon": "^3.1.4",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.4"
   }
 }

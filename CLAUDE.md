@@ -10,43 +10,48 @@ Stack: **Next.js 14 (App Router) + Express.js + MySQL 8 + Prisma ORM 5**
 
 ## Commands
 
-### Backend (`cd backend`)
+This is a **single unified project** at the repo root — one `package.json`, one `node_modules`. The Next.js UI (port 3000 in dev) and the Express API (`server/`, port 5000) run together.
+
 ```bash
-npm run dev          # Start with nodemon (port 5000)
-npm start            # Production start
+npm install          # Install all deps (frontend + backend)
+npm run dev          # Run BOTH: nodemon API on :5000 + Next.js on :3000 (concurrently)
+npm run build        # next build (production frontend)
+npm start            # Run BOTH for production: Express on :5000 + Next.js on $PORT
 npm run db:generate  # Regenerate Prisma client after schema changes
 npm run db:migrate   # Create & apply new migration (prisma migrate dev)
+npm run db:deploy    # Apply migrations in production (prisma migrate deploy)
 npm run db:seed      # Seed COA + sample data + admin user
 npm run db:studio    # Open Prisma Studio
 ```
 
-### Frontend (`cd frontend`)
-```bash
-npm run dev    # Next.js dev server (port 3000)
-npm run build  # Production build
-npm start      # Serve production build
-```
+The browser always calls the same origin (`/api/...`); Next.js rewrites `/api/*` to the
+internal Express server (`next.config.js`), so there is no CORS in the unified setup.
 
 ### Environment files
-- `backend/.env` — copy from `backend/.env.example`
-- `frontend/.env.local` — copy from `frontend/.env.example`
+- `.env` — single root file for both apps (copy from `.env.example`). Express reads it via
+  `dotenv`; Next.js reads it natively. `NEXT_PUBLIC_*` vars are exposed to the browser.
 
-MySQL path on this machine: `C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe`
+MySQL path on this machine: `C:\Program Files\MySQL\MySQL Server 9.4\bin\mysql.exe`
 
 ## Architecture
 
-### Backend (`backend/src/`)
-- `index.js` — Express app wiring: Helmet, CORS, rate limiting, route mounting, error handler
+Top-level layout: `app/`, `components/`, `lib/`, `public/` (Next.js) + `server/` (Express API)
++ `prisma/` (schema, migrations, seed), all under one root `package.json`.
+
+### Backend API (`server/`)
+- `index.js` — Express app wiring: Helmet, CORS, rate limiting, route mounting, error handler. Binds to `:5000` (internal); Next.js proxies `/api/*` to it
 - `routes/` — Thin routers; each file mounts to `/api/<module>`. All routes exported from `routes/index.js`
 - `controllers/` — Business logic per module. Prisma queries live here
 - `middleware/auth.js` — `authenticate` (JWT verify) and `authorize(...roles)` (RBAC). Roles: ADMIN, MANAGER, ACCOUNTANT, VIEWER
 - `middleware/errorHandler.js` — Global Express error handler
 - `config/database.js` — Prisma client singleton
 - `utils/phCompliance.js` — SSS, PhilHealth, Pag-IBIG, TRAIN Law tax computation helpers
+
+### Database (`prisma/`)
 - `prisma/schema.prisma` — All models. After changes: `npm run db:generate && npm run db:migrate`
 - `prisma/seed.js` — Seeds 52 PFRS-aligned accounts, admin user, sample vendor/customer/employee
 
-### Frontend (`frontend/`)
+### Frontend (root)
 - `app/(auth)/` — Login page (no layout wrapper)
 - `app/(dashboard)/` — All authenticated pages; `layout.jsx` wraps with Sidebar + Header
 - `lib/api.js` — All API calls via Axios. One named export per module (`auth`, `journal`, `accounts`, `payable`, `receivable`, `payroll`, `bir`, `settings`). Auto-refreshes JWT on 401
@@ -66,11 +71,11 @@ Icons: Lucide React (`lucide-react`). Charts: Recharts. Toasts: `react-hot-toast
 
 ### Adding a new module (pattern)
 1. Add Prisma model → `npm run db:generate && npm run db:migrate`
-2. Create `backend/src/controllers/<module>Controller.js`
-3. Create `backend/src/routes/<module>.js` and register in `routes/index.js` + `index.js`
-4. Add API helpers to `frontend/lib/api.js`
-5. Create pages under `frontend/app/(dashboard)/<module>/`
-6. Add nav entry to `NAV` array in `frontend/components/layout/Sidebar.jsx`
+2. Create `server/controllers/<module>Controller.js`
+3. Create `server/routes/<module>.js` and register in `server/routes/index.js` + `server/index.js`
+4. Add API helpers to `lib/api.js`
+5. Create pages under `app/(dashboard)/<module>/`
+6. Add nav entry to `NAV` array in `components/layout/Sidebar.jsx`
 
 ### Auth flow
 - JWT stored in `localStorage` as `accessToken` / `refreshToken`
