@@ -3,32 +3,34 @@
  *
  * Usage:
  *   const glPost = require('./glPost');
- *   await glPost.post({ entryDate, description, reference, lines, userId });
+ *   await glPost.safePost({ entryDate, description, reference, lines, userId, businessId });
  *
  * Each line: { accountCode?, accountId?, debit?, credit?, description? }
- * Supply EITHER accountCode (looks up by COA code) OR accountId (uses directly).
+ * Supply EITHER accountCode (looks up by COA code within the business) OR accountId directly.
  */
 
 const prisma = require('../config/database');
 
-// ── In-memory account cache (keyed by accountCode) ────────────────────────────
-const _codeCache = {};
-const _idCache   = {};
+// ── In-memory account cache — key: `${businessId}:${accountCode}` ─────────────
+const _cache = {};
 
-async function getAccountByCode(code) {
-  if (_codeCache[code]) return _codeCache[code];
-  const acc = await prisma.account.findFirst({ where: { accountCode: code } });
-  if (!acc) throw new Error(`GL: Chart of Accounts has no account with code "${code}"`);
-  _codeCache[code] = acc;
-  _idCache[acc.id] = acc;
+async function getAccountByCode(code, businessId = 1) {
+  const key = `${businessId}:${code}`;
+  if (_cache[key]) return _cache[key];
+  const acc = await prisma.account.findFirst({ where: { accountCode: code, businessId } });
+  if (!acc) throw new Error(`GL: No account "${code}" in COA for businessId ${businessId}`);
+  _cache[key] = acc;
   return acc;
 }
 
 // ── Sequential entry number ────────────────────────────────────────────────────
-async function nextEntryNo() {
-  const last = await prisma.journalEntry.findFirst({ orderBy: { id: 'desc' } });
-  const seq  = last ? last.id + 1 : 1;
-  return `JE-${String(seq).padStart(6, '0')}`;
+async function nextEntryNo(businessId = 1) {
+  const last = await prisma.journalEntry.findFirst({
+    where:   { businessId },
+    orderBy: { id: 'desc' },
+  });
+  const seq = last ? last.id + 1 : 1;
+  return `JE-${businessId}-${String(seq).padStart(6, '0')}`;
 }
 
 // ── Main post function ─────────────────────────────────────────────────────────
@@ -37,19 +39,18 @@ async function nextEntryNo() {
  * @param {Date|string} opts.entryDate
  * @param {string}      opts.description
  * @param {string}      [opts.reference]
- * @param {number}      [opts.userId=1]   - createdBy user id
- * @param {Array}       opts.lines        - [{accountCode|accountId, debit, credit, description}]
- * @returns {Promise<JournalEntry>}
+ * @param {number}      [opts.userId=1]
+ * @param {number}      [opts.businessId=1]
+ * @param {Array}       opts.lines  — [{accountCode|accountId, debit, credit, description}]
  */
-async function post({ entryDate, description, reference, lines, userId = 1 }) {
-  // Resolve accountId for each line
+async function post({ entryDate, description, reference, lines, userId = 1, businessId = 1 }) {
   const resolved = await Promise.all(
     lines.map(async (l, i) => {
       let accountId;
       if (l.accountId) {
         accountId = l.accountId;
       } else if (l.accountCode) {
-        const acc = await getAccountByCode(l.accountCode);
+        const acc = await getAccountByCode(l.accountCode, businessId);
         accountId = acc.id;
       } else {
         throw new Error(`GL line[${i}] must have accountId or accountCode`);
@@ -64,17 +65,18 @@ async function post({ entryDate, description, reference, lines, userId = 1 }) {
     })
   );
 
-  // Validate debits == credits (rounding tolerance ±0.02)
+  // Validate balance
   const totalDebit  = resolved.reduce((s, l) => s + l.debit,  0);
   const totalCredit = resolved.reduce((s, l) => s + l.credit, 0);
   if (Math.abs(totalDebit - totalCredit) > 0.02) {
-    throw new Error(`GL: Entry not balanced — debits ${totalDebit.toFixed(2)}, credits ${totalCredit.toFixed(2)}`);
+    throw new Error(`GL: Entry not balanced — DR ${totalDebit.toFixed(2)}, CR ${totalCredit.toFixed(2)}`);
   }
 
-  const entryNo = await nextEntryNo();
+  const entryNo = await nextEntryNo(businessId);
 
-  const entry = await prisma.journalEntry.create({
+  return prisma.journalEntry.create({
     data: {
+      businessId,
       entryNo,
       entryDate:   entryDate instanceof Date ? entryDate : new Date(entryDate),
       reference:   reference || null,
@@ -86,17 +88,14 @@ async function post({ entryDate, description, reference, lines, userId = 1 }) {
     },
     include: { lines: true },
   });
-
-  return entry;
 }
 
-// ── Convenience: silently post (logs error, never throws) ─────────────────────
-// Use this so a GL mapping gap doesn't break the underlying business transaction.
+// ── Silently post — never throws; logs error instead ──────────────────────────
 async function safePost(opts) {
   try {
     return await post(opts);
   } catch (err) {
-    console.error('[GL AUTO-POST ERROR]', err.message, '| ref:', opts.reference);
+    console.error('[GL AUTO-POST ERROR]', err.message, '| ref:', opts.reference, '| biz:', opts.businessId);
     return null;
   }
 }

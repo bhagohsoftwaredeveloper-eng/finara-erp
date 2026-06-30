@@ -1,9 +1,9 @@
 const router = require('express').Router();
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 const ctrl = require('../controllers/settingsController');
 
 // All settings routes require authentication
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 // Settings CRUD
 router.get('/',        ctrl.getAll);

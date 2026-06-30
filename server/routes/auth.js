@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { body } = require('express-validator');
 const ctrl = require('../controllers/authController');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, resolveBusiness } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
 router.post('/login',

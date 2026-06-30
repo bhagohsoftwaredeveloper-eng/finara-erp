@@ -6,7 +6,7 @@ const glPost = require('../utils/glPost');
 exports.listEmployees = async (req, res, next) => {
   try {
     const { search, active, department } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (active !== undefined) where.isActive = active === 'true';
     if (department) where.department = { contains: department };
     if (search) where.OR = [
@@ -33,6 +33,7 @@ exports.createEmployee = async (req, res, next) => {
     const data = req.body;
     const emp = await prisma.employee.create({
       data: {
+        businessId: req.businessId,
         employeeNo: data.employeeNo, firstName: data.firstName, lastName: data.lastName, middleName: data.middleName,
         position: data.position, department: data.department,
         tin: data.tin, sssNo: data.sssNo, philhealthNo: data.philhealthNo, pagibigNo: data.pagibigNo,
@@ -55,6 +56,7 @@ exports.updateEmployee = async (req, res, next) => {
 exports.listPeriods = async (req, res, next) => {
   try {
     const periods = await prisma.payrollPeriod.findMany({
+      where: { businessId: req.businessId },
       orderBy: { startDate: 'desc' },
       include: { _count: { select: { items: true } } },
     });
@@ -66,7 +68,7 @@ exports.createPeriod = async (req, res, next) => {
   try {
     const { periodName, startDate, endDate, payDate } = req.body;
     res.status(201).json(await prisma.payrollPeriod.create({
-      data: { periodName, startDate: new Date(startDate), endDate: new Date(endDate), payDate: new Date(payDate) },
+      data: { businessId: req.businessId, periodName, startDate: new Date(startDate), endDate: new Date(endDate), payDate: new Date(payDate) },
     }));
   } catch (err) { next(err); }
 };
@@ -78,7 +80,7 @@ exports.computePeriod = async (req, res, next) => {
     if (!period) throw createError('Period not found', 404);
     if (period.status !== 'OPEN') throw createError('Period already computed', 400);
 
-    const employees = await prisma.employee.findMany({ where: { isActive: true } });
+    const employees = await prisma.employee.findMany({ where: { isActive: true, businessId: req.businessId } });
     const items = employees.map((emp) => {
       const result = computePayroll({
         basicSalary: Number(emp.basicSalary),
@@ -173,6 +175,7 @@ exports.approvePeriod = async (req, res, next) => {
           { accountCode: '2021', credit: tot.netPay, description: 'Accrued Net Pay to Employees' },
         ],
         userId: req.user?.id || 1,
+        businessId: req.businessId,
       });
     }
 

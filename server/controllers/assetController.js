@@ -12,7 +12,7 @@ const genAssetCode = async () => {
 exports.list = async (req, res, next) => {
   try {
     const { status, search } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (status) where.status = status;
     if (search) where.OR = [{ name: { contains: search } }, { assetCode: { contains: search } }, { category: { contains: search } }];
     const data = await prisma.fixedAsset.findMany({ where, orderBy: { id: 'desc' } });
@@ -52,6 +52,7 @@ exports.create = async (req, res, next) => {
     const assetCode = b.assetCode || (await genAssetCode());
     const asset = await prisma.fixedAsset.create({
       data: {
+        businessId: req.businessId,
         assetCode,
         name: b.name,
         category: b.category || null,

@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/attachmentController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 // Download a single attachment (literal "download" 2nd segment — declared first
 // so it is matched before the generic /:entity/:entityId list route).

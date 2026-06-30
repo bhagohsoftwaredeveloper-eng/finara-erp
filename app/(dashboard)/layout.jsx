@@ -5,6 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import PageTransition from '@/components/layout/PageTransition';
 import { isAuthenticated } from '@/lib/auth';
+import { BusinessProvider } from '@/lib/businessContext';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
@@ -25,16 +26,18 @@ export default function DashboardLayout({ children }) {
   if (!authed) return null;
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
-      <Sidebar />
-      <div className="flex-1 flex flex-col ml-64 min-h-screen overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-6">
-          <PageTransition>
-            {children}
-          </PageTransition>
-        </main>
+    <BusinessProvider>
+      <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
+        <Sidebar />
+        <div className="flex-1 flex flex-col ml-64 min-h-screen overflow-hidden">
+          <Header />
+          <main className="flex-1 overflow-y-auto p-6">
+            <PageTransition>
+              {children}
+            </PageTransition>
+          </main>
+        </div>
       </div>
-    </div>
+    </BusinessProvider>
   );
 }

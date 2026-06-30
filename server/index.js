@@ -43,7 +43,7 @@ app.use(helmet({
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-business-id'],
   credentials: true,
 }));
 
@@ -110,8 +110,9 @@ app.get('/api/diag/db', async (req, res) => {
 });
 
 // ─── API Routes ────────────────────────────────────────────
-app.use('/api/auth', authLimiter, routes.auth);
-app.use('/api/accounts', routes.accounts);
+app.use('/api/auth',       authLimiter, routes.auth);
+app.use('/api/businesses', routes.businesses);
+app.use('/api/accounts',   routes.accounts);
 app.use('/api/journal', routes.journal);
 app.use('/api/payable', routes.payable);
 app.use('/api/receivable', routes.receivable);

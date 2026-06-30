@@ -5,6 +5,7 @@ const { recordAudit } = require('../utils/audit');
 exports.list = async (req, res, next) => {
   try {
     const budgets = await prisma.budget.findMany({
+      where: { businessId: req.businessId },
       include: { _count: { select: { lines: true } } },
       orderBy: [{ fiscalYear: 'desc' }, { name: 'asc' }],
     });
@@ -37,6 +38,7 @@ exports.create = async (req, res, next) => {
     const { name, fiscalYear, notes, lines = [] } = req.body;
     const budget = await prisma.budget.create({
       data: {
+        businessId: req.businessId,
         name, fiscalYear: Number(fiscalYear), notes,
         createdBy: req.user?.id ?? null,
         lines: {

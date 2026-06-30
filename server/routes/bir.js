@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/birController');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, resolveBusiness } = require('../middleware/auth');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 router.get('/vat-summary', ctrl.vatSummary);          // 2550M/Q input
 router.get('/ewt-summary', ctrl.ewtSummary);           // 1601-EQ

@@ -4,6 +4,7 @@ import { Bell } from 'lucide-react';
 import { formatDate } from '@/lib/auth';
 import ThemeToggle from './ThemeToggle';
 import GlobalSearch from './GlobalSearch';
+import BusinessSwitcher from './BusinessSwitcher';
 
 const TITLE_MAP = {
   '/': 'Dashboard',
@@ -47,6 +48,8 @@ export default function Header() {
       </div>
 
       <GlobalSearch />
+
+      <BusinessSwitcher />
 
       <ThemeToggle />
 

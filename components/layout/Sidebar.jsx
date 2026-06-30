@@ -167,6 +167,10 @@ export default function Sidebar() {
           <Settings className="w-4 h-4" />
           Settings
         </Link>
+        <Link href="/settings/businesses" className="sidebar-link-inactive">
+          <Building2 className="w-4 h-4" />
+          Businesses
+        </Link>
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-sm font-bold flex-shrink-0">
             {user?.firstName?.[0]}{user?.lastName?.[0]}

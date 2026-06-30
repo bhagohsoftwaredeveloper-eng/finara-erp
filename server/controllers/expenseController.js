@@ -59,15 +59,17 @@ exports.getSummary = async (req, res, next) => {
     const [all, paidYTD, thisMonth] = await Promise.all([
       prisma.expenseVoucher.groupBy({
         by: ['status'],
+        where: { businessId: req.businessId },
         _count: { id: true },
         _sum:   { totalAmount: true },
       }),
       prisma.expenseVoucher.aggregate({
-        where: { status: 'PAID', paidDate: { gte: new Date(yr, 0, 1) } },
+        where: { businessId: req.businessId, status: 'PAID', paidDate: { gte: new Date(yr, 0, 1) } },
         _sum: { totalAmount: true },
       }),
       prisma.expenseVoucher.aggregate({
         where: {
+          businessId: req.businessId,
           status: { in: ['APPROVED', 'PAID'] },
           date:   { gte: new Date(yr, mo, 1), lt: new Date(yr, mo + 1, 1) },
         },
@@ -92,7 +94,7 @@ exports.getSummary = async (req, res, next) => {
 exports.list = async (req, res, next) => {
   try {
     const { type, status, from, to, search, page = 1, limit = 50 } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (type)   where.type   = type;
     if (status) where.status = status;
     if (search) where.OR = [
@@ -145,6 +147,7 @@ exports.create = async (req, res, next) => {
 
     const record = await prisma.expenseVoucher.create({
       data: {
+        businessId: req.businessId,
         voucherNo, type, date: new Date(date + 'T00:00:00.000Z'),
         payee, category, purpose,
         totalAmount, receiptNo, requestedBy, notes,
@@ -286,7 +289,8 @@ exports.pay = async (req, res, next) => {
         ...drLines,
         { accountCode: cashCode, credit: totalAmt, description: `Cash paid — ${voucher.voucherNo}` },
       ],
-      userId: req.user?.id || 1,
+      userId:     req.user?.id || 1,
+      businessId: req.businessId,
     });
 
     res.json(updated);

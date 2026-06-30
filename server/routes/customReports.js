@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/customReportsController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 router.get('/',           ctrl.list);
 router.get('/:id',        ctrl.getOne);
