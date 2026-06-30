@@ -10,6 +10,8 @@
  */
 
 const prisma = require('../config/database');
+const logger = require('./logger');
+const { recordAudit } = require('./audit');
 
 // ── In-memory account cache — key: `${businessId}:${accountCode}` ─────────────
 const _cache = {};
@@ -90,12 +92,26 @@ async function post({ entryDate, description, reference, lines, userId = 1, busi
   });
 }
 
-// ── Silently post — never throws; logs error instead ──────────────────────────
+// ── Post without throwing — but make any failure VISIBLE ──────────────────────
+// Auto-posting must not break the underlying transaction, so we never throw.
+// But a swallowed failure means a transaction exists with no GL entry (a silent
+// discrepancy), so we log it AND record a GL_POST_FAILED audit entry — which
+// surfaces in the notification bell and the Audit Trail for follow-up.
 async function safePost(opts) {
   try {
     return await post(opts);
   } catch (err) {
-    console.error('[GL AUTO-POST ERROR]', err.message, '| ref:', opts.reference, '| biz:', opts.businessId);
+    logger.error(`[GL AUTO-POST FAILED] ref=${opts.reference} biz=${opts.businessId} — ${err.message}`);
+    try {
+      await recordAudit({
+        action:     'GL_POST_FAILED',
+        entity:     'JournalEntry',
+        entityId:   opts.reference,
+        summary:    `GL auto-post FAILED for ${opts.reference || 'entry'} — ${err.message}`,
+        user:       opts.userId ? { id: opts.userId } : undefined,
+        businessId: opts.businessId,
+      });
+    } catch { /* auditing must never break anything either */ }
     return null;
   }
 }

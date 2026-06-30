@@ -5,6 +5,9 @@ const { authenticate, authorize, resolveBusiness } = require('../middleware/auth
 const validate = require('../middleware/validate');
 
 router.use(authenticate, resolveBusiness);
+// Payroll (incl. salaries) is sensitive — no VIEWER access to any endpoint.
+// Writes are further restricted per-route below (ADMIN/MANAGER, ADMIN for approve).
+router.use(authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'));
 
 // Employees
 router.get('/employees', ctrl.listEmployees);

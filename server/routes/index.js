@@ -6,6 +6,7 @@ module.exports = {
   payable:       require('./payable'),
   receivable:    require('./receivable'),
   quotations:    require('./quotation'),
+  permissions:   require('./permissions'),
   payroll:       require('./payroll'),
   bir:           require('./bir'),
   dashboard:     require('./dashboard'),

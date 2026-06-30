@@ -18,6 +18,13 @@
   .btn-sm { @apply px-3 py-1.5 text-xs; }
   .btn-lg { @apply px-6 py-3 text-base; }
 
+  /* Read-only mode (VIEWER role): hide every write action app-wide.
+     Create / Save / Delete / Void / Approve / Pay all use these classes,
+     so the whole app becomes look-but-don't-touch for viewers. */
+  [data-readonly='true'] .btn-primary,
+  [data-readonly='true'] .btn-danger,
+  [data-readonly='true'] .btn-success { display: none !important; }
+
   .input { @apply w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-500; }
   .label { @apply block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300; }
   .select { @apply input cursor-pointer; }

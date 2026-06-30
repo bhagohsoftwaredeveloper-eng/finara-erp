@@ -1,10 +1,10 @@
 'use client';
 import { usePathname } from 'next/navigation';
-import { Bell } from 'lucide-react';
 import { formatDate } from '@/lib/auth';
 import ThemeToggle from './ThemeToggle';
 import GlobalSearch from './GlobalSearch';
 import BusinessSwitcher from './BusinessSwitcher';
+import NotificationBell from './NotificationBell';
 
 const TITLE_MAP = {
   '/': 'Dashboard',
@@ -53,10 +53,7 @@ export default function Header() {
 
       <ThemeToggle />
 
-      <button className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors dark:hover:text-gray-100 dark:hover:bg-gray-800">
-        <Bell className="w-5 h-5" />
-        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-      </button>
+      <NotificationBell />
     </header>
   );
 }

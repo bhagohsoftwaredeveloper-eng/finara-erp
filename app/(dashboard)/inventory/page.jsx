@@ -4,11 +4,12 @@ import { inventory as inventoryApi } from '@/lib/api';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import toast from 'react-hot-toast';
 import {
-  Package, AlertTriangle, TrendingUp, DollarSign,
+  Package, AlertTriangle, TrendingUp,
   Search, RefreshCw, Printer, Filter, ChevronDown,
   ArrowUpCircle, ArrowDownCircle, SlidersHorizontal,
   Eye, ExternalLink,
 } from 'lucide-react';
+import PesoSign from '@/components/icons/PesoSign';
 import Link from 'next/link';
 
 const TYPE_COLORS = {
@@ -125,7 +126,7 @@ export default function InventoryDashboardPage() {
               <p className="text-xs text-gray-500 uppercase tracking-wide">Inventory Value</p>
               <p className="text-2xl font-bold text-green-600 mt-1">{summary ? phpFmt(summary.totalValue) : '—'}</p>
             </div>
-            <DollarSign className="w-8 h-8 text-green-200" />
+            <PesoSign className="w-8 h-8 text-green-200" />
           </div>
         </div>
         <div className="card card-body">

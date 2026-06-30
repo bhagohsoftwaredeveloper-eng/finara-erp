@@ -7,6 +7,39 @@ exports.status = (req, res) => {
   res.json({ emailEnabled: !!mailer.getTransporter() });
 };
 
+// In-app notification feed — recent activity (from the audit trail) for the
+// current business. Each item carries: title, module, action, and which user.
+exports.feed = async (req, res, next) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 25, 50);
+    const rows = await prisma.auditLog.findMany({
+      where: {
+        businessId: req.businessId,
+        action: { notIn: ['LOGIN', 'LOGIN_FAILED'] }, // skip auth noise
+      },
+      orderBy: { id: 'desc' },
+      take: limit,
+      include: { user: { select: { firstName: true, lastName: true } } },
+    });
+
+    const data = rows.map((r) => {
+      const name = r.user
+        ? `${r.user.firstName || ''} ${r.user.lastName || ''}`.trim()
+        : '';
+      return {
+        id:        r.id,
+        title:     r.summary || `${r.action} ${r.entity}`,
+        module:    r.entity,
+        action:    r.action,
+        user:      name || r.userEmail || 'System',
+        entityId:  r.entityId,
+        createdAt: r.createdAt,
+      };
+    });
+    res.json({ data });
+  } catch (err) { next(err); }
+};
+
 // Email a single invoice to its customer
 exports.emailInvoice = async (req, res, next) => {
   try {

@@ -14,7 +14,7 @@ const logger = require('./logger');
  * @param {object} [opts.changes]  Arbitrary metadata / { before, after } diff
  * @param {object} [opts.user]     Explicit user override ({ id, email }) when req is unavailable
  */
-async function recordAudit({ req, action, entity, entityId, summary, changes, user } = {}) {
+async function recordAudit({ req, action, entity, entityId, summary, changes, user, businessId } = {}) {
   try {
     const actor = user || req?.user || {};
     const ip =
@@ -27,6 +27,7 @@ async function recordAudit({ req, action, entity, entityId, summary, changes, us
       data: {
         userId:    actor.id ?? null,
         userEmail: actor.email ?? null,
+        businessId: businessId ?? req?.businessId ?? null,
         action,
         entity,
         entityId:  entityId != null ? String(entityId) : null,

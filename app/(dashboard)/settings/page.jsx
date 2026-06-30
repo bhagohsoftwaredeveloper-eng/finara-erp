@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { settings as settingsApi, auth as authApi } from '@/lib/api';
+import { settings as settingsApi, auth as authApi, permissions as permApi } from '@/lib/api';
+import { MODULES, CONFIGURABLE_ROLES, isLocked, setPermissions } from '@/lib/permissions';
 import toast from 'react-hot-toast';
 import {
   Building2, FileText, Users, Database, Settings as SettingsIcon,
@@ -8,18 +9,21 @@ import {
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X,
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/auth';
+import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
+import Link from 'next/link';
 
 // ─── Tabs config ──────────────────────────────────────────────
 const TABS = [
-  { key: 'company',    label: 'Company',       icon: Building2   },
-  { key: 'fiscal',     label: 'Fiscal & Tax',  icon: FileText    },
-  { key: 'payroll',    label: 'Payroll',       icon: Calculator  },
-  { key: 'numbering',  label: 'Numbering',     icon: Hash        },
-  { key: 'users',      label: 'Users',         icon: Users       },
-  { key: 'database',   label: 'Database',      icon: Database    },
-  { key: 'system',     label: 'System',        icon: SettingsIcon},
+  { key: 'company',    label: 'Company',       icon: Building2,    roles: ['ADMIN', 'MANAGER'] },
+  { key: 'fiscal',     label: 'Fiscal & Tax',  icon: FileText,     roles: ['ADMIN', 'MANAGER'] },
+  { key: 'payroll',    label: 'Payroll',       icon: Calculator,   roles: ['ADMIN', 'MANAGER'] },
+  { key: 'numbering',  label: 'Numbering',     icon: Hash,         roles: ['ADMIN', 'MANAGER'] },
+  { key: 'users',      label: 'Users',         icon: Users,        roles: ['ADMIN'] },
+  { key: 'database',   label: 'Database',      icon: Database,     roles: ['ADMIN'] },
+  { key: 'system',      label: 'System',       icon: SettingsIcon, roles: ['ADMIN', 'MANAGER'] },
+  { key: 'permissions', label: 'Permissions',  icon: Key,          roles: ['ADMIN'] },
+  { key: 'audit',       label: 'Audit Trail',  icon: Shield,       roles: ['ADMIN', 'MANAGER'] },
 ];
 
 const ROLES        = ['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'];
@@ -241,7 +245,17 @@ function DbResetModal({ onClose }) {
 
 // ─── Main Settings Page ───────────────────────────────────────
 export default function SettingsPage() {
+  const [role, setRole] = useState(null);
+  useEffect(() => { setRole(getUser()?.role); }, []);
+  const visibleTabs = TABS.filter((t) => !role || t.roles.includes(role));
+
   const [activeTab, setActiveTab] = useState('company');
+  // If the active tab isn't visible to this role, fall back to the first allowed tab.
+  useEffect(() => {
+    if (role && !visibleTabs.some((t) => t.key === activeTab) && visibleTabs[0]) {
+      setActiveTab(visibleTabs[0].key);
+    }
+  }, [role]); // eslint-disable-line react-hooks/exhaustive-deps
   const [form,      setForm]      = useState({});
   const [original,  setOriginal]  = useState({});
   const [loading,   setLoading]   = useState(true);
@@ -250,6 +264,8 @@ export default function SettingsPage() {
   const [dbStats,   setDbStats]   = useState(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
+  const [permConfig, setPermConfig] = useState(null); // { MANAGER:[], ACCOUNTANT:[], VIEWER:[] }
+  const [permSaving, setPermSaving] = useState(false);
 
   // Modals
   const [userModal,   setUserModal]   = useState(null); // null | 'new' | user obj
@@ -290,11 +306,41 @@ export default function SettingsPage() {
     finally { setDbLoading(false); }
   }, []);
 
+  // Load role permissions
+  const loadPermissions = useCallback(async () => {
+    try {
+      const r = await permApi.get();
+      setPermConfig(r.data);
+    } catch { toast.error('Failed to load permissions'); }
+  }, []);
+
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => {
-    if (activeTab === 'users')    loadUsers();
-    if (activeTab === 'database') loadDbStats();
+    if (activeTab === 'users')       loadUsers();
+    if (activeTab === 'database')    loadDbStats();
+    if (activeTab === 'permissions') loadPermissions();
   }, [activeTab]);
+
+  const togglePerm = (role, moduleKey) => {
+    if (isLocked(moduleKey, role).off || isLocked(moduleKey, role).on) return;
+    setPermConfig((c) => {
+      const has = c[role].includes(moduleKey);
+      return { ...c, [role]: has ? c[role].filter((k) => k !== moduleKey) : [...c[role], moduleKey] };
+    });
+  };
+
+  const handleSavePermissions = async () => {
+    setPermSaving(true);
+    try {
+      const r = await permApi.save(permConfig);
+      const { message, ...config } = r.data;
+      setPermConfig(config);
+      setPermissions(config);     // apply live so nav/guard update without reload
+      toast.success('Permissions saved');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to save permissions');
+    } finally { setPermSaving(false); }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -385,7 +431,7 @@ export default function SettingsPage() {
       <div className="flex gap-5 items-start">
         {/* Sidebar tabs */}
         <div className="w-48 flex-shrink-0 space-y-0.5">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.key} onClick={() => setActiveTab(tab.key)}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left ${
@@ -874,6 +920,101 @@ export default function SettingsPage() {
                 </div>
               </div>
             </>
+          )}
+
+          {activeTab === 'permissions' && (
+            <div className="space-y-5">
+              <SectionTitle icon={Key} color="text-violet-600">Module Permissions</SectionTitle>
+              <p className="text-sm text-gray-500">
+                Choose which modules each role can access. <strong>Admin</strong> always has full
+                access. Changes apply immediately to every user with that role.
+              </p>
+
+              {!permConfig ? (
+                <div className="py-10 text-center text-gray-400 text-sm">Loading permissions…</div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Module</th>
+                          <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Admin</th>
+                          {CONFIGURABLE_ROLES.map((r) => (
+                            <th key={r} className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase text-center">{r}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {MODULES.map((m) => (
+                          <tr key={m.key} className="border-b border-gray-100 last:border-0">
+                            <td className="px-4 py-2.5 font-medium text-gray-700">{m.label}</td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className="inline-block w-9 h-5 rounded-full bg-blue-600 align-middle relative">
+                                <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full" />
+                              </span>
+                            </td>
+                            {CONFIGURABLE_ROLES.map((role) => {
+                              const lock = isLocked(m.key, role);
+                              const on = lock.on || (!lock.off && permConfig[role]?.includes(m.key));
+                              const disabled = !!(lock.on || lock.off);
+                              return (
+                                <td key={role} className="px-3 py-2.5 text-center">
+                                  <button
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => togglePerm(role, m.key)}
+                                    title={lock.on ? 'Always allowed' : lock.off ? 'Not allowed for this role' : ''}
+                                    className={`inline-block w-9 h-5 rounded-full align-middle relative transition-colors ${
+                                      on ? 'bg-green-500' : 'bg-gray-300'
+                                    } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                  >
+                                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${on ? 'right-0.5' : 'left-0.5'}`} />
+                                  </button>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-400">
+                      Note: Payroll is never available to Viewer (salaries are protected at the server level).
+                    </p>
+                    <button onClick={handleSavePermissions} disabled={permSaving} className="btn-primary">
+                      {permSaving ? 'Saving…' : 'Save Permissions'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'audit' && (
+            <div className="space-y-5">
+              <SectionTitle icon={Shield} color="text-indigo-500">Audit Trail</SectionTitle>
+              <p className="text-sm text-gray-500">
+                Every create, update, delete, posting, and login is recorded with the user,
+                module, timestamp, and IP address. Use the Audit Trail to review who did what,
+                investigate discrepancies, and meet compliance requirements.
+              </p>
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900">Activity & Audit Log</p>
+                    <p className="text-xs text-gray-500">Full, filterable history of all system activity</p>
+                  </div>
+                </div>
+                <Link href="/audit" className="btn-primary">
+                  Open Audit Trail
+                </Link>
+              </div>
+            </div>
           )}
         </div>
       </div>
