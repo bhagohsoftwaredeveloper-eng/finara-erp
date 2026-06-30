@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import VendorSelect from '@/components/VendorSelect';
+import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 
 // ─── Constants ────────────────────────────────────────────────
 const VAT_CODES  = ['VAT', 'ZERO', 'EXEMPT'];
@@ -314,14 +316,14 @@ function PaymentModal({ bill, onClose, onPaid }) {
 }
 
 // ─── Create Bill Modal ────────────────────────────────────────
-function CreateBillModal({ vendors, accounts, onClose, onSaved }) {
+function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded }) {
   const [form, setForm] = useState({
     vendorId: '',
     billDate: new Date().toISOString().split('T')[0],
     dueDate: '',
     description: '',
     lines: [
-      { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'VAT' },
+      { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
     ],
   });
   const [saving, setSaving] = useState(false);
@@ -333,7 +335,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved }) {
   }));
   const addLine = () => setForm((f) => ({
     ...f,
-    lines: [...f.lines, { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'VAT' }],
+    lines: [...f.lines, { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }],
   }));
   const removeLine = (i) => setForm((f) => ({ ...f, lines: f.lines.filter((_, idx) => idx !== i) }));
 
@@ -360,8 +362,10 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.vendorId) { toast.error('Select or add a vendor'); return; }
     const validLines = form.lines.filter((l) => l.accountId && l.description && l.unitPrice);
     if (validLines.length === 0) { toast.error('Add at least one line item'); return; }
+    validLines.forEach((l) => rememberDescription(l.description));
     setSaving(true);
     try {
       await pApi.bills.create({
@@ -397,12 +401,13 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="form-group">
                 <label className="label">Vendor *</label>
-                <select className="select" required value={form.vendorId} onChange={set('vendorId')}>
-                  <option value="">Select vendor...</option>
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.id}>{v.vendorCode} — {v.name}</option>
-                  ))}
-                </select>
+                <VendorSelect
+                  vendors={vendors}
+                  value={form.vendorId}
+                  onChange={(id) => setForm((f) => ({ ...f, vendorId: id }))}
+                  onVendorAdded={onVendorAdded}
+                  required
+                />
               </div>
               <div className="form-group">
                 <label className="label">Description / Memo</label>
@@ -459,10 +464,10 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved }) {
                             </select>
                           </td>
                           <td className="py-2">
-                            <input
+                            <DescriptionInput
                               className="input text-xs"
                               value={line.description}
-                              onChange={(e) => setLine(i, 'description', e.target.value)}
+                              onChange={(v) => setLine(i, 'description', v)}
                               placeholder="Item description"
                             />
                           </td>
@@ -834,6 +839,7 @@ export default function BillsPage() {
           accounts={accounts}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
+          onVendorAdded={(v) => setVendors((prev) => [v, ...prev])}
         />
       )}
       {modal?.type === 'detail' && (

@@ -8,6 +8,8 @@ import {
   Printer, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
+import CustomerSelect from '@/components/CustomerSelect';
+import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
@@ -417,14 +419,14 @@ function CollectionModal({ invoice, onClose, onCollected }) {
 }
 
 // ─── Create Invoice Modal ─────────────────────────────────────
-function CreateInvoiceModal({ customers, accounts, onClose, onSaved }) {
+function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerAdded }) {
   const [form, setForm] = useState({
     customerId:   '',
     invoiceDate:  new Date().toISOString().split('T')[0],
     dueDate:      '',
     description:  '',
     lines: [
-      { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'VAT' },
+      { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
     ],
   });
   const [saving, setSaving] = useState(false);
@@ -435,7 +437,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved }) {
   const addLine = () =>
     setForm((f) => ({
       ...f,
-      lines: [...f.lines, { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'VAT' }],
+      lines: [...f.lines, { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }],
     }));
   const removeLine = (i) =>
     setForm((f) => ({ ...f, lines: f.lines.filter((_, idx) => idx !== i) }));
@@ -462,8 +464,10 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.customerId) { toast.error('Select or add a customer'); return; }
     const validLines = form.lines.filter((l) => l.accountId && l.description && l.unitPrice);
     if (!validLines.length) { toast.error('Add at least one line item'); return; }
+    validLines.forEach((l) => rememberDescription(l.description));
     setSaving(true);
     try {
       await rApi.invoices.create({
@@ -499,12 +503,13 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="form-group">
                 <label className="label">Customer *</label>
-                <select className="select" required value={form.customerId} onChange={set('customerId')}>
-                  <option value="">Select customer...</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.customerCode} — {c.name}</option>
-                  ))}
-                </select>
+                <CustomerSelect
+                  customers={customers}
+                  value={form.customerId}
+                  onChange={(id) => setForm((f) => ({ ...f, customerId: id }))}
+                  onCustomerAdded={onCustomerAdded}
+                  required
+                />
               </div>
               <div className="form-group">
                 <label className="label">Description / Memo</label>
@@ -564,10 +569,10 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved }) {
                             </select>
                           </td>
                           <td className="py-2">
-                            <input
+                            <DescriptionInput
                               className="input text-xs"
                               value={line.description}
-                              onChange={(e) => setLine(i, 'description', e.target.value)}
+                              onChange={(v) => setLine(i, 'description', v)}
                               placeholder="Item / service description"
                             />
                           </td>
@@ -1006,6 +1011,7 @@ export default function InvoicesPage() {
           accounts={accounts}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
+          onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])}
         />
       )}
       {modal?.type === 'detail' && (

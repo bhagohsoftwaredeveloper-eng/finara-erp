@@ -29,6 +29,7 @@ const NAV = [
     label: 'Accounts Receivable', icon: Receipt,
     children: [
       { label: 'Invoices',   href: '/receivable' },
+      { label: 'Quotations', href: '/receivable/quotations' },
       { label: 'Customers',  href: '/receivable/customers' },
       { label: 'AR Aging',   href: '/receivable/aging' },
     ],

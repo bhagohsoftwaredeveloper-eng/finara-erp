@@ -118,6 +118,7 @@ model Account {
   journalLines     JournalLine[]
   billLines        BillLine[]
   invoiceLines     InvoiceLine[]
+  quotationLines   QuotationLine[]
   inventoryItems   InventoryItem[]     @relation("InvAssetAccount")
   cogsItems        InventoryItem[]     @relation("InvCogsAccount")
   revenueItems     InventoryItem[]     @relation("InvRevenueAccount")
@@ -298,6 +299,7 @@ model Customer {
   updatedAt    DateTime  @updatedAt
 
   invoices    Invoice[]
+  quotations  Quotation[]
 
   @@unique([businessId, customerCode])
   @@index([businessId])
@@ -369,6 +371,57 @@ enum InvoiceStatus {
   PAID
   OVERDUE
   VOID
+}
+
+// ─── Sales Quotations ──────────────────────────────────────
+model Quotation {
+  id            Int             @id @default(autoincrement())
+  businessId    Int             @default(1)
+  quotationNo   String          @unique @db.VarChar(30)
+  customerId    Int
+  customer      Customer        @relation(fields: [customerId], references: [id])
+  quotationDate DateTime        @db.Date
+  validUntil    DateTime        @db.Date
+  description   String?         @db.Text
+  subtotal      Decimal         @default(0) @db.Decimal(15, 2)
+  vatAmount     Decimal         @default(0) @db.Decimal(15, 2)
+  totalAmount   Decimal         @default(0) @db.Decimal(15, 2)
+  status        QuotationStatus @default(DRAFT)
+  convertedInvoiceId Int?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  lines         QuotationLine[]
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([status])
+  @@map("quotations")
+}
+
+model QuotationLine {
+  id          Int       @id @default(autoincrement())
+  quotationId Int
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  accountId   Int
+  account     Account   @relation(fields: [accountId], references: [id])
+  description String    @db.VarChar(255)
+  quantity    Decimal   @default(1) @db.Decimal(10, 3)
+  unitPrice   Decimal   @default(0) @db.Decimal(15, 2)
+  amount      Decimal   @default(0) @db.Decimal(15, 2)
+  vatCode     VatCode   @default(VAT)
+
+  @@index([quotationId])
+  @@map("quotation_lines")
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
 }
 
 // ─── Payroll ───────────────────────────────────────────────

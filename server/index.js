@@ -116,6 +116,7 @@ app.use('/api/accounts',   routes.accounts);
 app.use('/api/journal', routes.journal);
 app.use('/api/payable', routes.payable);
 app.use('/api/receivable', routes.receivable);
+app.use('/api/quotations', routes.quotations);
 app.use('/api/payroll', routes.payroll);
 app.use('/api/bir', routes.bir);
 app.use('/api/dashboard', routes.dashboard);

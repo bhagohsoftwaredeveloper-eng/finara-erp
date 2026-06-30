@@ -5,6 +5,7 @@ module.exports = {
   journal:       require('./journal'),
   payable:       require('./payable'),
   receivable:    require('./receivable'),
+  quotations:    require('./quotation'),
   payroll:       require('./payroll'),
   bir:           require('./bir'),
   dashboard:     require('./dashboard'),
