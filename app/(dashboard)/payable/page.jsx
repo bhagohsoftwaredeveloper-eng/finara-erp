@@ -548,7 +548,6 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved }) {
 }
 
 // ─── Main Bills Page ──────────────────────────────────────────
-const today = new Date().toISOString().split('T')[0];
 
 export default function BillsPage() {
   const [bills, setBills]         = useState([]);
@@ -559,7 +558,7 @@ export default function BillsPage() {
   const [page, setPage]           = useState(1);
   const [summary, setSummary]     = useState({ open: 0, overdue: 0, paid: 0, openCount: 0 });
 
-  const [filter, setFilter] = useState({ status: '', vendorId: '', from: today, to: '', search: '' });
+  const [filter, setFilter] = useState({ status: '', vendorId: '', from: '', to: '', search: '' });
   const [showFilter, setShowFilter] = useState(false);
 
   const [modal, setModal] = useState(null); // 'create' | { bill: ... } | { pay: ... }
@@ -618,7 +617,7 @@ export default function BillsPage() {
     } catch { toast.error('Failed to load bill details'); }
   };
 
-  const clearFilter = () => setFilter({ status: '', vendorId: '', from: today, to: '', search: '' });
+  const clearFilter = () => setFilter({ status: '', vendorId: '', from: '', to: '', search: '' });
   const activeFilters = Object.values(filter).filter(Boolean).length;
 
   return (

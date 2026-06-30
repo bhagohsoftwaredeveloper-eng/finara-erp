@@ -146,7 +146,7 @@ export default function TransactionsPage() {
   const [total,  setTotal]  = useState(0);
   const [modal,  setModal]  = useState(false);
   const [loading,setLoading]= useState(true);
-  const [filter, setFilter] = useState({ search: '', type: '', itemId: '', from: today, to: '' });
+  const [filter, setFilter] = useState({ search: '', type: '', itemId: '', from: '', to: '' });
 
   const load = useCallback(async () => {
     setLoading(true);

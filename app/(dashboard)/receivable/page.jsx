@@ -659,8 +659,6 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved }) {
 }
 
 // ─── Main Invoices Page ───────────────────────────────────────
-const today = new Date().toISOString().split('T')[0];
-
 export default function InvoicesPage() {
   const [invoices, setInvoices]   = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -669,7 +667,7 @@ export default function InvoicesPage() {
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
   const [summary, setSummary]     = useState({ open: 0, overdue: 0, openCount: 0, collected: 0 });
-  const [filter, setFilter]       = useState({ status: '', customerId: '', from: today, to: '', search: '' });
+  const [filter, setFilter]       = useState({ status: '', customerId: '', from: '', to: '', search: '' });
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [modal, setModal]         = useState(null);
   const LIMIT = 15;
@@ -725,7 +723,7 @@ export default function InvoicesPage() {
     }
   };
 
-  const clearFilter = () => setFilter({ status: '', customerId: '', from: today, to: '', search: '' });
+  const clearFilter = () => setFilter({ status: '', customerId: '', from: '', to: '', search: '' });
   const activeFilters = Object.values(filter).filter(Boolean).length;
 
   return (

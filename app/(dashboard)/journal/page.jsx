@@ -344,14 +344,12 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
   );
 }
 
-const today = new Date().toISOString().split('T')[0];
-
 export default function JournalPage() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState([]);
   const [modal, setModal] = useState(null);
-  const [filter, setFilter] = useState({ status: '', from: today, to: '' });
+  const [filter, setFilter] = useState({ status: '', from: '', to: '' });
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [voidEntry, setVoidEntry] = useState(null);
@@ -428,7 +426,7 @@ export default function JournalPage() {
             <input type="date" className="input w-40" value={filter.to} onChange={(e) => setFilter(f => ({...f, to: e.target.value}))} />
           </div>
           <button className="btn-secondary" onClick={load}><Filter className="w-4 h-4" /> Filter</button>
-          <button className="btn-secondary" onClick={() => setFilter({ status: '', from: today, to: '' })}>Reset</button>
+          <button className="btn-secondary" onClick={() => setFilter({ status: '', from: '', to: '' })}>Reset</button>
         </div>
       </div>
 
