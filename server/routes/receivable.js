@@ -8,7 +8,7 @@ router.use(authenticate, resolveBusiness);
 
 router.get('/customers', ctrl.listCustomers);
 router.post('/customers', authorize('ADMIN','MANAGER'),
-  [body('name').notEmpty().trim(), body('customerCode').notEmpty().trim()], validate, ctrl.createCustomer);
+  [body('name').notEmpty().trim()], validate, ctrl.createCustomer);
 router.put('/customers/:id', authorize('ADMIN','MANAGER'), ctrl.updateCustomer);
 
 router.get('/', ctrl.listInvoices);

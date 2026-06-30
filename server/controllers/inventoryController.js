@@ -4,6 +4,20 @@ const glPost = require('../utils/glPost');
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function pad(n, len = 6) { return String(n).padStart(len, '0'); }
 
+// Next sequential SKU (SKU-0001, SKU-0002, …) per business
+async function nextSku(businessId) {
+  const rows = await prisma.inventoryItem.findMany({
+    where: { businessId, sku: { startsWith: 'SKU-' } },
+    select: { sku: true },
+  });
+  let max = 0;
+  for (const { sku } of rows) {
+    const m = /^SKU-(\d+)$/.exec(sku);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'SKU-' + pad(max + 1, 4);
+}
+
 async function nextTxnNo() {
   const last = await prisma.inventoryTransaction.findFirst({ orderBy: { id: 'desc' } });
   const seq  = last ? last.id + 1 : 1;
@@ -125,12 +139,13 @@ exports.createItem = async (req, res, next) => {
     reorderLevel = 0, warehouseLocation,
     inventoryAccountId, cogsAccountId, revenueAccountId,
   } = req.body;
-  if (!sku || !name) return res.status(400).json({ error: 'SKU and Name are required' });
+  if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
+    const finalSku = (sku && sku.trim()) ? sku.trim() : await nextSku(req.businessId);
     const item = await prisma.inventoryItem.create({
       data: {
         businessId: req.businessId,
-        sku, name, description, unit,
+        sku: finalSku, name, description, unit,
         costPrice:    Number(costPrice),
         sellingPrice: Number(sellingPrice),
         reorderLevel: Number(reorderLevel),

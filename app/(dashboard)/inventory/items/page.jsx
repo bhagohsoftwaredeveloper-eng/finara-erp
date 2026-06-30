@@ -128,8 +128,9 @@ function ItemModal({ item, categories, accounts, onClose, onSaved }) {
             </div>
 
             <div>
-              <label className="label">SKU / Item Code <span className="text-red-500">*</span></label>
-              <input className="input w-full font-mono" value={form.sku} onChange={set('sku')} required placeholder="e.g. PROD-001" />
+              <label className="label">SKU / Item Code</label>
+              <input className="input w-full font-mono" value={form.sku} onChange={set('sku')} placeholder="Auto-generated (SKU-0001)" disabled={isEdit} />
+              {!isEdit && <p className="text-xs text-gray-400 mt-1">Leave blank to auto-generate.</p>}
             </div>
             <div>
               <label className="label">Item Name <span className="text-red-500">*</span></label>

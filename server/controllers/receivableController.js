@@ -22,10 +22,39 @@ exports.listCustomers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Generate the next sequential customer code (CUS-001, CUS-002, …) for a business
+async function nextCustomerCode(businessId) {
+  const rows = await prisma.customer.findMany({
+    where: { businessId, customerCode: { startsWith: 'CUS-' } },
+    select: { customerCode: true },
+  });
+  let max = 0;
+  for (const { customerCode } of rows) {
+    const m = /^CUS-(\d+)$/.exec(customerCode);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'CUS-' + String(max + 1).padStart(3, '0');
+}
+
 exports.createCustomer = async (req, res, next) => {
   try {
     const { customerCode, name, tin, address, contactName, email, phone } = req.body;
-    res.status(201).json(await prisma.customer.create({ data: { businessId: req.businessId, customerCode, name, tin, address, contactName, email, phone } }));
+    const base = { businessId: req.businessId, name, tin, address, contactName, email, phone };
+
+    // Manual code supplied → use as-is. Otherwise auto-generate, retrying on the
+    // off chance a concurrent create grabbed the same sequential number.
+    if (customerCode && customerCode.trim()) {
+      return res.status(201).json(await prisma.customer.create({ data: { ...base, customerCode: customerCode.trim() } }));
+    }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const code = await nextCustomerCode(req.businessId);
+        return res.status(201).json(await prisma.customer.create({ data: { ...base, customerCode: code } }));
+      } catch (err) {
+        if (err.code === 'P2002' && attempt < 4) continue; // collision → retry
+        throw err;
+      }
+    }
   } catch (err) { next(err); }
 };
 

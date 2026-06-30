@@ -63,10 +63,11 @@ function AccountModal({ account, onClose, onSaved, allAccounts }) {
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Account Code <span className="text-red-500">*</span></label>
-              <input className="input w-full font-mono" required value={form.accountCode}
-                onChange={set('accountCode')} placeholder="e.g. 1010"
+              <label className="label">Account Code</label>
+              <input className="input w-full font-mono" value={form.accountCode}
+                onChange={set('accountCode')} placeholder="Auto (e.g. 1010)"
                 disabled={isEdit} />
+              {!isEdit && <p className="text-xs text-gray-400 mt-1">Blank = auto by account type.</p>}
             </div>
             <div>
               <label className="label">Account Type <span className="text-red-500">*</span></label>

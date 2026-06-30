@@ -9,7 +9,7 @@ router.use(authenticate, resolveBusiness);
 // Vendors
 router.get('/vendors', ctrl.listVendors);
 router.post('/vendors', authorize('ADMIN','MANAGER'),
-  [body('name').notEmpty().trim(), body('vendorCode').notEmpty().trim()], validate, ctrl.createVendor);
+  [body('name').notEmpty().trim()], validate, ctrl.createVendor);
 router.put('/vendors/:id', authorize('ADMIN','MANAGER'), ctrl.updateVendor);
 
 // Bills

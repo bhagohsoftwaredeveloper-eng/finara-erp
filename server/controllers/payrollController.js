@@ -28,20 +28,47 @@ exports.getEmployee = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Next sequential employee number (EMP-001, EMP-002, …) per business
+async function nextEmployeeNo(businessId) {
+  const rows = await prisma.employee.findMany({
+    where: { businessId, employeeNo: { startsWith: 'EMP-' } },
+    select: { employeeNo: true },
+  });
+  let max = 0;
+  for (const { employeeNo } of rows) {
+    const m = /^EMP-(\d+)$/.exec(employeeNo);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'EMP-' + String(max + 1).padStart(3, '0');
+}
+
 exports.createEmployee = async (req, res, next) => {
   try {
     const data = req.body;
-    const emp = await prisma.employee.create({
-      data: {
-        businessId: req.businessId,
-        employeeNo: data.employeeNo, firstName: data.firstName, lastName: data.lastName, middleName: data.middleName,
-        position: data.position, department: data.department,
-        tin: data.tin, sssNo: data.sssNo, philhealthNo: data.philhealthNo, pagibigNo: data.pagibigNo,
-        hireDate: new Date(data.hireDate), employmentType: data.employmentType,
-        payFrequency: data.payFrequency, basicSalary: Number(data.basicSalary),
-      },
-    });
-    res.status(201).json(emp);
+    const base = {
+      businessId: req.businessId,
+      firstName: data.firstName, lastName: data.lastName, middleName: data.middleName,
+      position: data.position, department: data.department,
+      tin: data.tin, sssNo: data.sssNo, philhealthNo: data.philhealthNo, pagibigNo: data.pagibigNo,
+      hireDate: new Date(data.hireDate), employmentType: data.employmentType,
+      payFrequency: data.payFrequency, basicSalary: Number(data.basicSalary),
+    };
+    const manual = data.employeeNo && data.employeeNo.trim();
+
+    if (manual) {
+      const emp = await prisma.employee.create({ data: { ...base, employeeNo: data.employeeNo.trim() } });
+      return res.status(201).json(emp);
+    }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const employeeNo = await nextEmployeeNo(req.businessId);
+        const emp = await prisma.employee.create({ data: { ...base, employeeNo } });
+        return res.status(201).json(emp);
+      } catch (err) {
+        if (err.code === 'P2002' && attempt < 4) continue;
+        throw err;
+      }
+    }
   } catch (err) { next(err); }
 };
 

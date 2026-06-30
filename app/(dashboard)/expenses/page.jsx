@@ -231,7 +231,13 @@ export default function ExpensesPage() {
   function openAction(mode, rec) {
     setActionMode(mode);
     setActionRecord(rec);
-    setActionForm({ name: userName, date: todayStr(), reason: '' });
+    // Pre-fill with the value already on the voucher so submitting/approving/paying
+    // never clobbers an existing requester (e.g. the requester entered at creation).
+    const existingName = mode === 'submit'  ? rec.requestedBy
+                       : mode === 'approve' ? rec.approvedBy
+                       : mode === 'pay'     ? rec.paidBy
+                       : '';
+    setActionForm({ name: existingName || userName, date: todayStr(), reason: '' });
     setActionOpen(true);
   }
 

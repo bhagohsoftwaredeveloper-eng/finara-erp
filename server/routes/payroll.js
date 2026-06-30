@@ -11,7 +11,6 @@ router.get('/employees', ctrl.listEmployees);
 router.get('/employees/:id', param('id').isInt(), validate, ctrl.getEmployee);
 router.post('/employees', authorize('ADMIN','MANAGER'),
   [
-    body('employeeNo').notEmpty().trim(),
     body('firstName').notEmpty().trim(),
     body('lastName').notEmpty().trim(),
     body('hireDate').isISO8601(),

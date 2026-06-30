@@ -12,6 +12,20 @@ const genPayNo = async () => {
   return `PAP-${String(count + 1).padStart(6, '0')}`;
 };
 
+// Next sequential vendor code (VEN-001, VEN-002, …) per business
+async function nextVendorCode(businessId) {
+  const rows = await prisma.vendor.findMany({
+    where: { businessId, vendorCode: { startsWith: 'VEN-' } },
+    select: { vendorCode: true },
+  });
+  let max = 0;
+  for (const { vendorCode } of rows) {
+    const m = /^VEN-(\d+)$/.exec(vendorCode);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'VEN-' + String(max + 1).padStart(3, '0');
+}
+
 exports.listVendors = async (req, res, next) => {
   try {
     const { search, active } = req.query;
@@ -25,8 +39,22 @@ exports.listVendors = async (req, res, next) => {
 exports.createVendor = async (req, res, next) => {
   try {
     const { vendorCode, name, tin, address, contactName, email, phone } = req.body;
-    const vendor = await prisma.vendor.create({ data: { businessId: req.businessId, vendorCode, name, tin, address, contactName, email, phone } });
-    res.status(201).json(vendor);
+    const base = { businessId: req.businessId, name, tin, address, contactName, email, phone };
+
+    if (vendorCode && vendorCode.trim()) {
+      const vendor = await prisma.vendor.create({ data: { ...base, vendorCode: vendorCode.trim() } });
+      return res.status(201).json(vendor);
+    }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const code = await nextVendorCode(req.businessId);
+        const vendor = await prisma.vendor.create({ data: { ...base, vendorCode: code } });
+        return res.status(201).json(vendor);
+      } catch (err) {
+        if (err.code === 'P2002' && attempt < 4) continue;
+        throw err;
+      }
+    }
   } catch (err) { next(err); }
 };
 

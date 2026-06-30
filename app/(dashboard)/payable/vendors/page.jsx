@@ -20,14 +20,6 @@ function VendorModal({ vendor, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  // Auto-generate vendor code suggestion
-  useEffect(() => {
-    if (!isEdit && !form.vendorCode && form.name) {
-      const code = 'VEN-' + form.name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4).padEnd(3, 'X');
-      setForm((f) => ({ ...f, vendorCode: code }));
-    }
-  }, [form.name, isEdit]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -54,8 +46,9 @@ function VendorModal({ vendor, onClose, onSaved }) {
           <div className="modal-body space-y-4">
             <div className="form-grid">
               <div className="form-group">
-                <label className="label">Vendor Code *</label>
-                <input className="input font-mono" required value={form.vendorCode} onChange={set('vendorCode')} placeholder="VEN-001" />
+                <label className="label">Vendor Code</label>
+                <input className="input font-mono" value={form.vendorCode || ''} onChange={set('vendorCode')} placeholder="Auto-generated (VEN-001)" disabled={isEdit} />
+                {!isEdit && <p className="text-xs text-gray-400 mt-1">Leave blank to auto-generate.</p>}
               </div>
               <div className="form-group">
                 <label className="label">TIN</label>

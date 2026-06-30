@@ -14,7 +14,6 @@ router.get('/:id', param('id').isInt(), validate, ctrl.getOne);
 router.post('/',
   authorize('ADMIN', 'MANAGER'),
   [
-    body('accountCode').notEmpty().trim(),
     body('accountName').notEmpty().trim(),
     body('accountType').isIn(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']),
     body('normalBalance').isIn(['DEBIT', 'CREDIT']),

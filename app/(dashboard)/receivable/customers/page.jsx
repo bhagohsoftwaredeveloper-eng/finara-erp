@@ -19,14 +19,6 @@ function CustomerModal({ customer, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  // Auto-suggest customer code
-  useEffect(() => {
-    if (!isEdit && !form.customerCode && form.name) {
-      const code = 'CUS-' + form.name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4).padEnd(3, 'X');
-      setForm((f) => ({ ...f, customerCode: code }));
-    }
-  }, [form.name, isEdit]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -53,12 +45,16 @@ function CustomerModal({ customer, onClose, onSaved }) {
           <div className="modal-body space-y-4">
             <div className="form-grid">
               <div className="form-group">
-                <label className="label">Customer Code *</label>
+                <label className="label">Customer Code</label>
                 <input
-                  className="input font-mono" required
-                  value={form.customerCode} onChange={set('customerCode')}
-                  placeholder="CUS-001"
+                  className="input font-mono"
+                  value={form.customerCode || ''} onChange={set('customerCode')}
+                  placeholder="Auto-generated (CUS-001)"
+                  disabled={isEdit}
                 />
+                {!isEdit && (
+                  <p className="text-xs text-gray-400 mt-1">Leave blank to auto-generate the next code.</p>
+                )}
               </div>
               <div className="form-group">
                 <label className="label">TIN</label>

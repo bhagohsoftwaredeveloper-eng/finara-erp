@@ -65,13 +65,6 @@ function EmployeeModal({ employee, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  // Auto-generate employee number
-  useEffect(() => {
-    if (!isEdit && !form.employeeNo) {
-      setForm((f) => ({ ...f, employeeNo: `EMP-${String(Date.now()).slice(-4)}` }));
-    }
-  }, [isEdit]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.firstName || !form.lastName || !form.basicSalary) {
@@ -127,8 +120,9 @@ function EmployeeModal({ employee, onClose, onSaved }) {
               <>
                 <div className="form-grid">
                   <div className="form-group">
-                    <label className="label">Employee No. *</label>
-                    <input className="input font-mono" required value={form.employeeNo} onChange={set('employeeNo')} placeholder="EMP-001" />
+                    <label className="label">Employee No.</label>
+                    <input className="input font-mono" value={form.employeeNo || ''} onChange={set('employeeNo')} placeholder="Auto-generated (EMP-001)" disabled={isEdit} />
+                    {!isEdit && <p className="text-xs text-gray-400 mt-1">Leave blank to auto-generate.</p>}
                   </div>
                   <div className="form-group">
                     <label className="label">Department</label>

@@ -61,17 +61,48 @@ exports.getOne = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Starting digit per account type (Philippine standard CoA: 1xxx assets, 2xxx
+// liabilities, 3xxx equity, 4xxx revenue, 5xxx–6xxx expenses)
+const TYPE_BASE = { ASSET: 1, LIABILITY: 2, EQUITY: 3, REVENUE: 4, EXPENSE: 5 };
+
+// Next sequential code within the type's range, stepping by 10 (accounting convention)
+async function nextAccountCode(businessId, accountType) {
+  const base = (TYPE_BASE[accountType] || 9) * 1000;
+  const rows = await prisma.account.findMany({
+    where: { businessId, accountType },
+    select: { accountCode: true },
+  });
+  let max = 0;
+  for (const { accountCode } of rows) {
+    if (/^\d+$/.test(accountCode)) max = Math.max(max, parseInt(accountCode, 10));
+  }
+  return String(max > 0 ? max + 10 : base + 10); // e.g. 1010, 1020, …
+}
+
 exports.create = async (req, res, next) => {
   try {
     const { accountCode, accountName, accountType, normalBalance, parentId, description } = req.body;
-    const account = await prisma.account.create({
-      data: {
-        businessId: req.businessId,
-        accountCode, accountName, accountType, normalBalance,
-        parentId: parentId || null, description,
-      },
-    });
-    res.status(201).json(account);
+    const base = {
+      businessId: req.businessId,
+      accountName, accountType, normalBalance,
+      parentId: parentId || null, description,
+    };
+
+    if (accountCode && accountCode.trim()) {
+      const account = await prisma.account.create({ data: { ...base, accountCode: accountCode.trim() } });
+      return res.status(201).json(account);
+    }
+    if (!accountType) throw createError('Account type is required to auto-generate a code', 400);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const code = await nextAccountCode(req.businessId, accountType);
+        const account = await prisma.account.create({ data: { ...base, accountCode: code } });
+        return res.status(201).json(account);
+      } catch (err) {
+        if (err.code === 'P2002' && attempt < 4) continue;
+        throw err;
+      }
+    }
   } catch (err) { next(err); }
 };
 
