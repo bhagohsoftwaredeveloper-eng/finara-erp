@@ -20,33 +20,33 @@ exports.calculate = async (req, res, next) => {
 
     const [invoices, arPayments, bills, apPayments, invTxns, expVouchers] = await Promise.all([
       prisma.invoice.findMany({
-        where: { invoiceDate: range },
+        where: { businessId: req.businessId, invoiceDate: range },
         include: { customer: { select: { name: true, customerCode: true } } },
         orderBy: { invoiceNo: 'asc' },
       }),
       prisma.paymentAR.findMany({
-        where: { paymentDate: range },
+        where: { invoice: { businessId: req.businessId }, paymentDate: range },
         include: { invoice: { include: { customer: { select: { name: true } } } } },
         orderBy: { paymentNo: 'asc' },
       }),
       prisma.bill.findMany({
-        where: { billDate: range },
+        where: { businessId: req.businessId, billDate: range },
         include: { vendor: { select: { name: true, vendorCode: true } } },
         orderBy: { billNo: 'asc' },
       }),
       prisma.paymentAP.findMany({
-        where: { paymentDate: range },
+        where: { bill: { businessId: req.businessId }, paymentDate: range },
         include: { bill: { include: { vendor: { select: { name: true } } } } },
         orderBy: { paymentNo: 'asc' },
       }),
       prisma.inventoryTransaction.findMany({
-        where: { txnDate: range },
+        where: { item: { businessId: req.businessId }, txnDate: range },
         include: { item: { select: { name: true, sku: true } } },
         orderBy: { txnNo: 'asc' },
       }),
       // Expense vouchers APPROVED or PAID on this date
       prisma.expenseVoucher.findMany({
-        where: { date: range, status: { in: ['APPROVED', 'PAID'] } },
+        where: { businessId: req.businessId, date: range, status: { in: ['APPROVED', 'PAID'] } },
         orderBy: { voucherNo: 'asc' },
       }),
     ]);
@@ -147,7 +147,7 @@ exports.calculate = async (req, res, next) => {
 exports.list = async (req, res, next) => {
   try {
     const { status, from, to } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (status) where.status = status;
     if (from || to) {
       where.date = {};
@@ -186,13 +186,14 @@ exports.create = async (req, res, next) => {
     } = req.body;
 
     // Check uniqueness
-    const existing = await prisma.dailyRemittance.findUnique({
-      where: { date: new Date(date + 'T00:00:00.000Z') },
+    const existing = await prisma.dailyRemittance.findFirst({
+      where: { businessId: req.businessId, date: new Date(date + 'T00:00:00.000Z') },
     });
     if (existing) throw createError(`A daily remittance for ${date} already exists`, 409);
 
     const record = await prisma.dailyRemittance.create({
       data: {
+        businessId:   req.businessId,
         date:         new Date(date + 'T00:00:00.000Z'),
         totalSales:   Number(totalSales   || 0),
         vatCollected: Number(vatCollected || 0),

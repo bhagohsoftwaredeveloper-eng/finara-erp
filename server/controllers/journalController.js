@@ -11,7 +11,7 @@ const genEntryNo = async () => {
 exports.list = async (req, res, next) => {
   try {
     const { status, from, to, search, page = 1, limit = 20 } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (status) where.status = status;
     if (from || to) where.entryDate = { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) };
     if (search) where.OR = [{ entryNo: { contains: search } }, { description: { contains: search } }];
@@ -33,8 +33,8 @@ exports.list = async (req, res, next) => {
 
 exports.getOne = async (req, res, next) => {
   try {
-    const entry = await prisma.journalEntry.findUnique({
-      where: { id: Number(req.params.id) },
+    const entry = await prisma.journalEntry.findFirst({
+      where: { id: Number(req.params.id), businessId: req.businessId },
       include: { lines: { include: { account: true }, orderBy: { lineOrder: 'asc' } } },
     });
     if (!entry) throw createError('Journal entry not found', 404);
@@ -57,6 +57,7 @@ exports.create = async (req, res, next) => {
     const entry = await prisma.journalEntry.create({
       data: {
         entryNo,
+        businessId: req.businessId,
         entryDate: new Date(entryDate),
         reference,
         description,
@@ -171,7 +172,7 @@ exports.trialBalance = async (req, res, next) => {
   try {
     const { asOf } = req.query;
     const dateFilter = asOf ? { lte: new Date(asOf) } : undefined;
-    const where = { entry: { status: 'POSTED', ...(dateFilter && { entryDate: dateFilter }) } };
+    const where = { entry: { businessId: req.businessId, status: 'POSTED', ...(dateFilter && { entryDate: dateFilter }) } };
 
     const lines = await prisma.journalLine.groupBy({
       by: ['accountId'],
@@ -285,7 +286,7 @@ exports.balanceSheet = async (req, res, next) => {
   try {
     const { asOf } = req.query;
     const where = {
-      entry: { status: 'POSTED', ...(asOf && { entryDate: { lte: new Date(asOf) } }) },
+      entry: { businessId: req.businessId, status: 'POSTED', ...(asOf && { entryDate: { lte: new Date(asOf) } }) },
       account: { accountType: { in: ['ASSET', 'LIABILITY', 'EQUITY'] } },
     };
 

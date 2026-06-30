@@ -1,5 +1,6 @@
 module.exports = {
   auth:          require('./auth'),
+  businesses:    require('./businesses'),
   accounts:      require('./accounts'),
   journal:       require('./journal'),
   payable:       require('./payable'),

@@ -1,11 +1,11 @@
 const router = require('express').Router();
 const ctrl   = require('../controllers/expenseController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 
 const write   = authorize('ADMIN', 'MANAGER', 'ACCOUNTANT');
 const approve = authorize('ADMIN', 'MANAGER');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 router.get('/categories',        ctrl.getCategories);
 router.get('/summary',           ctrl.getSummary);

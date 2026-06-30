@@ -15,7 +15,7 @@ const genPayNo = async () => {
 exports.listVendors = async (req, res, next) => {
   try {
     const { search, active } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (active !== undefined) where.isActive = active === 'true';
     if (search) where.OR = [{ name: { contains: search } }, { vendorCode: { contains: search } }];
     res.json(await prisma.vendor.findMany({ where, orderBy: { name: 'asc' } }));
@@ -25,7 +25,7 @@ exports.listVendors = async (req, res, next) => {
 exports.createVendor = async (req, res, next) => {
   try {
     const { vendorCode, name, tin, address, contactName, email, phone } = req.body;
-    const vendor = await prisma.vendor.create({ data: { vendorCode, name, tin, address, contactName, email, phone } });
+    const vendor = await prisma.vendor.create({ data: { businessId: req.businessId, vendorCode, name, tin, address, contactName, email, phone } });
     res.status(201).json(vendor);
   } catch (err) { next(err); }
 };
@@ -41,7 +41,7 @@ exports.updateVendor = async (req, res, next) => {
 exports.listBills = async (req, res, next) => {
   try {
     const { status, vendorId, from, to, page = 1, limit = 20 } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (status) where.status = status;
     if (vendorId) where.vendorId = Number(vendorId);
     if (from || to) where.billDate = { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) };
@@ -90,6 +90,7 @@ exports.createBill = async (req, res, next) => {
     const billNo = await genBillNo();
     const bill = await prisma.bill.create({
       data: {
+        businessId: req.businessId,
         billNo, vendorId: Number(vendorId),
         billDate: new Date(billDate), dueDate: new Date(dueDate),
         description, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
@@ -128,6 +129,7 @@ exports.createBill = async (req, res, next) => {
       reference:   bill.billNo,
       lines:       glLines,
       userId:      req.user?.id || 1,
+      businessId:  req.businessId,
     });
 
     res.status(201).json(bill);
@@ -163,6 +165,7 @@ exports.recordPayment = async (req, res, next) => {
         { accountCode: '1020', credit: Number(amount), description: `Cash out — ${paymentNo}` },
       ],
       userId: req.user?.id || 1,
+      businessId: req.businessId,
     });
 
     res.json({ message: 'Payment recorded', remainingBalance: Math.max(0, remaining) });

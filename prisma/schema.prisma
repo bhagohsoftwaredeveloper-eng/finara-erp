@@ -7,6 +7,38 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Multi-Business ────────────────────────────────────────
+model Business {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  tin         String?   @db.VarChar(30)
+  address     String?   @db.Text
+  phone       String?   @db.VarChar(30)
+  email       String?   @db.VarChar(150)
+  industry    String?   @db.VarChar(80)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  userBusinesses UserBusiness[]
+
+  @@map("businesses")
+}
+
+model UserBusiness {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessId Int
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@index([userId])
+  @@index([businessId])
+  @@map("user_businesses")
+}
+
 // ─── Auth ──────────────────────────────────────────────────
 model User {
   id           Int       @id @default(autoincrement())
@@ -29,7 +61,8 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  auditLogs    AuditLog[]
+  auditLogs      AuditLog[]
+  userBusinesses UserBusiness[]
 
   @@index([email])
   @@map("users")
@@ -43,18 +76,17 @@ enum Role {
 }
 
 // ─── Audit Trail ───────────────────────────────────────────
-// Records every meaningful change (create / update / delete / status
-// transitions / auth events) for compliance and internal control.
 model AuditLog {
   id         Int       @id @default(autoincrement())
   userId     Int?
   user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userEmail  String?   @db.VarChar(150) // denormalised so log survives user deletion
-  action     String    @db.VarChar(40)  // CREATE | UPDATE | DELETE | POST | VOID | LOGIN | LOGIN_FAILED | etc.
-  entity     String    @db.VarChar(60)  // e.g. JournalEntry, Invoice, User
+  userEmail  String?   @db.VarChar(150)
+  businessId Int?      // which business context this audit happened in
+  action     String    @db.VarChar(40)
+  entity     String    @db.VarChar(60)
   entityId   String?   @db.VarChar(40)
-  summary    String?   @db.VarChar(255) // human-readable one-liner
-  changes    Json?                      // { before, after } diff or arbitrary metadata
+  summary    String?   @db.VarChar(255)
+  changes    Json?
   ipAddress  String?   @db.VarChar(60)
   userAgent  String?   @db.VarChar(255)
   createdAt  DateTime  @default(now())
@@ -63,13 +95,15 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+  @@index([businessId])
   @@map("audit_logs")
 }
 
 // ─── Chart of Accounts ─────────────────────────────────────
 model Account {
   id            Int          @id @default(autoincrement())
-  accountCode   String       @unique @db.VarChar(20)
+  businessId    Int          @default(1)
+  accountCode   String       @db.VarChar(20)
   accountName   String       @db.VarChar(150)
   accountType   AccountType
   normalBalance NormalBalance
@@ -89,7 +123,8 @@ model Account {
   revenueItems     InventoryItem[]     @relation("InvRevenueAccount")
   expenseItems     ExpenseVoucherItem[]
 
-  @@index([accountCode])
+  @@unique([businessId, accountCode])
+  @@index([businessId])
   @@index([accountType])
   @@map("accounts")
 }
@@ -110,6 +145,7 @@ enum NormalBalance {
 // ─── Journal / GL ──────────────────────────────────────────
 model JournalEntry {
   id          Int             @id @default(autoincrement())
+  businessId  Int             @default(1)
   entryNo     String          @unique @db.VarChar(30)
   entryDate   DateTime        @db.Date
   reference   String?         @db.VarChar(100)
@@ -122,6 +158,7 @@ model JournalEntry {
 
   lines       JournalLine[]
 
+  @@index([businessId])
   @@index([entryDate])
   @@index([status])
   @@map("journal_entries")
@@ -152,7 +189,8 @@ enum JournalStatus {
 // ─── Vendors & Accounts Payable ────────────────────────────
 model Vendor {
   id          Int       @id @default(autoincrement())
-  vendorCode  String    @unique @db.VarChar(20)
+  businessId  Int       @default(1)
+  vendorCode  String    @db.VarChar(20)
   name        String    @db.VarChar(150)
   tin         String?   @db.VarChar(20)
   address     String?   @db.Text
@@ -163,14 +201,17 @@ model Vendor {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  bills       Bill[]
+  bills          Bill[]
   purchaseOrders PurchaseOrder[]
 
+  @@unique([businessId, vendorCode])
+  @@index([businessId])
   @@map("vendors")
 }
 
 model Bill {
   id          Int        @id @default(autoincrement())
+  businessId  Int        @default(1)
   billNo      String     @unique @db.VarChar(30)
   vendorId    Int
   vendor      Vendor     @relation(fields: [vendorId], references: [id])
@@ -188,6 +229,7 @@ model Bill {
   lines       BillLine[]
   payments    PaymentAP[]
 
+  @@index([businessId])
   @@index([vendorId])
   @@index([status])
   @@index([dueDate])
@@ -242,25 +284,29 @@ enum VatCode {
 
 // ─── Customers & Accounts Receivable ───────────────────────
 model Customer {
-  id          Int       @id @default(autoincrement())
-  customerCode String   @unique @db.VarChar(20)
-  name        String    @db.VarChar(150)
-  tin         String?   @db.VarChar(20)
-  address     String?   @db.Text
-  contactName String?   @db.VarChar(100)
-  email       String?   @db.VarChar(150)
-  phone       String?   @db.VarChar(30)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           Int       @id @default(autoincrement())
+  businessId   Int       @default(1)
+  customerCode String    @db.VarChar(20)
+  name         String    @db.VarChar(150)
+  tin          String?   @db.VarChar(20)
+  address      String?   @db.Text
+  contactName  String?   @db.VarChar(100)
+  email        String?   @db.VarChar(150)
+  phone        String?   @db.VarChar(30)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   invoices    Invoice[]
 
+  @@unique([businessId, customerCode])
+  @@index([businessId])
   @@map("customers")
 }
 
 model Invoice {
   id          Int           @id @default(autoincrement())
+  businessId  Int           @default(1)
   invoiceNo   String        @unique @db.VarChar(30)
   customerId  Int
   customer    Customer      @relation(fields: [customerId], references: [id])
@@ -278,6 +324,7 @@ model Invoice {
   lines       InvoiceLine[]
   payments    PaymentAR[]
 
+  @@index([businessId])
   @@index([customerId])
   @@index([status])
   @@index([dueDate])
@@ -327,7 +374,8 @@ enum InvoiceStatus {
 // ─── Payroll ───────────────────────────────────────────────
 model Employee {
   id              Int              @id @default(autoincrement())
-  employeeNo      String           @unique @db.VarChar(20)
+  businessId      Int              @default(1)
+  employeeNo      String           @db.VarChar(20)
   firstName       String           @db.VarChar(80)
   lastName        String           @db.VarChar(80)
   middleName      String?          @db.VarChar(80)
@@ -348,11 +396,14 @@ model Employee {
   payrollItems      PayrollItem[]
   remittanceDetails RemittanceDetail[]
 
+  @@unique([businessId, employeeNo])
+  @@index([businessId])
   @@map("employees")
 }
 
 model PayrollPeriod {
   id          Int           @id @default(autoincrement())
+  businessId  Int           @default(1)
   periodName  String        @db.VarChar(80)
   startDate   DateTime      @db.Date
   endDate     DateTime      @db.Date
@@ -363,6 +414,7 @@ model PayrollPeriod {
 
   items       PayrollItem[]
 
+  @@index([businessId])
   @@index([status])
   @@map("payroll_periods")
 }
@@ -416,17 +468,21 @@ enum PeriodStatus {
 
 // ─── System Settings ───────────────────────────────────────
 model SystemSetting {
-  id        Int      @id @default(autoincrement())
-  key       String   @unique @db.VarChar(100)
-  value     String   @db.Text
-  updatedAt DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  businessId Int      @default(1)
+  key        String   @db.VarChar(100)
+  value      String   @db.Text
+  updatedAt  DateTime @updatedAt
 
+  @@unique([businessId, key])
+  @@index([businessId])
   @@map("system_settings")
 }
 
 // ─── Inventory ─────────────────────────────────────────────
 model InventoryCategory {
   id          Int               @id @default(autoincrement())
+  businessId  Int               @default(1)
   name        String            @db.VarChar(100)
   type        InvCategoryType   @default(PRODUCT)
   description String?           @db.Text
@@ -435,6 +491,7 @@ model InventoryCategory {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
+  @@index([businessId])
   @@map("inventory_categories")
 }
 
@@ -447,7 +504,8 @@ enum InvCategoryType {
 
 model InventoryItem {
   id                  Int                    @id @default(autoincrement())
-  sku                 String                 @unique @db.VarChar(50)
+  businessId          Int                    @default(1)
+  sku                 String                 @db.VarChar(50)
   name                String                 @db.VarChar(150)
   description         String?                @db.Text
   categoryId          Int?
@@ -469,7 +527,8 @@ model InventoryItem {
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
-  @@index([sku])
+  @@unique([businessId, sku])
+  @@index([businessId])
   @@index([categoryId])
   @@map("inventory_items")
 }
@@ -497,15 +556,12 @@ model InventoryTransaction {
 }
 
 enum InvTxnType {
-  IN         // stock received / purchase
-  OUT        // stock issued / sold
-  ADJUSTMENT // manual stock count adjustment
-  RETURN_IN  // customer return — stock comes back
-  RETURN_OUT // return to supplier — stock leaves
+  IN
+  OUT
+  ADJUSTMENT
+  RETURN_IN
+  RETURN_OUT
 }
-
-// Add inventory relations to Account
-// (handled via the named relations above)
 
 // ─── Remittances ───────────────────────────────────────────
 enum RemittanceType {
@@ -524,6 +580,7 @@ enum RemittanceStatus {
 
 model RemittancePeriod {
   id                 Int                @id @default(autoincrement())
+  businessId         Int                @default(1)
   type               RemittanceType
   periodMonth        Int
   periodYear         Int
@@ -543,7 +600,8 @@ model RemittancePeriod {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  @@unique([type, periodMonth, periodYear])
+  @@unique([businessId, type, periodMonth, periodYear])
+  @@index([businessId])
   @@index([status])
   @@index([dueDate])
   @@map("remittance_periods")
@@ -568,11 +626,11 @@ model RemittanceDetail {
 
 // ─── Expense Vouchers ──────────────────────────────────────
 enum ExpenseType {
-  PETTY_CASH      // small cash purchases from petty cash fund
-  REIMBURSEMENT   // employee reimburses personal spend for company
-  DIRECT_PAYMENT  // company pays directly (utilities, rent, etc.)
-  CASH_ADVANCE    // advance given to employee/officer
-  LIQUIDATION     // liquidation report against a cash advance
+  PETTY_CASH
+  REIMBURSEMENT
+  DIRECT_PAYMENT
+  CASH_ADVANCE
+  LIQUIDATION
 }
 
 enum ExpenseStatus {
@@ -584,26 +642,28 @@ enum ExpenseStatus {
 }
 
 model ExpenseVoucher {
-  id            Int                  @id @default(autoincrement())
-  voucherNo     String               @unique @db.VarChar(30)
-  type          ExpenseType          @default(PETTY_CASH)
-  date          DateTime             @db.Date
-  payee         String               @db.VarChar(150)
-  category      String               @db.VarChar(60)
-  purpose       String               @db.Text
-  totalAmount   Decimal              @default(0) @db.Decimal(15, 2)
-  receiptNo     String?              @db.VarChar(100)
-  status        ExpenseStatus        @default(DRAFT)
-  requestedBy   String?              @db.VarChar(100)
-  approvedBy    String?              @db.VarChar(100)
-  paidDate      DateTime?            @db.Date
-  paidBy        String?              @db.VarChar(100)
-  rejectedReason String?             @db.Text
-  notes         String?              @db.Text
-  items         ExpenseVoucherItem[]
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  id             Int                  @id @default(autoincrement())
+  businessId     Int                  @default(1)
+  voucherNo      String               @unique @db.VarChar(30)
+  type           ExpenseType          @default(PETTY_CASH)
+  date           DateTime             @db.Date
+  payee          String               @db.VarChar(150)
+  category       String               @db.VarChar(60)
+  purpose        String               @db.Text
+  totalAmount    Decimal              @default(0) @db.Decimal(15, 2)
+  receiptNo      String?              @db.VarChar(100)
+  status         ExpenseStatus        @default(DRAFT)
+  requestedBy    String?              @db.VarChar(100)
+  approvedBy     String?              @db.VarChar(100)
+  paidDate       DateTime?            @db.Date
+  paidBy         String?              @db.VarChar(100)
+  rejectedReason String?              @db.Text
+  notes          String?              @db.Text
+  items          ExpenseVoucherItem[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
+  @@index([businessId])
   @@index([date])
   @@index([status])
   @@index([type])
@@ -633,6 +693,7 @@ enum DailyRemitStatus {
 
 model DailyRemittance {
   id            Int                   @id @default(autoincrement())
+  businessId    Int                   @default(1)
   date          DateTime              @db.Date
   totalSales    Decimal               @default(0) @db.Decimal(15, 2)
   cashReceived  Decimal               @default(0) @db.Decimal(15, 2)
@@ -648,7 +709,8 @@ model DailyRemittance {
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
-  @@unique([date])
+  @@unique([businessId, date])
+  @@index([businessId])
   @@index([status])
   @@index([date])
   @@map("daily_remittances")
@@ -672,6 +734,7 @@ model DailyRemittanceItem {
 // ─── Custom Reports ────────────────────────────────────────
 model CustomReport {
   id          Int      @id @default(autoincrement())
+  businessId  Int      @default(1)
   name        String   @db.VarChar(150)
   description String?  @db.Text
   reportType  String   @db.VarChar(50)
@@ -680,18 +743,18 @@ model CustomReport {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@index([businessId])
   @@index([createdBy])
   @@map("custom_reports")
 }
 
-// ─── File Attachments (Phase 3) ────────────────────────────
-// Polymorphic: any record can have attachments via (entity, entityId).
+// ─── File Attachments ──────────────────────────────────────
 model Attachment {
   id           Int      @id @default(autoincrement())
-  entity       String   @db.VarChar(60)  // Bill | Invoice | ExpenseVoucher | JournalEntry | ...
+  entity       String   @db.VarChar(60)
   entityId     Int
-  fileName     String   @db.VarChar(255) // stored (randomised) filename on disk
-  originalName String   @db.VarChar(255) // original upload name
+  fileName     String   @db.VarChar(255)
+  originalName String   @db.VarChar(255)
   mimeType     String   @db.VarChar(120)
   size         Int
   uploadedBy   Int?
@@ -701,7 +764,7 @@ model Attachment {
   @@map("attachments")
 }
 
-// ─── Purchase Orders (Phase 5) ─────────────────────────────
+// ─── Purchase Orders ───────────────────────────────────────
 enum POStatus {
   DRAFT
   SENT
@@ -713,6 +776,7 @@ enum POStatus {
 
 model PurchaseOrder {
   id           Int       @id @default(autoincrement())
+  businessId   Int       @default(1)
   poNumber     String    @unique @db.VarChar(30)
   vendorId     Int
   vendor       Vendor    @relation(fields: [vendorId], references: [id])
@@ -723,13 +787,14 @@ model PurchaseOrder {
   subtotal     Decimal   @default(0) @db.Decimal(15, 2)
   taxAmount    Decimal   @default(0) @db.Decimal(15, 2)
   total        Decimal   @default(0) @db.Decimal(15, 2)
-  billId       Int? // set once converted to a Bill
+  billId       Int?
   createdBy    Int?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   lines        PurchaseOrderLine[]
 
+  @@index([businessId])
   @@index([vendorId])
   @@index([status])
   @@map("purchase_orders")
@@ -751,7 +816,7 @@ model PurchaseOrderLine {
   @@map("purchase_order_lines")
 }
 
-// ─── Fixed Assets & Depreciation (Phase 5) ─────────────────
+// ─── Fixed Assets & Depreciation ───────────────────────────
 enum DepreciationMethod {
   STRAIGHT_LINE
   DECLINING_BALANCE
@@ -765,6 +830,7 @@ enum AssetStatus {
 
 model FixedAsset {
   id                               Int                @id @default(autoincrement())
+  businessId                       Int                @default(1)
   assetCode                        String             @unique @db.VarChar(30)
   name                             String             @db.VarChar(150)
   category                         String?            @db.VarChar(80)
@@ -773,7 +839,7 @@ model FixedAsset {
   salvageValue                     Decimal            @default(0) @db.Decimal(15, 2)
   usefulLifeMonths                 Int
   method                           DepreciationMethod @default(STRAIGHT_LINE)
-  decliningRate                    Decimal?           @db.Decimal(7, 4) // annual %, declining balance only
+  decliningRate                    Decimal?           @db.Decimal(7, 4)
   accumulatedDepreciation          Decimal            @default(0) @db.Decimal(15, 2)
   bookValue                        Decimal            @db.Decimal(15, 2)
   status                           AssetStatus        @default(ACTIVE)
@@ -788,6 +854,7 @@ model FixedAsset {
 
   depreciationEntries DepreciationEntry[]
 
+  @@index([businessId])
   @@index([status])
   @@map("fixed_assets")
 }
@@ -796,7 +863,7 @@ model DepreciationEntry {
   id             Int        @id @default(autoincrement())
   assetId        Int
   asset          FixedAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  periodDate     DateTime   @db.Date // month-end being depreciated
+  periodDate     DateTime   @db.Date
   amount         Decimal    @db.Decimal(15, 2)
   bookValueAfter Decimal    @db.Decimal(15, 2)
   journalEntryId Int?
@@ -806,13 +873,14 @@ model DepreciationEntry {
   @@map("depreciation_entries")
 }
 
-// ─── Bank Reconciliation (Phase 5) ─────────────────────────
+// ─── Bank Reconciliation ───────────────────────────────────
 model BankAccount {
   id             Int       @id @default(autoincrement())
+  businessId     Int       @default(1)
   name           String    @db.VarChar(120)
   bankName       String?   @db.VarChar(120)
   accountNumber  String?   @db.VarChar(60)
-  glAccountId    Int? // linked Chart-of-Accounts cash/bank account
+  glAccountId    Int?
   currentBalance Decimal   @default(0) @db.Decimal(15, 2)
   isActive       Boolean   @default(true)
   createdAt      DateTime  @default(now())
@@ -821,6 +889,7 @@ model BankAccount {
   reconciliations BankReconciliation[]
   transactions    BankTransaction[]
 
+  @@index([businessId])
   @@map("bank_accounts")
 }
 
@@ -831,7 +900,7 @@ model BankReconciliation {
   statementDate     DateTime    @db.Date
   statementBalance  Decimal     @db.Decimal(15, 2)
   reconciledBalance Decimal     @default(0) @db.Decimal(15, 2)
-  status            String      @default("OPEN") @db.VarChar(20) // OPEN | COMPLETED
+  status            String      @default("OPEN") @db.VarChar(20)
   notes             String?     @db.Text
   createdBy         Int?
   createdAt         DateTime    @default(now())
@@ -852,8 +921,8 @@ model BankTransaction {
   txnDate          DateTime            @db.Date
   description      String              @db.VarChar(255)
   reference        String?             @db.VarChar(80)
-  amount           Decimal             @db.Decimal(15, 2) // signed: + deposit, - withdrawal
-  type             String              @db.VarChar(12) // DEBIT | CREDIT
+  amount           Decimal             @db.Decimal(15, 2)
+  type             String              @db.VarChar(12)
   isReconciled     Boolean             @default(false)
   journalEntryId   Int?
   createdAt        DateTime            @default(now())
@@ -863,12 +932,13 @@ model BankTransaction {
   @@map("bank_transactions")
 }
 
-// ─── Budgeting (Phase 5) ───────────────────────────────────
+// ─── Budgeting ─────────────────────────────────────────────
 model Budget {
   id         Int      @id @default(autoincrement())
+  businessId Int      @default(1)
   name       String   @db.VarChar(120)
   fiscalYear Int
-  status     String   @default("ACTIVE") @db.VarChar(20) // ACTIVE | CLOSED
+  status     String   @default("ACTIVE") @db.VarChar(20)
   notes      String?  @db.Text
   createdBy  Int?
   createdAt  DateTime @default(now())
@@ -876,7 +946,8 @@ model Budget {
 
   lines BudgetLine[]
 
-  @@unique([name, fiscalYear])
+  @@unique([businessId, name, fiscalYear])
+  @@index([businessId])
   @@map("budgets")
 }
 
@@ -891,7 +962,7 @@ model BudgetLine {
   @@map("budget_lines")
 }
 
-// ─── Recurring Templates (Phase 5) ─────────────────────────
+// ─── Recurring Templates ───────────────────────────────────
 enum RecurringFrequency {
   WEEKLY
   MONTHLY
@@ -901,8 +972,9 @@ enum RecurringFrequency {
 
 model RecurringTemplate {
   id          Int                @id @default(autoincrement())
+  businessId  Int                @default(1)
   name        String             @db.VarChar(120)
-  type        String             @default("JOURNAL") @db.VarChar(20) // JOURNAL (extensible)
+  type        String             @default("JOURNAL") @db.VarChar(20)
   frequency   RecurringFrequency @default(MONTHLY)
   startDate   DateTime           @db.Date
   endDate     DateTime?          @db.Date
@@ -911,11 +983,12 @@ model RecurringTemplate {
   isActive    Boolean            @default(true)
   description String?            @db.VarChar(255)
   reference   String?            @db.VarChar(80)
-  payload     Json // template line data: [{ accountId, debit, credit, description }]
+  payload     Json
   createdBy   Int?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
+  @@index([businessId])
   @@index([isActive, nextRunDate])
   @@map("recurring_templates")
 }

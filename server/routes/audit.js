@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/auditController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 
 // Audit trail is sensitive — restricted to ADMIN and MANAGER.
 router.use(authenticate, authorize('ADMIN', 'MANAGER'));

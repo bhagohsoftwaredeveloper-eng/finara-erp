@@ -21,7 +21,7 @@ const computeTotals = (lines, taxAmount = 0) => {
 exports.list = async (req, res, next) => {
   try {
     const { status, vendorId, search, page = 1, limit = 20 } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (status) where.status = status;
     if (vendorId) where.vendorId = Number(vendorId);
     if (search) where.OR = [{ poNumber: { contains: search } }, { notes: { contains: search } }];
@@ -61,6 +61,7 @@ exports.create = async (req, res, next) => {
 
     const po = await prisma.purchaseOrder.create({
       data: {
+        businessId: req.businessId,
         poNumber,
         vendorId: Number(vendorId),
         orderDate: new Date(orderDate),

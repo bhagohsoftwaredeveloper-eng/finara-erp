@@ -14,7 +14,7 @@ async function nextTxnNo() {
 exports.listCategories = async (req, res, next) => {
   try {
     const cats = await prisma.inventoryCategory.findMany({
-      where: { isActive: true },
+      where: { businessId: req.businessId, isActive: true },
       include: { _count: { select: { items: true } } },
       orderBy: { name: 'asc' },
     });
@@ -26,7 +26,7 @@ exports.createCategory = async (req, res, next) => {
   const { name, type = 'PRODUCT', description } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
   try {
-    const cat = await prisma.inventoryCategory.create({ data: { name, type, description } });
+    const cat = await prisma.inventoryCategory.create({ data: { businessId: req.businessId, name, type, description } });
     res.status(201).json(cat);
   } catch (e) { next(e); }
 };
@@ -58,7 +58,7 @@ exports.deleteCategory = async (req, res, next) => {
 exports.listItems = async (req, res, next) => {
   const { search, categoryId, type, lowStock, isActive } = req.query;
   try {
-    const where = {};
+    const where = { businessId: req.businessId };
     if (isActive !== 'all') where.isActive = isActive === 'false' ? false : true;
     if (search) where.OR = [
       { name:        { contains: search } },
@@ -129,6 +129,7 @@ exports.createItem = async (req, res, next) => {
   try {
     const item = await prisma.inventoryItem.create({
       data: {
+        businessId: req.businessId,
         sku, name, description, unit,
         costPrice:    Number(costPrice),
         sellingPrice: Number(sellingPrice),
@@ -305,7 +306,8 @@ exports.createTransaction = async (req, res, next) => {
             { accountCode: '1210', debit:  totalCost, description: `Stock in — ${item.sku} ×${Math.abs(delta)}` },
             { accountCode: '2010', credit: totalCost, description: `Inventory payable — ${item.name}` },
           ],
-          userId: req.user?.id || 1,
+          userId:     req.user?.id || 1,
+          businessId: req.businessId,
         });
       } else if (['OUT', 'RETURN_OUT'].includes(type)) {
         // Stock out / sold: DR COGS, CR Inventory
@@ -317,7 +319,8 @@ exports.createTransaction = async (req, res, next) => {
             { accountCode: '5010', debit:  totalCost, description: `COGS — ${item.sku} ×${Math.abs(delta)}` },
             { accountCode: '1210', credit: totalCost, description: `Inventory out — ${item.name}` },
           ],
-          userId: req.user?.id || 1,
+          userId:     req.user?.id || 1,
+          businessId: req.businessId,
         });
       }
       // ADJUSTMENT type: no GL post (manual balance correction; accountant handles separately)

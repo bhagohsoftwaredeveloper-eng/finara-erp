@@ -1,8 +1,8 @@
 const router = require('express').Router();
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 const c = require('../controllers/inventoryController');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 // ── Categories ────────────────────────────────────────────────
 router.get   ('/categories',        c.listCategories);
