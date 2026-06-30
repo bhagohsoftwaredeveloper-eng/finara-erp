@@ -56,7 +56,7 @@ const DEFAULTS = {
 // Get all settings, merged with defaults
 const getAll = async (req, res, next) => {
   try {
-    const rows = await prisma.systemSetting.findMany();
+    const rows = await prisma.systemSetting.findMany({ where: { businessId: req.businessId } });
     const map  = rows.reduce((acc, r) => { acc[r.key] = r.value; return acc; }, {});
     const merged = { ...DEFAULTS, ...map };
     res.json(merged);
@@ -84,7 +84,7 @@ const saveAll = async (req, res, next) => {
 // Reset to defaults
 const resetDefaults = async (req, res, next) => {
   try {
-    await prisma.systemSetting.deleteMany();
+    await prisma.systemSetting.deleteMany({ where: { businessId: req.businessId } });
     logger.warn(`[settings] All settings reset by user ${req.user?.id}`);
     res.json({ message: 'Settings reset to defaults' });
   } catch (err) { next(err); }

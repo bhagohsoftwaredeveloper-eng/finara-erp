@@ -1,10 +1,10 @@
 const router = require('express').Router();
 const { body, param } = require('express-validator');
 const ctrl = require('../controllers/payableController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 // Vendors
 router.get('/vendors', ctrl.listVendors);

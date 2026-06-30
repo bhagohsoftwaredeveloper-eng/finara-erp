@@ -1,11 +1,11 @@
 const router   = require('express').Router();
 const ctrl     = require('../controllers/remittanceController');
 const dailyCtrl= require('../controllers/dailyRemittanceController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 
 const write = authorize('ADMIN', 'MANAGER', 'ACCOUNTANT');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 // ── Government Remittance (SSS / PhilHealth / Pag-IBIG / BIR 1601-C) ──
 router.get('/summary',           ctrl.getSummary);

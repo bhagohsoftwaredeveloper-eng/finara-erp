@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const prisma = require('../config/database');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, resolveBusiness } = require('../middleware/auth');
 
-router.use(authenticate);
+router.use(authenticate, resolveBusiness);
 
 router.get('/', async (req, res, next) => {
   try {
@@ -16,22 +16,22 @@ router.get('/', async (req, res, next) => {
       monthRevenue, monthExpense,
       overdueReceivables, overduePayables,
     ] = await Promise.all([
-      prisma.customer.count({ where: { isActive: true } }),
-      prisma.vendor.count({ where: { isActive: true } }),
-      prisma.employee.count({ where: { isActive: true } }),
-      prisma.invoice.aggregate({ where: { status: { in: ['OPEN','PARTIAL'] } }, _sum: { totalAmount: true }, _count: true }),
-      prisma.bill.aggregate({ where: { status: { in: ['OPEN','PARTIAL'] } }, _sum: { totalAmount: true }, _count: true }),
-      prisma.journalEntry.count({ where: { status: 'DRAFT' } }),
+      prisma.customer.count({ where: { businessId: req.businessId, isActive: true } }),
+      prisma.vendor.count({ where: { businessId: req.businessId, isActive: true } }),
+      prisma.employee.count({ where: { businessId: req.businessId, isActive: true } }),
+      prisma.invoice.aggregate({ where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL'] } }, _sum: { totalAmount: true }, _count: true }),
+      prisma.bill.aggregate({ where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL'] } }, _sum: { totalAmount: true }, _count: true }),
+      prisma.journalEntry.count({ where: { businessId: req.businessId, status: 'DRAFT' } }),
       prisma.journalLine.aggregate({
-        where: { entry: { status: 'POSTED', entryDate: { gte: startOfMonth, lte: endOfMonth } }, account: { accountType: 'REVENUE' } },
+        where: { entry: { businessId: req.businessId, status: 'POSTED', entryDate: { gte: startOfMonth, lte: endOfMonth } }, account: { accountType: 'REVENUE' } },
         _sum: { credit: true },
       }),
       prisma.journalLine.aggregate({
-        where: { entry: { status: 'POSTED', entryDate: { gte: startOfMonth, lte: endOfMonth } }, account: { accountType: 'EXPENSE' } },
+        where: { entry: { businessId: req.businessId, status: 'POSTED', entryDate: { gte: startOfMonth, lte: endOfMonth } }, account: { accountType: 'EXPENSE' } },
         _sum: { debit: true },
       }),
-      prisma.invoice.aggregate({ where: { status: { in: ['OPEN','PARTIAL'] }, dueDate: { lt: today } }, _sum: { totalAmount: true } }),
-      prisma.bill.aggregate({ where: { status: { in: ['OPEN','PARTIAL'] }, dueDate: { lt: today } }, _sum: { totalAmount: true } }),
+      prisma.invoice.aggregate({ where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL'] }, dueDate: { lt: today } }, _sum: { totalAmount: true } }),
+      prisma.bill.aggregate({ where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL'] }, dueDate: { lt: today } }, _sum: { totalAmount: true } }),
     ]);
 
     res.json({

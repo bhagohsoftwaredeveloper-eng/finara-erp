@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { expenses as expApi, accounts as accountsApi } from '@/lib/api';
 import { formatCurrency, getUser } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
+import Attachments from '@/components/Attachments';
 import toast from 'react-hot-toast';
 import {
   Plus, X, Printer, RefreshCw, Trash2, Send, CheckCircle2,
@@ -543,6 +544,13 @@ export default function ExpensesPage() {
           <textarea className="input h-16 resize-none" placeholder="Optional notes…"
             value={fNotes} onChange={e => setFNotes(e.target.value)} />
         </div>
+
+        {/* Attachments — only available once the voucher exists */}
+        {editing?.id && (
+          <div className="border-t border-gray-100 pt-4">
+            <Attachments entity="ExpenseVoucher" entityId={editing.id} />
+          </div>
+        )}
 
         {/* Tip for non-vendor payees */}
         <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700">

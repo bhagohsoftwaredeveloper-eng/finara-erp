@@ -1,5 +1,6 @@
 module.exports = {
   auth:          require('./auth'),
+  businesses:    require('./businesses'),
   accounts:      require('./accounts'),
   journal:       require('./journal'),
   payable:       require('./payable'),
@@ -12,4 +13,13 @@ module.exports = {
   inventory:     require('./inventory'),
   remittance:    require('./remittance'),
   expense:       require('./expense'),
+  audit:         require('./audit'),
+  attachments:   require('./attachments'),
+  purchaseOrders:require('./purchaseOrders'),
+  assets:        require('./assets'),
+  bank:          require('./bank'),
+  budget:        require('./budget'),
+  recurring:     require('./recurring'),
+  notifications: require('./notifications'),
+  search:        require('./search'),
 };

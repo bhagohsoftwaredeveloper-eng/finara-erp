@@ -97,7 +97,7 @@ exports.ewtSummary = async (req, res, next) => {
     const dateRange = parseRange(req);
 
     const bills = await prisma.bill.findMany({
-      where: { billDate: dateRange, status: { not: 'VOID' } },
+      where: { businessId: req.businessId, billDate: dateRange, status: { not: 'VOID' } },
       include: { vendor: true },
     });
 

@@ -17,6 +17,17 @@ const PORT = process.env.PORT || 5000;
 // is honored for correct client IPs and express-rate-limit.
 app.set('trust proxy', 1);
 
+// ─── API Docs (Swagger UI) ────────────────────────────────────
+// Mounted before helmet so the Swagger UI assets aren't blocked by CSP.
+try {
+  const swaggerUi = require('swagger-ui-express');
+  const openapiSpec = require('./docs/openapi');
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'Finara ERP API Docs' }));
+  app.get('/api/docs.json', (req, res) => res.json(openapiSpec));
+} catch (e) {
+  logger.error(`[docs] Swagger UI unavailable: ${e.message}`);
+}
+
 // ─── Security Middleware ──────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
@@ -32,7 +43,7 @@ app.use(helmet({
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-business-id'],
   credentials: true,
 }));
 
@@ -99,8 +110,9 @@ app.get('/api/diag/db', async (req, res) => {
 });
 
 // ─── API Routes ────────────────────────────────────────────
-app.use('/api/auth', authLimiter, routes.auth);
-app.use('/api/accounts', routes.accounts);
+app.use('/api/auth',       authLimiter, routes.auth);
+app.use('/api/businesses', routes.businesses);
+app.use('/api/accounts',   routes.accounts);
 app.use('/api/journal', routes.journal);
 app.use('/api/payable', routes.payable);
 app.use('/api/receivable', routes.receivable);
@@ -112,6 +124,15 @@ app.use('/api/custom-reports', routes.customReports);
 app.use('/api/inventory',      routes.inventory);
 app.use('/api/remittance',     routes.remittance);
 app.use('/api/expenses',       routes.expense);
+app.use('/api/audit',          routes.audit);
+app.use('/api/attachments',    routes.attachments);
+app.use('/api/purchase-orders',routes.purchaseOrders);
+app.use('/api/assets',         routes.assets);
+app.use('/api/bank',           routes.bank);
+app.use('/api/budget',         routes.budget);
+app.use('/api/recurring',      routes.recurring);
+app.use('/api/notifications',  routes.notifications);
+app.use('/api/search',         routes.search);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {

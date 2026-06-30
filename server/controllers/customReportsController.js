@@ -6,6 +6,7 @@ const { createError } = require('../middleware/errorHandler');
 exports.list = async (req, res, next) => {
   try {
     const reports = await prisma.customReport.findMany({
+      where: { businessId: req.businessId },
       orderBy: { updatedAt: 'desc' },
       select: { id: true, name: true, description: true, reportType: true, createdBy: true, createdAt: true, updatedAt: true },
     });
@@ -29,7 +30,8 @@ exports.create = async (req, res, next) => {
     if (!config)       throw createError('Report configuration is required', 400);
 
     const report = await prisma.customReport.create({
-      data: { name: name.trim(), description: description?.trim() || null, reportType, config, createdBy: req.user.id },
+      data: {
+        businessId: req.businessId, name: name.trim(), description: description?.trim() || null, reportType, config, createdBy: req.user.id },
     });
     res.status(201).json(report);
   } catch (err) { next(err); }
