@@ -66,13 +66,14 @@ const getAll = async (req, res, next) => {
 // Upsert a batch of settings
 const saveAll = async (req, res, next) => {
   try {
+    const businessId = req.businessId;
     const updates = Object.entries(req.body);
     await Promise.all(
       updates.map(([key, value]) =>
         prisma.systemSetting.upsert({
-          where:  { key },
+          where:  { businessId_key: { businessId, key } },
           update: { value: String(value) },
-          create: { key, value: String(value) },
+          create: { businessId, key, value: String(value) },
         })
       )
     );

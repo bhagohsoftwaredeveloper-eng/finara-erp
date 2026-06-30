@@ -471,7 +471,7 @@ model SystemSetting {
   id         Int      @id @default(autoincrement())
   businessId Int      @default(1)
   key        String   @db.VarChar(100)
-  value      String   @db.Text
+  value      String   @db.LongText
   updatedAt  DateTime @updatedAt
 
   @@unique([businessId, key])
