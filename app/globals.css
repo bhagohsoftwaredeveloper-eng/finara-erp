@@ -6,6 +6,9 @@
 
 @layer base {
   * { @apply border-gray-200 dark:border-gray-700; }
+  /* 14px base on mobile → 16px on desktop */
+  html { font-size: 14px; }
+  @media (min-width: 1024px) { html { font-size: 16px; } }
   body { @apply bg-gray-50 text-gray-900 font-sans antialiased dark:bg-gray-950 dark:text-gray-100; }
 }
 
@@ -34,9 +37,9 @@
   .card-body { @apply p-6; }
 
   .table-wrapper { @apply overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800; }
-  .table { @apply w-full text-sm text-left; }
-  .table th { @apply bg-gray-50 px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wider border-b border-gray-200 whitespace-nowrap dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700; }
-  .table td { @apply px-4 py-3 border-b border-gray-100 text-gray-700 dark:border-gray-800 dark:text-gray-300; }
+  .table { @apply w-full text-xs lg:text-sm text-left; }
+  .table th { @apply bg-gray-50 px-3 lg:px-4 py-2 lg:py-3 font-semibold text-gray-600 text-[10px] lg:text-xs uppercase tracking-wider border-b border-gray-200 whitespace-nowrap dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700; }
+  .table td { @apply px-3 lg:px-4 py-2 lg:py-3 border-b border-gray-100 text-gray-700 dark:border-gray-800 dark:text-gray-300; }
   .table tr:last-child td { @apply border-b-0; }
   .table tr:hover td { @apply bg-gray-50 dark:bg-gray-800/60; }
 
@@ -48,10 +51,10 @@
   .badge-gray { @apply badge bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300; }
   .badge-purple { @apply badge bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300; }
 
-  .stat-card { @apply card p-5 flex items-start gap-4; }
-  .stat-icon { @apply w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0; }
-  .stat-value { @apply text-2xl font-bold text-gray-900 mt-0.5 dark:text-gray-100; }
-  .stat-label { @apply text-sm text-gray-500 dark:text-gray-400; }
+  .stat-card { @apply card p-3 lg:p-5 flex items-start gap-3 lg:gap-4; }
+  .stat-icon { @apply w-9 h-9 lg:w-12 lg:h-12 rounded-xl flex items-center justify-center flex-shrink-0; }
+  .stat-value { @apply text-lg lg:text-2xl font-bold text-gray-900 mt-0.5 dark:text-gray-100; }
+  .stat-label { @apply text-xs lg:text-sm text-gray-500 dark:text-gray-400; }
 
   /* ── Top-drawer dialogs ── */
   .modal-overlay { @apply fixed inset-0 bg-black/50 z-50 flex justify-center items-start overflow-y-auto dark:bg-black/70; }
@@ -61,14 +64,14 @@
     max-height: 88vh;
     animation: topDrawerIn 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .modal-header { @apply px-6 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 dark:border-gray-800; }
-  .modal-body   { @apply p-6 overflow-y-auto flex-1; }
-  .modal-footer { @apply px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3 flex-shrink-0 bg-gray-50 dark:border-gray-800 dark:bg-gray-800/50; }
+  .modal-header { @apply px-4 lg:px-6 py-3 lg:py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 dark:border-gray-800; }
+  .modal-body   { @apply p-4 lg:p-6 overflow-y-auto flex-1; }
+  .modal-footer { @apply px-4 lg:px-6 py-3 lg:py-4 border-t border-gray-200 flex items-center justify-end gap-3 flex-shrink-0 bg-gray-50 dark:border-gray-800 dark:bg-gray-800/50; }
 
   /* Page header — stacks vertically on mobile */
-  .page-header { @apply mb-4 lg:mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between; }
-  .page-title { @apply text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100; }
-  .page-subtitle { @apply text-sm text-gray-500 mt-0.5 dark:text-gray-400; }
+  .page-header { @apply mb-4 lg:mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between; }
+  .page-title { @apply text-lg lg:text-2xl font-bold text-gray-900 dark:text-gray-100; }
+  .page-subtitle { @apply text-xs lg:text-sm text-gray-500 mt-0.5 dark:text-gray-400; }
 
   /* Responsive table wrapper — always horizontal-scroll on mobile */
   .table-responsive { @apply overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0; }

@@ -15,8 +15,8 @@ export default function DashboardLayout({ children }) {
   const pathname = usePathname();
 
   const [authed,    setAuthed]    = useState(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);   // default: icon-only
+  const [mobileOpen, setMobileOpen] = useState(false); // mobile nav: closed by default
   const [readonly,  setReadonly]  = useState(false);
   const [permReady, setPermReady] = useState(false);
 
@@ -25,7 +25,11 @@ export default function DashboardLayout({ children }) {
     else { setAuthed(false); router.push('/login'); }
   }, [router]);
 
-  useEffect(() => { setCollapsed(localStorage.getItem('sidebarCollapsed') === '1'); }, []);
+  useEffect(() => {
+    // Only override default if user explicitly set a preference
+    const stored = localStorage.getItem('sidebarCollapsed');
+    if (stored !== null) setCollapsed(stored === '1');
+  }, []);
   useEffect(() => { if (authed) setReadonly(!canWrite(getUser()?.role)); }, [authed]);
 
   useEffect(() => {
