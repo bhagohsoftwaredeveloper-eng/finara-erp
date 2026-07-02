@@ -169,6 +169,7 @@ export default function BusinessesPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
