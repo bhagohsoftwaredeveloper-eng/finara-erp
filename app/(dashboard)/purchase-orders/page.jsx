@@ -4,6 +4,7 @@ import { purchaseOrders as poApi, payable, accounts as acctApi } from '@/lib/api
 import { formatCurrency, formatDate } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import { Plus, Send, PackageCheck, FileText, XCircle, Trash2, Eye } from 'lucide-react';
+import VendorSelect from '@/components/VendorSelect';
 
 const STATUS_BADGE = {
   DRAFT: 'badge-gray', SENT: 'badge-blue', PARTIAL: 'badge-yellow',
@@ -12,7 +13,7 @@ const STATUS_BADGE = {
 
 const emptyLine = () => ({ description: '', quantity: 1, unitPrice: 0, accountId: '' });
 
-function POModal({ po, vendors, accounts, onClose, onSaved }) {
+function POModal({ po, vendors, accounts, onClose, onSaved, onVendorAdded }) {
   const [form, setForm] = useState(po || {
     vendorId: '', orderDate: new Date().toISOString().split('T')[0],
     expectedDate: '', notes: '', taxAmount: 0, lines: [emptyLine(), emptyLine()],
@@ -54,10 +55,13 @@ function POModal({ po, vendors, accounts, onClose, onSaved }) {
             <div className="form-grid">
               <div className="form-group">
                 <label className="label">Vendor *</label>
-                <select className="select" value={form.vendorId} onChange={(e) => setForm((f) => ({ ...f, vendorId: e.target.value }))} required>
-                  <option value="">-- Select Vendor --</option>
-                  {vendors.map((v) => <option key={v.id} value={v.id}>{v.vendorCode} — {v.name}</option>)}
-                </select>
+                <VendorSelect
+                  vendors={vendors}
+                  value={form.vendorId}
+                  onChange={(id) => setForm((f) => ({ ...f, vendorId: id }))}
+                  onVendorAdded={onVendorAdded}
+                  required
+                />
               </div>
               <div className="form-group">
                 <label className="label">Order Date *</label>
@@ -225,7 +229,7 @@ export default function PurchaseOrdersPage() {
         </table>
       </div></div>
 
-      {modal && <POModal po={modal === 'new' ? null : modal} vendors={vendors} accounts={accounts} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+      {modal && <POModal po={modal === 'new' ? null : modal} vendors={vendors} accounts={accounts} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onVendorAdded={(v) => setVendors((prev) => [v, ...prev])} />}
       {receivePO && <ReceiveModal po={receivePO} onClose={() => setReceivePO(null)} onSaved={() => { setReceivePO(null); load(); }} />}
     </div>
   );

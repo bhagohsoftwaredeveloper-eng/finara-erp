@@ -13,14 +13,19 @@ const validatePayload = (payload) => {
 
 exports.list = async (req, res, next) => {
   try {
-    const templates = await prisma.recurringTemplate.findMany({ orderBy: { nextRunDate: 'asc' } });
+    const templates = await prisma.recurringTemplate.findMany({
+      where: { businessId: req.businessId },
+      orderBy: { nextRunDate: 'asc' },
+    });
     res.json(templates);
   } catch (err) { next(err); }
 };
 
 exports.getOne = async (req, res, next) => {
   try {
-    const t = await prisma.recurringTemplate.findUnique({ where: { id: Number(req.params.id) } });
+    const t = await prisma.recurringTemplate.findFirst({
+      where: { id: Number(req.params.id), businessId: req.businessId },
+    });
     if (!t) throw createError('Template not found', 404);
     res.json(t);
   } catch (err) { next(err); }
@@ -32,6 +37,7 @@ exports.create = async (req, res, next) => {
     validatePayload(payload);
     const t = await prisma.recurringTemplate.create({
       data: {
+        businessId: req.businessId,
         name,
         type: 'JOURNAL',
         frequency: frequency || 'MONTHLY',
@@ -53,6 +59,9 @@ exports.update = async (req, res, next) => {
     const id = Number(req.params.id);
     const { name, frequency, startDate, endDate, description, reference, payload, nextRunDate } = req.body;
     if (payload) validatePayload(payload);
+    // Verify ownership before update
+    const existing = await prisma.recurringTemplate.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Template not found', 404);
     const t = await prisma.recurringTemplate.update({
       where: { id },
       data: {
@@ -74,11 +83,12 @@ exports.update = async (req, res, next) => {
 // Generate a journal entry from a template and advance its schedule.
 const runTemplate = async (t, userId) => {
   const entry = await glPost.post({
-    entryDate: t.nextRunDate,
+    entryDate:   t.nextRunDate,
     description: t.description || `Recurring — ${t.name}`,
-    reference: t.reference || null,
-    userId: userId || t.createdBy || 1,
-    lines: t.payload,
+    reference:   t.reference || null,
+    userId:      userId || t.createdBy || 1,
+    businessId:  t.businessId,          // ← fixed: was always defaulting to 1
+    lines:       t.payload,
   });
   const nextRunDate = advance(t.nextRunDate, t.frequency);
   const stillActive = !t.endDate || nextRunDate <= new Date(t.endDate);
@@ -92,7 +102,7 @@ const runTemplate = async (t, userId) => {
 exports.runNow = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const t = await prisma.recurringTemplate.findUnique({ where: { id } });
+    const t = await prisma.recurringTemplate.findFirst({ where: { id, businessId: req.businessId } });
     if (!t) throw createError('Template not found', 404);
     const entry = await runTemplate(t, req.user?.id);
     await recordAudit({ req, action: 'RUN', entity: 'RecurringTemplate', entityId: id, summary: `Ran recurring "${t.name}" → ${entry.entryNo}` });
@@ -106,7 +116,7 @@ exports.runDue = async (req, res, next) => {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     const due = await prisma.recurringTemplate.findMany({
-      where: { isActive: true, nextRunDate: { lte: today } },
+      where: { businessId: req.businessId, isActive: true, nextRunDate: { lte: today } },
     });
     const results = [];
     for (const t of due) {
@@ -125,7 +135,7 @@ exports.runDue = async (req, res, next) => {
 exports.toggle = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const t = await prisma.recurringTemplate.findUnique({ where: { id } });
+    const t = await prisma.recurringTemplate.findFirst({ where: { id, businessId: req.businessId } });
     if (!t) throw createError('Template not found', 404);
     const updated = await prisma.recurringTemplate.update({ where: { id }, data: { isActive: !t.isActive } });
     res.json(updated);
@@ -135,6 +145,8 @@ exports.toggle = async (req, res, next) => {
 exports.remove = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const existing = await prisma.recurringTemplate.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Template not found', 404);
     await prisma.recurringTemplate.delete({ where: { id } });
     await recordAudit({ req, action: 'DELETE', entity: 'RecurringTemplate', entityId: id, summary: 'Deleted recurring template' });
     res.json({ message: 'Template deleted' });

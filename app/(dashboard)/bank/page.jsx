@@ -132,8 +132,15 @@ export default function BankPage() {
   const [acctModal, setAcctModal] = useState(false);
   const [txnModal, setTxnModal] = useState(false);
   const [reconcileId, setReconcileId] = useState(null);
+  const [acctLoading, setAcctLoading] = useState(true);
 
-  const loadAccounts = useCallback(() => { bankApi.accounts.list().then((r) => { setAccounts(r.data); if (!selected && r.data[0]) setSelected(r.data[0]); }); }, [selected]);
+  const loadAccounts = useCallback(() => {
+    setAcctLoading(true);
+    bankApi.accounts.list()
+      .then((r) => { setAccounts(r.data); if (!selected && r.data[0]) setSelected(r.data[0]); })
+      .catch(() => toast.error('Failed to load bank accounts'))
+      .finally(() => setAcctLoading(false));
+  }, [selected]);
   const loadDetail = useCallback(() => {
     if (!selected) return;
     bankApi.transactions.list({ bankAccountId: selected.id }).then((r) => setTxns(r.data));
@@ -164,7 +171,7 @@ export default function BankPage() {
         {/* Accounts list */}
         <div className="card lg:col-span-1"><div className="card-body">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Accounts</h4>
-          {accounts.length === 0 ? <p className="text-xs text-gray-400">No bank accounts yet.</p> : (
+          {acctLoading ? <p className="text-xs text-gray-400">Loading…</p> : accounts.length === 0 ? <p className="text-xs text-gray-400">No bank accounts yet.</p> : (
             <ul className="space-y-1">
               {accounts.map((a) => (
                 <li key={a.id}>

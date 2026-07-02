@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { dashboard as dashApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/auth';
+import toast from 'react-hot-toast';
 import {
   TrendingUp, TrendingDown, AlertCircle, Users, Building2,
   ShoppingCart, FileText, CheckCircle, Clock,
@@ -34,7 +35,7 @@ export default function DashboardPage() {
   useEffect(() => {
     dashApi.get()
       .then((r) => setData(r.data))
-      .catch(console.error)
+      .catch(() => toast.error('Failed to load dashboard data'))
       .finally(() => setLoading(false));
   }, []);
 

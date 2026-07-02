@@ -86,7 +86,7 @@ export default function ReportBuilderPage() {
 
   // Load all accounts for picker
   useEffect(() => {
-    accounts.list({ limit: 500 }).then((r) => setAllAccounts(r.data?.data || [])).catch(() => {});
+    accounts.list({ limit: 500 }).then((r) => setAllAccounts(r.data?.data || [])).catch(() => toast.error('Failed to load accounts'));
   }, []);
 
   // Load existing report for editing

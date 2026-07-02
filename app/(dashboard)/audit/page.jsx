@@ -4,6 +4,7 @@ import { audit as auditApi } from '@/lib/api';
 import { formatDate } from '@/lib/auth';
 import { exportToCSV } from '@/lib/export';
 import { Filter, Shield, Search, RefreshCw, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 // Map actions to badge colours
 const ACTION_BADGE = {
@@ -40,11 +41,12 @@ export default function AuditPage() {
     setLoading(true);
     auditApi.list({ ...filter, page, limit: 50 })
       .then((r) => { setLogs(r.data.data); setTotal(r.data.total); })
+      .catch(() => toast.error('Failed to load audit logs'))
       .finally(() => setLoading(false));
   }, [filter, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { auditApi.filters().then((r) => setOpts(r.data)).catch(() => {}); }, []);
+  useEffect(() => { auditApi.filters().then((r) => setOpts(r.data)).catch(() => toast.error('Failed to load filter options')); }, []);
 
   const reset = () => { setFilter({ action: '', entity: '', search: '', from: '', to: '' }); setPage(1); };
 

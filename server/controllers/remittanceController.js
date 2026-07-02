@@ -7,26 +7,21 @@ const TYPE_GL = {
   SSS:       { payable: '2050', expenseCode: '6120' },
   PHILHEALTH:{ payable: '2060', expenseCode: '6130' },
   PAGIBIG:   { payable: '2070', expenseCode: '6140' },
-  BIR_1601C: { payable: '2040', expenseCode: null   }, // BIR is a WTax payable, no separate expense line
+  BIR_1601C: { payable: '2040', expenseCode: null   },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-/** Compute Philippine government remittance due date */
 function getDueDate(type, month, year) {
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextYear  = month === 12 ? year + 1 : year;
-
   if (type === 'SSS') {
-    // Last day of following month
     const lastDay = new Date(nextYear, nextMonth, 0).getDate();
     return new Date(nextYear, nextMonth - 1, lastDay);
   }
-  // PhilHealth / Pag-IBIG / BIR 1601-C → 15th of following month
   return new Date(nextYear, nextMonth - 1, 15);
 }
 
-/** Check if a remittance period is overdue and update if needed */
 function resolveStatus(rp) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const due   = new Date(rp.dueDate);
@@ -36,7 +31,6 @@ function resolveStatus(rp) {
   return rp;
 }
 
-/** Map type → PayrollItem fields */
 const TYPE_FIELDS = {
   SSS:       { ee: 'sssEmployee',   er: 'sssEmployer',   gross: null },
   PHILHEALTH:{ ee: 'philhealthEe',  er: 'philhealthEr',  gross: null },
@@ -51,15 +45,19 @@ exports.getSummary = async (req, res, next) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const yr    = today.getFullYear();
     const mo    = today.getMonth() + 1;
+    const biz   = req.businessId;
 
     const [all, thisMonth, paidYTD] = await Promise.all([
-      prisma.remittancePeriod.findMany({ select: { status: true, dueDate: true, totalAmount: true } }),
       prisma.remittancePeriod.findMany({
-        where: { periodMonth: mo, periodYear: yr },
+        where: { businessId: biz },
+        select: { status: true, dueDate: true, totalAmount: true },
+      }),
+      prisma.remittancePeriod.findMany({
+        where: { businessId: biz, periodMonth: mo, periodYear: yr },
         select: { type: true, status: true, totalAmount: true, dueDate: true },
       }),
       prisma.remittancePeriod.findMany({
-        where: { status: 'PAID', periodYear: yr },
+        where: { businessId: biz, status: 'PAID', periodYear: yr },
         select: { paidAmount: true, totalAmount: true },
       }),
     ]);
@@ -69,7 +67,6 @@ exports.getSummary = async (req, res, next) => {
     const thisMonthTotal = thisMonth.reduce((s, r) => s + Number(r.totalAmount), 0);
     const paidTotal      = paidYTD.reduce((s, r) => s + Number(r.paidAmount || r.totalAmount), 0);
 
-    // Next upcoming deadlines (next 3 months) — generate theoretical deadlines
     const TYPES = ['SSS', 'PHILHEALTH', 'PAGIBIG', 'BIR_1601C'];
     const upcoming = [];
     for (let i = 0; i < 3; i++) {
@@ -89,7 +86,7 @@ exports.getSummary = async (req, res, next) => {
 exports.list = async (req, res, next) => {
   try {
     const { type, status, year, month } = req.query;
-    const where = {};
+    const where = { businessId: req.businessId };
     if (type)   where.type        = type;
     if (status) where.status      = status;
     if (year)   where.periodYear  = Number(year);
@@ -110,8 +107,8 @@ exports.list = async (req, res, next) => {
 exports.get = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const row = await prisma.remittancePeriod.findUnique({
-      where: { id },
+    const row = await prisma.remittancePeriod.findFirst({
+      where: { id, businessId: req.businessId },
       include: { details: { include: { employee: { select: { id: true, firstName: true, lastName: true, employeeNo: true, sssNo: true, philhealthNo: true, pagibigNo: true, tin: true } } } } },
     });
     if (!row) throw createError('Remittance record not found', 404);
@@ -129,10 +126,10 @@ exports.calculate = async (req, res, next) => {
     const mo = Number(periodMonth);
     const yr = Number(periodYear);
 
-    // Fetch all payroll items from periods that ended within the requested month/year
     const items = await prisma.payrollItem.findMany({
       where: {
         period: {
+          businessId: req.businessId,           // ← fixed: filter by business
           endDate: {
             gte: new Date(yr, mo - 1, 1),
             lt:  new Date(yr, mo, 1),
@@ -147,17 +144,13 @@ exports.calculate = async (req, res, next) => {
 
     const { ee, er, gross } = TYPE_FIELDS[type];
 
-    // Group by employee
     const byEmployee = {};
     for (const item of items) {
       const empId = item.employeeId;
       if (!byEmployee[empId]) {
         byEmployee[empId] = {
-          employee:         item.employee,
-          employeeShare:    0,
-          employerShare:    0,
-          totalContribution:0,
-          grossCompensation:0,
+          employee: item.employee,
+          employeeShare: 0, employerShare: 0, totalContribution: 0, grossCompensation: 0,
         };
       }
       byEmployee[empId].employeeShare     += Number(item[ee] || 0);
@@ -189,12 +182,13 @@ exports.create = async (req, res, next) => {
       isManual = false, notes, details = [],
     } = req.body;
 
-    const mo = Number(periodMonth);
-    const yr = Number(periodYear);
+    const mo  = Number(periodMonth);
+    const yr  = Number(periodYear);
+    const biz = req.businessId;
 
-    // Check uniqueness
-    const exists = await prisma.remittancePeriod.findUnique({
-      where: { type_periodMonth_periodYear: { type, periodMonth: mo, periodYear: yr } },
+    // Check uniqueness per business
+    const exists = await prisma.remittancePeriod.findFirst({
+      where: { businessId: biz, type, periodMonth: mo, periodYear: yr },
     });
     if (exists) throw createError(`A ${type} remittance for ${mo}/${yr} already exists`, 409);
 
@@ -202,6 +196,7 @@ exports.create = async (req, res, next) => {
 
     const record = await prisma.remittancePeriod.create({
       data: {
+        businessId: biz,
         type, periodMonth: mo, periodYear: yr, dueDate,
         totalEmployeeShare: Number(totalEmployeeShare || 0),
         totalEmployerShare: Number(totalEmployerShare || 0),
@@ -235,7 +230,7 @@ exports.update = async (req, res, next) => {
       isManual, notes, details,
     } = req.body;
 
-    const existing = await prisma.remittancePeriod.findUnique({ where: { id } });
+    const existing = await prisma.remittancePeriod.findFirst({ where: { id, businessId: req.businessId } });
     if (!existing) throw createError('Remittance record not found', 404);
     if (existing.status === 'PAID') throw createError('Cannot edit a paid remittance', 400);
 
@@ -250,7 +245,6 @@ exports.update = async (req, res, next) => {
       },
     });
 
-    // Replace details if provided
     if (Array.isArray(details)) {
       await prisma.remittanceDetail.deleteMany({ where: { remittancePeriodId: id } });
       if (details.length) {
@@ -267,8 +261,8 @@ exports.update = async (req, res, next) => {
       }
     }
 
-    const updated = await prisma.remittancePeriod.findUnique({
-      where: { id },
+    const updated = await prisma.remittancePeriod.findFirst({
+      where: { id, businessId: req.businessId },
       include: { details: { include: { employee: { select: { id: true, firstName: true, lastName: true, employeeNo: true } } } } },
     });
     res.json(resolveStatus(updated));
@@ -281,6 +275,8 @@ exports.markFiled = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { referenceNo, filedDate } = req.body;
+    const existing = await prisma.remittancePeriod.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Remittance record not found', 404);
     const updated = await prisma.remittancePeriod.update({
       where: { id },
       data: { status: 'FILED', referenceNo, filedDate: filedDate ? new Date(filedDate) : new Date() },
@@ -296,7 +292,7 @@ exports.markPaid = async (req, res, next) => {
     const id = Number(req.params.id);
     const { paidAmount, paidDate, referenceNo, penalty } = req.body;
 
-    const rp = await prisma.remittancePeriod.findUnique({ where: { id } });
+    const rp = await prisma.remittancePeriod.findFirst({ where: { id, businessId: req.businessId } });
     if (!rp) throw createError('Remittance period not found', 404);
 
     const updated = await prisma.remittancePeriod.update({
@@ -310,22 +306,21 @@ exports.markPaid = async (req, res, next) => {
       },
     });
 
-    // ── Auto-post to GL ──────────────────────────────────────────────────────
-    const glMap  = TYPE_GL[rp.type];
-    const amount = Number(paidAmount ?? rp.totalAmount);
+    // ── Auto-post to GL ─────────────────────────────────────────────
+    const glMap    = TYPE_GL[rp.type];
+    const amount   = Number(paidAmount ?? rp.totalAmount);
     const entryDate = paidDate || new Date().toISOString().slice(0, 10);
-    const label  = `${rp.type.replace('_', ' ')} — ${rp.periodMonth}/${rp.periodYear}`;
+    const label    = `${rp.type.replace('_', ' ')} — ${rp.periodMonth}/${rp.periodYear}`;
 
     if (glMap) {
       await glPost.safePost({
         entryDate,
         description: `Remittance Payment — ${label}`,
         reference:   referenceNo || `REM-${id}`,
+        businessId:  req.businessId,               // ← fixed: was missing
         lines: [
-          // DR Government Contributions Payable (clearing the liability)
-          { accountCode: glMap.payable, debit: amount, description: `Clear ${label}` },
-          // CR Cash / Bank
-          { accountCode: '1020', credit: amount, description: `Cash paid — ${label}` },
+          { accountCode: glMap.payable, debit: amount,  description: `Clear ${label}` },
+          { accountCode: '1020',        credit: amount,  description: `Cash paid — ${label}` },
         ],
         userId: req.user?.id || 1,
       });
@@ -340,7 +335,7 @@ exports.markPaid = async (req, res, next) => {
 exports.remove = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const existing = await prisma.remittancePeriod.findUnique({ where: { id } });
+    const existing = await prisma.remittancePeriod.findFirst({ where: { id, businessId: req.businessId } });
     if (!existing) throw createError('Not found', 404);
     if (existing.status !== 'DRAFT' && existing.status !== 'OVERDUE') {
       throw createError('Only DRAFT remittances can be deleted', 400);

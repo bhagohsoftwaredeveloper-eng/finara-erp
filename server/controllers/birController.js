@@ -26,19 +26,31 @@ const parseRange = (req) => {
 exports.vatSummary = async (req, res, next) => {
   try {
     const dateRange = parseRange(req);
+    const biz = req.businessId;
 
     const [salesLines, purchaseLines] = await Promise.all([
       prisma.invoiceLine.findMany({
-        where: { invoice: { invoiceDate: dateRange, status: { not: 'VOID' } } },
+        where: {
+          invoice: {
+            businessId: biz,                        // ← fixed
+            invoiceDate: dateRange,
+            status: { not: 'VOID' },
+          },
+        },
         include: { invoice: { select: { invoiceNo: true, invoiceDate: true, customer: { select: { name: true, tin: true } } } } },
       }),
       prisma.billLine.findMany({
-        where: { bill: { billDate: dateRange, status: { not: 'VOID' } } },
+        where: {
+          bill: {
+            businessId: biz,                        // ← fixed
+            billDate: dateRange,
+            status: { not: 'VOID' },
+          },
+        },
         include: { bill: { select: { billNo: true, billDate: true, vendor: { select: { name: true, tin: true } } } } },
       }),
     ]);
 
-    // Sales breakdown
     const vatableSalesLines  = salesLines.filter((l) => l.vatCode === 'VAT');
     const zeroRatedLines     = salesLines.filter((l) => l.vatCode === 'ZERO');
     const exemptSalesLines   = salesLines.filter((l) => l.vatCode === 'EXEMPT');
@@ -49,12 +61,10 @@ exports.vatSummary = async (req, res, next) => {
     const exemptSales    = exemptSalesLines.reduce((s, l)   => s + Number(l.amount), 0);
     const totalSalesNet  = vatableSales + zeroRatedSales + exemptSales;
 
-    // Purchase breakdown
     const vatablePurchLines  = purchaseLines.filter((l) => l.vatCode === 'VAT');
     const vatablePurchases   = vatablePurchLines.reduce((s, l) => s + Number(l.amount), 0);
     const inputVat           = vatablePurchases * 0.12;
 
-    // Transactions (last 50 for display)
     const transactions = salesLines.slice(0, 50).map((l) => ({
       type: 'SALES',
       name: l.invoice.customer.name,
@@ -77,15 +87,9 @@ exports.vatSummary = async (req, res, next) => {
 
     res.json({
       period: dateRange,
-      // Flat fields matching frontend consumption
-      outputVat,
-      inputVat,
-      vatableSales,
-      zeroRatedSales,
-      exemptSales,
-      totalSalesNet,
-      vatablePurchases,
-      priorExcessInput: 0,
+      outputVat, inputVat,
+      vatableSales, zeroRatedSales, exemptSales, totalSalesNet,
+      vatablePurchases, priorExcessInput: 0,
       transactions,
     });
   } catch (err) { next(err); }
@@ -95,15 +99,15 @@ exports.vatSummary = async (req, res, next) => {
 exports.ewtSummary = async (req, res, next) => {
   try {
     const dateRange = parseRange(req);
+    const biz = req.businessId;
 
     const bills = await prisma.bill.findMany({
-      where: { businessId: req.businessId, billDate: dateRange, status: { not: 'VOID' } },
+      where: { businessId: biz, billDate: dateRange, status: { not: 'VOID' } },
       include: { vendor: true },
     });
 
-    const totalVendors = await prisma.vendor.count({ where: { isActive: true } });
+    const totalVendors = await prisma.vendor.count({ where: { businessId: biz, isActive: true } }); // ← fixed
 
-    // Group by vendor, compute EWT (2% on services > ₱10,000)
     const vendorMap = {};
     for (const b of bills) {
       const vid = b.vendorId;
@@ -113,51 +117,32 @@ exports.ewtSummary = async (req, res, next) => {
           vendorName: b.vendor.name,
           vendorCode: b.vendor.vendorCode,
           tin: b.vendor.tin,
-          atcCode: 'WC200',        // default: other services 2%
-          totalPayments: 0,
-          vatableAmount: 0,
-          vatComponent: 0,
-          ewtAmount: 0,
+          atcCode: 'WC200',
+          totalPayments: 0, vatableAmount: 0, vatComponent: 0, ewtAmount: 0,
           bills: [],
         };
       }
-      const gross    = Number(b.totalAmount);
-      const vat      = Number(b.vatAmount);
-      const net      = Number(b.subtotal);
-      const subject  = net > 10000;
-      const ewt      = subject ? net * 0.02 : 0;
+      const gross   = Number(b.totalAmount);
+      const vat     = Number(b.vatAmount);
+      const net     = Number(b.subtotal);
+      const subject = net > 10000;
+      const ewt     = subject ? net * 0.02 : 0;
 
       vendorMap[vid].totalPayments  += gross;
       vendorMap[vid].vatableAmount  += net;
       vendorMap[vid].vatComponent   += vat;
       vendorMap[vid].ewtAmount      += ewt;
-      vendorMap[vid].bills.push({
-        billNo: b.billNo,
-        billDate: b.billDate,
-        gross,
-        net,
-        ewtRate: subject ? 0.02 : 0,
-        ewtAmount: ewt,
-      });
+      vendorMap[vid].bills.push({ billNo: b.billNo, billDate: b.billDate, gross, net, ewtRate: subject ? 0.02 : 0, ewtAmount: ewt });
     }
 
-    const vendors        = Object.values(vendorMap);
-    const ewtVendors     = vendors.filter((v) => v.ewtAmount > 0);
-    const totalPayments  = vendors.reduce((s, v) => s + v.totalPayments, 0);
-    const vatableAmount  = vendors.reduce((s, v) => s + v.vatableAmount, 0);
+    const vendors           = Object.values(vendorMap);
+    const ewtVendors        = vendors.filter((v) => v.ewtAmount > 0);
+    const totalPayments     = vendors.reduce((s, v) => s + v.totalPayments, 0);
+    const vatableAmount     = vendors.reduce((s, v) => s + v.vatableAmount, 0);
     const totalVatComponent = vendors.reduce((s, v) => s + v.vatComponent, 0);
-    const totalEwt       = vendors.reduce((s, v) => s + v.ewtAmount, 0);
+    const totalEwt          = vendors.reduce((s, v) => s + v.ewtAmount, 0);
 
-    res.json({
-      period: dateRange,
-      vendorCount: ewtVendors.length,
-      totalVendors,
-      totalPayments,
-      vatableAmount,
-      totalVatComponent,
-      totalEwt,
-      vendors,
-    });
+    res.json({ period: dateRange, vendorCount: ewtVendors.length, totalVendors, totalPayments, vatableAmount, totalVatComponent, totalEwt, vendors });
   } catch (err) { next(err); }
 };
 
@@ -165,12 +150,14 @@ exports.ewtSummary = async (req, res, next) => {
 exports.withholdingSummary = async (req, res, next) => {
   try {
     const { month, year } = req.query;
-    const y = Number(year || new Date().getFullYear());
-    const m = Number(month || new Date().getMonth() + 1);
+    const y   = Number(year || new Date().getFullYear());
+    const m   = Number(month || new Date().getMonth() + 1);
+    const biz = req.businessId;
 
     const items = await prisma.payrollItem.findMany({
       where: {
         period: {
+          businessId: biz,                          // ← fixed
           startDate: { gte: new Date(y, m - 1, 1) },
           endDate:   { lte: new Date(y, m, 0, 23, 59, 59) },
           status: { in: ['APPROVED', 'PAID'] },
@@ -191,7 +178,6 @@ exports.withholdingSummary = async (req, res, next) => {
     const totalNonTaxable   = totalSss + totalPhilhealth + totalPagibig;
     const totalTaxable      = Math.max(0, totalCompensation - totalNonTaxable);
 
-    // Unique periods for the month
     const periodMap = {};
     for (const i of items) {
       const pid = i.period.id;
@@ -206,20 +192,12 @@ exports.withholdingSummary = async (req, res, next) => {
       });
     }
 
-    // Unique employee count
     const employeeCount = new Set(items.map((i) => i.employeeId)).size;
 
     res.json({
       period: { month: m, year: y },
-      employeeCount,
-      totalCompensation,
-      totalTaxWithheld,
-      totalNetPay,
-      totalNonTaxable,
-      totalTaxable,
-      totalSss,
-      totalPhilhealth,
-      totalPagibig,
+      employeeCount, totalCompensation, totalTaxWithheld, totalNetPay,
+      totalNonTaxable, totalTaxable, totalSss, totalPhilhealth, totalPagibig,
       periods: Object.values(periodMap),
     });
   } catch (err) { next(err); }
@@ -229,14 +207,15 @@ exports.withholdingSummary = async (req, res, next) => {
 exports.reliefExport = async (req, res, next) => {
   try {
     const dateRange = parseRange(req);
+    const biz = req.businessId;
 
     const [bills, invoices] = await Promise.all([
       prisma.bill.findMany({
-        where: { billDate: dateRange, status: { not: 'VOID' } },
+        where: { businessId: biz, billDate: dateRange, status: { not: 'VOID' } }, // ← fixed
         include: { vendor: true },
       }),
       prisma.invoice.findMany({
-        where: { invoiceDate: dateRange, status: { not: 'VOID' } },
+        where: { businessId: biz, invoiceDate: dateRange, status: { not: 'VOID' } }, // ← fixed
         include: { customer: true },
       }),
     ]);
@@ -277,10 +256,12 @@ exports.reliefExport = async (req, res, next) => {
 exports.alphalist = async (req, res, next) => {
   try {
     const year = Number(req.query.year || new Date().getFullYear());
+    const biz  = req.businessId;
 
     const items = await prisma.payrollItem.findMany({
       where: {
         period: {
+          businessId: biz,                          // ← fixed
           startDate: { gte: new Date(year, 0, 1) },
           endDate:   { lte: new Date(year, 11, 31, 23, 59, 59) },
           status: { in: ['APPROVED', 'PAID'] },
@@ -315,34 +296,22 @@ exports.alphalist = async (req, res, next) => {
     const list = Object.values(byEmployee).map((e) => {
       const totalDeductions = e.sssEmployee + e.philhealthEe + e.pagibigEe + e.withholdingTax;
       return {
-        // Identity
-        id:          e.emp.id,
-        employeeNo:  e.emp.employeeNo,
-        firstName:   e.emp.firstName,
-        lastName:    e.emp.lastName,
-        middleName:  e.emp.middleName,
-        tin:         e.emp.tin,
-        sssNo:       e.emp.sssNo,
-        philhealthNo: e.emp.philhealthNo,
-        pagibigNo:   e.emp.pagibigNo,
-        position:    e.emp.position,
-        department:  e.emp.department,
-        // Compensation breakdown
-        basicSalary:            Number(e.emp.basicSalary),
-        allowances:             e.allowances,
-        overtime:               e.overtimePay,
-        month13:                Number(e.emp.basicSalary) / 12, // estimate
-        grossCompensation:      e.grossPay,
-        // Deductions
-        sssContributions:       e.sssEmployee,
+        id: e.emp.id, employeeNo: e.emp.employeeNo,
+        firstName: e.emp.firstName, lastName: e.emp.lastName, middleName: e.emp.middleName,
+        tin: e.emp.tin, sssNo: e.emp.sssNo, philhealthNo: e.emp.philhealthNo, pagibigNo: e.emp.pagibigNo,
+        position: e.emp.position, department: e.emp.department,
+        basicSalary: Number(e.emp.basicSalary),
+        allowances: e.allowances, overtime: e.overtimePay,
+        month13: Number(e.emp.basicSalary) / 12,
+        grossCompensation: e.grossPay,
+        sssContributions: e.sssEmployee,
         philhealthContributions: e.philhealthEe,
-        pagibigContributions:   e.pagibigEe,
+        pagibigContributions: e.pagibigEe,
         totalDeductions,
-        // Tax
-        taxableCompensation:    Math.max(0, e.grossPay - (e.sssEmployee + e.philhealthEe + e.pagibigEe)),
-        totalTaxWithheld:       e.withholdingTax,
-        netPay:                 e.netPay,
-        periodCount:            e.periodCount,
+        taxableCompensation: Math.max(0, e.grossPay - (e.sssEmployee + e.philhealthEe + e.pagibigEe)),
+        totalTaxWithheld: e.withholdingTax,
+        netPay: e.netPay,
+        periodCount: e.periodCount,
       };
     }).sort((a, b) => a.lastName.localeCompare(b.lastName));
 

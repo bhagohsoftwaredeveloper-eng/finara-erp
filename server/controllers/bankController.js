@@ -5,7 +5,10 @@ const { recordAudit } = require('../utils/audit');
 // ─── Bank Accounts ─────────────────────────────────────────
 exports.listAccounts = async (req, res, next) => {
   try {
-    const accounts = await prisma.bankAccount.findMany({ orderBy: { name: 'asc' } });
+    const accounts = await prisma.bankAccount.findMany({
+      where: { businessId: req.businessId },
+      orderBy: { name: 'asc' },
+    });
     res.json(accounts);
   } catch (err) { next(err); }
 };
@@ -15,6 +18,7 @@ exports.createAccount = async (req, res, next) => {
     const { name, bankName, accountNumber, glAccountId, currentBalance } = req.body;
     const account = await prisma.bankAccount.create({
       data: {
+        businessId: req.businessId,
         name, bankName, accountNumber,
         glAccountId: glAccountId ? Number(glAccountId) : null,
         currentBalance: Number(currentBalance || 0),
@@ -28,6 +32,8 @@ exports.createAccount = async (req, res, next) => {
 exports.updateAccount = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const existing = await prisma.bankAccount.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Bank account not found', 404);
     const { name, bankName, accountNumber, glAccountId, currentBalance, isActive } = req.body;
     const account = await prisma.bankAccount.update({
       where: { id },
@@ -46,6 +52,8 @@ exports.updateAccount = async (req, res, next) => {
 exports.removeAccount = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const existing = await prisma.bankAccount.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Bank account not found', 404);
     const txnCount = await prisma.bankTransaction.count({ where: { bankAccountId: id } });
     if (txnCount > 0) throw createError('Cannot delete an account that has transactions', 400);
     await prisma.bankAccount.delete({ where: { id } });
@@ -58,7 +66,10 @@ exports.removeAccount = async (req, res, next) => {
 exports.listTransactions = async (req, res, next) => {
   try {
     const { bankAccountId, reconciled, from, to } = req.query;
-    const where = {};
+    const where = {
+      // Scope to business via the parent bank account
+      bankAccount: { businessId: req.businessId },
+    };
     if (bankAccountId) where.bankAccountId = Number(bankAccountId);
     if (reconciled != null && reconciled !== '') where.isReconciled = reconciled === 'true';
     if (from || to) where.txnDate = { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) };
@@ -70,6 +81,9 @@ exports.listTransactions = async (req, res, next) => {
 exports.createTransaction = async (req, res, next) => {
   try {
     const { bankAccountId, txnDate, description, reference, amount, type } = req.body;
+    // Verify the account belongs to this business
+    const acct = await prisma.bankAccount.findFirst({ where: { id: Number(bankAccountId), businessId: req.businessId } });
+    if (!acct) throw createError('Bank account not found', 404);
     const signed = type === 'CREDIT' ? -Math.abs(Number(amount)) : Math.abs(Number(amount));
     const txn = await prisma.bankTransaction.create({
       data: {
@@ -88,7 +102,9 @@ exports.createTransaction = async (req, res, next) => {
 exports.removeTransaction = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const txn = await prisma.bankTransaction.findUnique({ where: { id } });
+    const txn = await prisma.bankTransaction.findFirst({
+      where: { id, bankAccount: { businessId: req.businessId } },
+    });
     if (!txn) throw createError('Transaction not found', 404);
     if (txn.isReconciled) throw createError('Cannot delete a reconciled transaction', 400);
     await prisma.bankTransaction.delete({ where: { id } });
@@ -100,7 +116,9 @@ exports.removeTransaction = async (req, res, next) => {
 exports.listReconciliations = async (req, res, next) => {
   try {
     const { bankAccountId } = req.query;
-    const where = {};
+    const where = {
+      bankAccount: { businessId: req.businessId },
+    };
     if (bankAccountId) where.bankAccountId = Number(bankAccountId);
     const recs = await prisma.bankReconciliation.findMany({
       where,
@@ -114,14 +132,12 @@ exports.listReconciliations = async (req, res, next) => {
 exports.getReconciliation = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const rec = await prisma.bankReconciliation.findUnique({
-      where: { id },
+    const rec = await prisma.bankReconciliation.findFirst({
+      where: { id, bankAccount: { businessId: req.businessId } },
       include: { bankAccount: true },
     });
     if (!rec) throw createError('Reconciliation not found', 404);
 
-    // All transactions for the account up to the statement date that are either
-    // unreconciled or already linked to this reconciliation.
     const transactions = await prisma.bankTransaction.findMany({
       where: {
         bankAccountId: rec.bankAccountId,
@@ -143,6 +159,9 @@ exports.getReconciliation = async (req, res, next) => {
 exports.createReconciliation = async (req, res, next) => {
   try {
     const { bankAccountId, statementDate, statementBalance, notes } = req.body;
+    // Verify account belongs to business
+    const acct = await prisma.bankAccount.findFirst({ where: { id: Number(bankAccountId), businessId: req.businessId } });
+    if (!acct) throw createError('Bank account not found', 404);
     const rec = await prisma.bankReconciliation.create({
       data: {
         bankAccountId: Number(bankAccountId),
@@ -157,12 +176,13 @@ exports.createReconciliation = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Toggle a transaction's cleared state within a reconciliation
 exports.toggleTransaction = async (req, res, next) => {
   try {
     const recId = Number(req.params.id);
     const txnId = Number(req.params.txnId);
-    const rec = await prisma.bankReconciliation.findUnique({ where: { id: recId } });
+    const rec = await prisma.bankReconciliation.findFirst({
+      where: { id: recId, bankAccount: { businessId: req.businessId } },
+    });
     if (!rec) throw createError('Reconciliation not found', 404);
     if (rec.status === 'COMPLETED') throw createError('Reconciliation already completed', 400);
 
@@ -177,7 +197,6 @@ exports.toggleTransaction = async (req, res, next) => {
         : { isReconciled: false, reconciliationId: null },
     });
 
-    // Recompute reconciled balance
     const cleared = await prisma.bankTransaction.findMany({ where: { reconciliationId: recId, isReconciled: true } });
     const reconciledBalance = cleared.reduce((s, t) => s + Number(t.amount), 0);
     await prisma.bankReconciliation.update({ where: { id: recId }, data: { reconciledBalance } });
@@ -189,7 +208,9 @@ exports.toggleTransaction = async (req, res, next) => {
 exports.completeReconciliation = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const rec = await prisma.bankReconciliation.findUnique({ where: { id } });
+    const rec = await prisma.bankReconciliation.findFirst({
+      where: { id, bankAccount: { businessId: req.businessId } },
+    });
     if (!rec) throw createError('Reconciliation not found', 404);
     if (rec.status === 'COMPLETED') throw createError('Already completed', 400);
 
