@@ -122,7 +122,8 @@ export default function ExpensesPage() {
   const [actionOpen,   setActionOpen]   = useState(false);
   const [actionMode,   setActionMode]   = useState(''); // submit|approve|pay|reject
   const [actionRecord, setActionRecord] = useState(null);
-  const [actionForm,   setActionForm]   = useState({ name: '', date: todayStr(), reason: '' });
+  const [actionForm,   setActionForm]   = useState({ name: '', date: todayStr(), reason: '', paymentAccountCode: '' });
+  const [cashAccounts, setCashAccounts] = useState([]);
 
   // Form state
   const [fType,       setFType]       = useState('PETTY_CASH');
@@ -160,8 +161,20 @@ export default function ExpensesPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([expApi.categories(), accountsApi.list({ active: 'true' })])
-      .then(([c, a]) => { setCategories(c.data); setAccounts(a.data); });
+    expApi.categories().then(c => setCategories(c.data)).catch(() => {});
+    // Load ALL accounts for line-items selector; derive cash subset for payment account picker
+    accountsApi.list({ active: 'true' })
+      .then(a => {
+        const all = a.data || [];
+        setAccounts(all);
+        // Cash & bank accounts: codes 1010–1099 (petty cash, bank accounts)
+        const cash = all.filter(ac =>
+          ac.accountCode && Number(ac.accountCode) >= 1010 && Number(ac.accountCode) <= 1099
+        );
+        // Fallback: if no 10xx accounts found, show all ASSET accounts
+        setCashAccounts(cash.length ? cash : all.filter(ac => ac.accountType === 'ASSET'));
+      })
+      .catch(() => toast.error('Could not load accounts — check server connection'));
   }, []);
 
   // ── Form helpers ──────────────────────────────────────────────
@@ -237,7 +250,9 @@ export default function ExpensesPage() {
                        : mode === 'approve' ? rec.approvedBy
                        : mode === 'pay'     ? rec.paidBy
                        : '';
-    setActionForm({ name: existingName || userName, date: todayStr(), reason: '' });
+    // Default payment account: Petty Cash (1011) for PETTY_CASH type, else Cash in Bank (1020)
+    const defaultCashCode = rec.type === 'PETTY_CASH' ? '1011' : '1020';
+    setActionForm({ name: existingName || userName, date: todayStr(), reason: '', paymentAccountCode: defaultCashCode });
     setActionOpen(true);
   }
 
@@ -246,7 +261,7 @@ export default function ExpensesPage() {
     try {
       if (actionMode === 'submit')  await expApi.submit(id,  { requestedBy: actionForm.name });
       if (actionMode === 'approve') await expApi.approve(id, { approvedBy: actionForm.name });
-      if (actionMode === 'pay')     await expApi.pay(id,     { paidBy: actionForm.name, paidDate: actionForm.date });
+      if (actionMode === 'pay')     await expApi.pay(id,     { paidBy: actionForm.name, paidDate: actionForm.date, paymentAccountCode: actionForm.paymentAccountCode });
       if (actionMode === 'reject')  await expApi.reject(id,  { rejectedReason: actionForm.reason });
       toast.success(`Voucher ${actionMode}${actionMode === 'pay' ? 'd' : 'ed'}`);
       setActionOpen(false);
@@ -589,10 +604,29 @@ export default function ExpensesPage() {
                   <input className="input" value={actionForm.name} onChange={e => setActionForm(p => ({ ...p, name: e.target.value }))} />
                 </div>
                 {actionMode === 'pay' && (
-                  <div className="form-group">
-                    <label className="label">Payment Date</label>
-                    <input type="date" className="input" value={actionForm.date} onChange={e => setActionForm(p => ({ ...p, date: e.target.value }))} />
-                  </div>
+                  <>
+                    <div className="form-group">
+                      <label className="label">Payment Account <span className="text-red-500">*</span></label>
+                      <select
+                        className="input"
+                        value={actionForm.paymentAccountCode}
+                        onChange={e => setActionForm(p => ({ ...p, paymentAccountCode: e.target.value }))}
+                        required
+                      >
+                        <option value="">— Select account —</option>
+                        {(cashAccounts.length ? cashAccounts : accounts.filter(ac => ac.accountType === 'ASSET')).map(ac => (
+                          <option key={ac.id} value={ac.accountCode}>
+                            {ac.accountCode} — {ac.accountName}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">Where the funds came from (Petty Cash, Cash in Bank, etc.)</p>
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Payment Date</label>
+                      <input type="date" className="input" value={actionForm.date} onChange={e => setActionForm(p => ({ ...p, date: e.target.value }))} />
+                    </div>
+                  </>
                 )}
               </>
             ) : (

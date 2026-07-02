@@ -18,7 +18,7 @@ exports.calculate = async (req, res, next) => {
 
     const range = dayRange(date);
 
-    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers] = await Promise.all([
+    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL] = await Promise.all([
       prisma.invoice.findMany({
         where: { businessId: req.businessId, invoiceDate: range },
         include: { customer: { select: { name: true, customerCode: true } } },
@@ -49,22 +49,41 @@ exports.calculate = async (req, res, next) => {
         where: { businessId: req.businessId, date: range, status: { in: ['APPROVED', 'PAID'] } },
         orderBy: { voucherNo: 'asc' },
       }),
+      // Petty Cash Fund (1011) running balance from all POSTED GL entries
+      prisma.journalLine.aggregate({
+        where: {
+          entry: { businessId: req.businessId, status: 'POSTED' },
+          account: { accountCode: '1011', businessId: req.businessId },
+        },
+        _sum: { debit: true, credit: true },
+      }),
     ]);
 
     // ── Expense voucher split ────────────────────────────────────
-    const paidVouchers     = expVouchers.filter(v => v.status === 'PAID');
+    const paidVouchers    = expVouchers.filter(v => v.status === 'PAID');
+    // Petty cash comes from a separate fund — does NOT affect daily collections net cash
+    const paidPettyCash   = paidVouchers.filter(v => v.type === 'PETTY_CASH');
+    // Direct payments, reimbursements, etc. ARE actual cash outflows from collections
+    const paidCashOutflow = paidVouchers.filter(v => v.type !== 'PETTY_CASH');
 
     // ── Totals ──────────────────────────────────────────────────
-    const totalSales    = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
-    const vatCollected  = invoices.reduce((s, i) => s + Number(i.vatAmount),   0);
-    const cashReceived  = arPayments.reduce((s, p) => s + Number(p.amount),    0);
-    // totalExpenses = AP Bills + ALL approved/paid expense vouchers
-    const totalExpenses = bills.reduce((s, b) => s + Number(b.totalAmount),    0)
-                        + expVouchers.reduce((s, v) => s + Number(v.totalAmount), 0);
-    // cashDisbursed = AP Payments + PAID expense vouchers (cash actually left)
-    const cashDisbursed = apPayments.reduce((s, p) => s + Number(p.amount),    0)
-                        + paidVouchers.reduce((s, v) => s + Number(v.totalAmount), 0);
-    const netCash       = cashReceived - cashDisbursed;
+    const totalSales     = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
+    const vatCollected   = invoices.reduce((s, i) => s + Number(i.vatAmount),   0);
+    const cashReceived   = arPayments.reduce((s, p) => s + Number(p.amount),    0);
+    // totalExpenses = AP Bills + ALL approved/paid vouchers (informational card)
+    const totalExpenses  = bills.reduce((s, b) => s + Number(b.totalAmount),    0)
+                         + expVouchers.reduce((s, v) => s + Number(v.totalAmount), 0);
+    // pettyCashTotal shown separately — from petty cash fund, not from collections
+    const pettyCashTotal = paidPettyCash.reduce((s, v) => s + Number(v.totalAmount), 0);
+    // cashDisbursed = AP Payments + non-petty-cash PAID vouchers only
+    const cashDisbursed  = apPayments.reduce((s, p) => s + Number(p.amount),    0)
+                         + paidCashOutflow.reduce((s, v) => s + Number(v.totalAmount), 0);
+    // netCash = what should be physically remitted from daily collections
+    const netCash        = cashReceived - cashDisbursed;
+    // Petty Cash Fund running balance (1011): total debits − total credits on POSTED entries
+    const pcDebits       = Number(pettyCashGL._sum.debit  || 0);
+    const pcCredits      = Number(pettyCashGL._sum.credit || 0);
+    const pettyCashBalance = pcDebits - pcCredits;
 
     // ── Detail line items ────────────────────────────────────────
     const items = [
@@ -116,11 +135,19 @@ exports.calculate = async (req, res, next) => {
         amount:      Number(v.totalAmount),
         meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, status: v.status, requestedBy: v.requestedBy }),
       })),
-      // PAID vouchers also appear as DISBURSEMENT (cash left the company)
-      ...paidVouchers.map(v => ({
+      // Non-petty-cash PAID vouchers appear as DISBURSEMENT (cash from collections)
+      ...paidCashOutflow.map(v => ({
         category:    'DISBURSEMENT',
         reference:   v.voucherNo,
         description: `Paid — ${v.payee} (${v.voucherNo})`,
+        amount:      Number(v.totalAmount),
+        meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, paidBy: v.paidBy }),
+      })),
+      // Petty cash PAID vouchers shown separately — from petty fund, not from collections
+      ...paidPettyCash.map(v => ({
+        category:    'PETTY_CASH',
+        reference:   v.voucherNo,
+        description: `[Petty Cash] Paid — ${v.payee} (${v.voucherNo})`,
         amount:      Number(v.totalAmount),
         meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, paidBy: v.paidBy }),
       })),
@@ -129,12 +156,13 @@ exports.calculate = async (req, res, next) => {
     res.json({
       date,
       totalSales, vatCollected, cashReceived,
-      totalExpenses, cashDisbursed, netCash,
+      totalExpenses, pettyCashTotal, pettyCashBalance, cashDisbursed, netCash,
       counts: {
         invoices:      invoices.length,
         collections:   arPayments.length,
         expenses:      bills.length + expVouchers.length,
-        disbursements: apPayments.length + paidVouchers.length,
+        disbursements: apPayments.length + paidCashOutflow.length,
+        pettyCash:     paidPettyCash.length,
         inventory:     invTxns.length,
         vouchers:      expVouchers.length,
       },

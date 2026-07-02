@@ -177,14 +177,25 @@ exports.recordPayment = async (req, res, next) => {
     ]);
 
     // ── Auto-post to GL ──────────────────────────────────────────────────────
+    // Map payment method → GL account
+    const PAYMENT_ACCOUNT = {
+      'Cash':          '1010', // Cash on Hand
+      'Bank Transfer': '1020', // Cash in Bank — BDO Checking
+      'Check':         '1020',
+      'GCash':         '1024', // Cash in Bank — UnionBank (GCash)
+      'Maya':          '1024',
+      'Credit Card':   '1020',
+      'Online':        '1020',
+    };
+    const cashAccount = PAYMENT_ACCOUNT[paymentMethod] || '1010';
     const customer = await prisma.customer.findUnique({ where: { id: inv.customerId }, select: { name: true } });
     await glPost.safePost({
       entryDate:   paymentDate,
       description: `AR Collection — ${customer?.name} (${inv.invoiceNo})`,
       reference:   paymentNo,
       lines: [
-        { accountCode: '1020', debit:  Number(amount), description: `Cash in — ${paymentNo}` },
-        { accountCode: '1100', credit: Number(amount), description: `Clear AR — ${customer?.name}` },
+        { accountCode: cashAccount, debit:  Number(amount), description: `Cash in — ${paymentNo} (${paymentMethod})` },
+        { accountCode: '1100',      credit: Number(amount), description: `Clear AR — ${customer?.name}` },
       ],
       userId: req.user?.id || 1,
       businessId: req.businessId,

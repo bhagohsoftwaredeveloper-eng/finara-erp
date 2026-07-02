@@ -15,11 +15,12 @@ const fmt = n => formatCurrency(Number(n || 0));
 const today = () => new Date().toISOString().slice(0, 10);
 
 const CATEGORIES = {
-  SALES:        { label: 'Sales Invoices',    icon: ShoppingCart, color: 'blue',   sign: +1 },
-  COLLECTION:   { label: 'Collections',       icon: Banknote,     color: 'green',  sign: +1 },
-  EXPENSE:      { label: 'Expenses / Bills',  icon: Receipt,      color: 'orange', sign: -1 },
-  DISBURSEMENT: { label: 'Disbursements',     icon: CreditCard,   color: 'red',    sign: -1 },
-  INVENTORY:    { label: 'Inventory Moves',   icon: Package,      color: 'purple', sign:  0 },
+  SALES:        { label: 'Sales Invoices',           icon: ShoppingCart, color: 'blue',   sign: +1 },
+  COLLECTION:   { label: 'Collections',              icon: Banknote,     color: 'green',  sign: +1 },
+  EXPENSE:      { label: 'Expenses / Bills',         icon: Receipt,      color: 'orange', sign: -1 },
+  DISBURSEMENT: { label: 'Disbursements',            icon: CreditCard,   color: 'red',    sign: -1 },
+  PETTY_CASH:   { label: 'Petty Cash Disbursements', icon: Wallet,       color: 'yellow', sign:  0 },
+  INVENTORY:    { label: 'Inventory Moves',          icon: Package,      color: 'purple', sign:  0 },
 };
 
 const STATUS_BADGE = {
@@ -151,6 +152,7 @@ export default function DailyRemittancePage() {
           vatCollected:  Number(full.data.vatCollected),
           cashReceived:  Number(full.data.cashReceived),
           totalExpenses: Number(full.data.totalExpenses),
+          pettyCashTotal:Number(full.data.pettyCashTotal || 0),
           cashDisbursed: Number(full.data.cashDisbursed),
           netCash:       Number(full.data.netCash),
           items:         full.data.items || [],
@@ -491,6 +493,25 @@ export default function DailyRemittancePage() {
               <div className="text-xl font-bold text-red-700">{fmt(calcData.cashDisbursed)}</div>
               <div className="text-xs text-gray-400 mt-0.5">AP Payments</div>
             </div>
+            {/* Petty Cash (separate fund — not in net cash) */}
+            {Number(calcData.pettyCashTotal) > 0 && (
+              <div className="card p-4 border-yellow-200 bg-yellow-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Wallet className="w-4 h-4 text-yellow-600" />
+                  <span className="text-xs text-gray-500 font-medium">Petty Cash Used</span>
+                </div>
+                <div className="text-xl font-bold text-yellow-700">{fmt(calcData.pettyCashTotal)}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Separate fund · not in remittance</div>
+                {calcData.pettyCashBalance != null && (
+                  <div className="mt-2 pt-2 border-t border-yellow-200">
+                    <span className="text-xs text-gray-500">Remaining balance: </span>
+                    <span className={`text-xs font-bold ${Number(calcData.pettyCashBalance) < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                      {fmt(calcData.pettyCashBalance)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             {/* Net Cash */}
             <div className={`card p-4 col-span-2 ${Number(calcData.netCash) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
               <div className="flex items-center gap-2 mb-2">
@@ -502,7 +523,7 @@ export default function DailyRemittancePage() {
               <div className={`text-2xl font-bold ${Number(calcData.netCash) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                 {fmt(calcData.netCash)}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">Collections − Disbursements</div>
+              <div className="text-xs text-gray-500 mt-0.5">Collections − Disbursements (excl. petty cash)</div>
             </div>
           </div>
 

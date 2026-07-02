@@ -58,6 +58,11 @@ const resolveBusiness = async (req, res, next) => {
     req.businessId = headerBizId;
     next();
   } catch (err) {
+    // If user_businesses table doesn't exist yet (migration pending), default to business 1
+    if (err.code === 'P2021' || err.message?.includes('user_businesses') || err.message?.includes('does not exist')) {
+      req.businessId = 1;
+      return next();
+    }
     next(err);
   }
 };

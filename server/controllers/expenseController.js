@@ -240,7 +240,7 @@ exports.approve = async (req, res, next) => {
 exports.pay = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { paidBy, paidDate } = req.body;
+    const { paidBy, paidDate, paymentAccountCode } = req.body;
 
     // Fetch voucher with items before updating
     const voucher = await prisma.expenseVoucher.findUnique({
@@ -260,8 +260,8 @@ exports.pay = async (req, res, next) => {
     });
 
     // ── Auto-post to GL ──────────────────────────────────────────────────────
-    // Determine cash account: PETTY_CASH type → 1011, all others → 1020
-    const cashCode = voucher.type === 'PETTY_CASH' ? '1011' : '1020';
+    // Use explicitly chosen payment account; fall back to type-based default
+    const cashCode = paymentAccountCode || (voucher.type === 'PETTY_CASH' ? '1011' : '1020');
     const totalAmt = Number(voucher.totalAmount);
 
     // Build DR lines: use item accountId if set, else fall back to category mapping
