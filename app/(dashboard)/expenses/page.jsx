@@ -610,4 +610,43 @@ export default function ExpensesPage() {
               <>
                 <div className="form-group">
                   <label className="label">{aCfg.fieldLabel}</label>
-                  <input className="input" value={ac
+                  <input className="input" value={actionForm.name}
+                    onChange={e => setActionForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+
+                {actionMode === 'pay' && (
+                  <>
+                    <div className="form-group">
+                      <label className="label">Payment Date</label>
+                      <input type="date" className="input" value={actionForm.date}
+                        onChange={e => setActionForm(f => ({ ...f, date: e.target.value }))} />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Payment Account</label>
+                      <select className="input" value={actionForm.paymentAccountCode}
+                        onChange={e => setActionForm(f => ({ ...f, paymentAccountCode: e.target.value }))}>
+                        <option value="">— Select account —</option>
+                        {cashAccounts.map(ac => (
+                          <option key={ac.id} value={ac.accountCode}>
+                            {ac.accountCode} — {ac.accountName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <div className="form-group">
+                <label className="label">{aCfg.fieldLabel}</label>
+                <textarea className="input h-20 resize-none" placeholder="Reason for rejection…"
+                  value={actionForm.reason}
+                  onChange={e => setActionForm(f => ({ ...f, reason: e.target.value }))} />
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}
