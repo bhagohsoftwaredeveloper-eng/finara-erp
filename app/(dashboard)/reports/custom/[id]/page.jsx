@@ -105,7 +105,7 @@ function AccountBalanceView({ data, config }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card p-4"><p className="text-xs text-gray-400 mb-1">Total Debit</p><p className="text-xl font-bold text-gray-900">{formatCurrency(data.totals.debit)}</p></div>
         <div className="card p-4"><p className="text-xs text-gray-400 mb-1">Total Credit</p><p className="text-xl font-bold text-gray-900">{formatCurrency(data.totals.credit)}</p></div>
         <div className="card p-4"><p className="text-xs text-gray-400 mb-1">Net Balance</p><p className={`text-xl font-bold ${data.totals.balance >= 0 ? 'text-blue-700' : 'text-red-600'}`}>{formatCurrency(data.totals.balance)}</p></div>
@@ -270,7 +270,7 @@ function ProfitLossView({ data, config }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card p-4 border-l-4 border-green-400">
           <p className="text-xs text-gray-400 mb-1">Total Revenue</p>
           <p className="text-xl font-bold text-green-600">{formatCurrency(data.revenue)}</p>

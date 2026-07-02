@@ -65,9 +65,24 @@
   .modal-body   { @apply p-6 overflow-y-auto flex-1; }
   .modal-footer { @apply px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3 flex-shrink-0 bg-gray-50 dark:border-gray-800 dark:bg-gray-800/50; }
 
-  .page-header { @apply mb-6 flex items-center justify-between; }
-  .page-title { @apply text-2xl font-bold text-gray-900 dark:text-gray-100; }
-  .page-subtitle { @apply text-sm text-gray-500 mt-1 dark:text-gray-400; }
+  /* Page header — stacks vertically on mobile */
+  .page-header { @apply mb-4 lg:mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between; }
+  .page-title { @apply text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100; }
+  .page-subtitle { @apply text-sm text-gray-500 mt-0.5 dark:text-gray-400; }
+
+  /* Responsive table wrapper — always horizontal-scroll on mobile */
+  .table-responsive { @apply overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0; }
+
+  /* Card body compact on mobile */
+  .card-body { @apply p-4 lg:p-6; }
+  .card-header { @apply px-4 lg:px-6 py-3 lg:py-4 border-b border-gray-200 flex items-center justify-between dark:border-gray-800; }
+
+  /* Stats grid — 2 cols on mobile, more on larger */
+  .stats-grid { @apply grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4; }
+
+  /* Filter card — inputs wrap on mobile */
+  .filter-row { @apply flex flex-wrap gap-2; }
+  .filter-row .input { @apply min-w-0; }
 
   .sidebar-link { @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors; }
   .sidebar-link-active { @apply sidebar-link bg-blue-600 text-white; }

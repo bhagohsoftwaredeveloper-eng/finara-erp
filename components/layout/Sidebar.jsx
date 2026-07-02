@@ -130,7 +130,7 @@ const NAV = [
   // Audit Trail lives under Settings → Audit Trail (intentionally not in the main nav)
 ];
 
-function NavItem({ item, collapsed }) {
+function NavItem({ item, collapsed, onClose }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -142,7 +142,7 @@ function NavItem({ item, collapsed }) {
       : item.children?.some((c) => pathname.startsWith(c.href));
     return (
       <Link
-        href={href} title={item.label}
+        href={href} title={item.label} onClick={onClose}
         className={`flex items-center justify-center h-10 rounded-lg transition-colors ${
           isActive ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/30' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
         }`}
@@ -170,6 +170,7 @@ function NavItem({ item, collapsed }) {
               <Link
                 key={child.href}
                 href={child.href}
+                onClick={onClose}
                 className={`block px-3 py-1.5 rounded-md text-sm transition-colors ${
                   pathname === child.href
                     ? 'text-blue-600 font-medium bg-blue-50'
@@ -187,14 +188,14 @@ function NavItem({ item, collapsed }) {
 
   const isActive = pathname === item.href;
   return (
-    <Link href={item.href} className={isActive ? 'sidebar-link-active' : 'sidebar-link-inactive'}>
+    <Link href={item.href} onClick={onClose} className={isActive ? 'sidebar-link-active' : 'sidebar-link-inactive'}>
       <item.icon className="w-4 h-4 flex-shrink-0" />
       {item.label}
     </Link>
   );
 }
 
-export default function Sidebar({ collapsed = false, onToggle }) {
+export default function Sidebar({ collapsed = false, onToggle, mobileOpen = false, onMobileClose }) {
   const router = useRouter();
   // Read user from localStorage only after mount so the first client render
   // matches the server (which has no localStorage) — avoids hydration mismatch.
@@ -209,7 +210,13 @@ export default function Sidebar({ collapsed = false, onToggle }) {
   };
 
   return (
-    <aside className={`flex flex-col ${collapsed ? 'w-16' : 'w-64'} bg-white border-r border-gray-200 h-screen fixed left-0 top-0 z-30 transition-all duration-200 dark:bg-gray-900 dark:border-gray-800`}>
+    <aside className={`
+      flex flex-col bg-white border-r border-gray-200 h-screen fixed left-0 top-0 z-50 transition-all duration-300
+      dark:bg-gray-900 dark:border-gray-800
+      ${collapsed ? 'w-16' : 'w-64'}
+      lg:translate-x-0
+      ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+    `}>
       {/* Logo + collapse toggle */}
       <div className={`h-16 border-b border-gray-200 flex items-center dark:border-gray-800 ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
         {!collapsed && (
@@ -242,7 +249,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
               )}
               <div className="space-y-0.5">
                 {items.map((item) => (
-                  <NavItem key={item.label} item={item} collapsed={collapsed} />
+                  <NavItem key={item.label} item={item} collapsed={collapsed} onClose={onMobileClose} />
                 ))}
               </div>
             </div>

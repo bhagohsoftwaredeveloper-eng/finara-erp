@@ -191,7 +191,7 @@ function RatioPanel({ totalAssets, totalLiab, totalEquity, currentAssets, curren
   ];
 
   return (
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-3">
       {ratios.map((r) => {
         if (r.value === null) return null;
         const isGood = r.good(r.value);
@@ -408,7 +408,7 @@ export default function BalanceSheetPage() {
           </div>
 
           {/* Summary KPIs */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 print:hidden">
+          <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
             {[
               { label: 'Total Assets',            value: formatCurrency(totalAssets),     sub: 'resources owned',        color: 'text-blue-600',   border: 'border-blue-500',   icon: Building2 },
               { label: 'Current Assets',          value: formatCurrency(totalCurrentAssets), sub: 'liquid resources',    color: 'text-blue-500',   border: 'border-blue-300',   icon: Wallet    },
@@ -438,7 +438,7 @@ export default function BalanceSheetPage() {
           />
 
           {/* Charts */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 print:hidden">
+          <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-4 print:hidden">
             <div className="card p-5">
               <CompositionChart data={assetPie} title="Asset Composition" />
             </div>

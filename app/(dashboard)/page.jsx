@@ -73,7 +73,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Open Receivables"
           value={formatCurrency(d.receivables?.openAmount)}
@@ -99,7 +99,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-6">
         {/* Chart */}
         <div className="card xl:col-span-2">
           <div className="card-header">
@@ -167,7 +167,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick counts */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Active Customers', value: d.counts?.customers || 0, icon: Users, color: 'text-blue-600' },
           { label: 'Active Vendors',   value: d.counts?.vendors   || 0, icon: Building2, color: 'text-purple-600' },

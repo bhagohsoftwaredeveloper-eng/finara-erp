@@ -90,7 +90,7 @@ function ReconcileModal({ recId, onClose, onChanged }) {
     <div className="modal-overlay"><div className="modal max-w-2xl">
       <div className="modal-header"><div><h3 className="text-lg font-semibold">{data.bankAccount?.name}</h3><p className="text-xs text-gray-400">Statement {formatDate(data.statementDate)} · {data.status}</p></div><button onClick={onClose} className="text-gray-400 text-2xl">&times;</button></div>
       <div className="modal-body">
-        <div className="grid grid-cols-3 gap-3 mb-3 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3 text-sm">
           <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Statement Balance</p><p className="font-bold">{formatCurrency(data.statementBalance)}</p></div>
           <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Cleared</p><p className="font-bold">{formatCurrency(cleared)}</p></div>
           <div className={`rounded-lg p-3 ${Math.abs(diff) < 0.01 ? 'bg-green-50' : 'bg-amber-50'}`}><p className="text-xs text-gray-500">Difference</p><p className={`font-bold ${Math.abs(diff) < 0.01 ? 'text-green-600' : 'text-amber-600'}`}>{formatCurrency(diff)}</p></div>
@@ -160,7 +160,7 @@ export default function BankPage() {
         <button className="btn-secondary" onClick={() => setAcctModal(true)}><Plus className="w-4 h-4" /> Bank Account</button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Accounts list */}
         <div className="card lg:col-span-1"><div className="card-body">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Accounts</h4>

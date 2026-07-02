@@ -132,6 +132,7 @@ export default function BusinessesPage() {
         <div className="card card-body text-center text-gray-400 py-16">Loading…</div>
       ) : (
         <div className="card">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">

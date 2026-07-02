@@ -718,7 +718,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Role legend */}
-              <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-2">
                 {[
                   { role: 'ADMIN',      desc: 'Full access — users, DB, settings' },
                   { role: 'MANAGER',    desc: 'View all + approve transactions'    },

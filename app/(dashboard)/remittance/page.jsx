@@ -94,7 +94,7 @@ export default function RemittanceDashboard() {
 
       {/* Summary Cards */}
       {loading ? (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => <div key={i} className="card p-5 h-24 animate-pulse bg-gray-100" />)}
         </div>
       ) : summary && (

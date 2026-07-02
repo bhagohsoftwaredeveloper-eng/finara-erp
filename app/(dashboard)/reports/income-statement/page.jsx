@@ -338,7 +338,7 @@ export default function IncomeStatementPage() {
       ) : data ? (
         <>
           {/* KPI row */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 print:hidden">
+          <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
             <KpiCard label="Total Revenue"  value={revenue}     sub="gross income"      icon={TrendingUp}   color="text-green-600"  borderColor="border-green-500" />
             <KpiCard label="Gross Profit"   value={grossProfit} sub={`${grossMargin.toFixed(1)}% margin`} icon={PesoSign} color={grossProfit >= 0 ? 'text-blue-600' : 'text-red-600'} borderColor={grossProfit >= 0 ? 'border-blue-500' : 'border-red-500'} />
             <KpiCard label="Operating Income" value={opIncome}  sub={`${opMargin.toFixed(1)}% margin`}   icon={Activity}   color={opIncome >= 0 ? 'text-indigo-600' : 'text-red-600'}  borderColor={opIncome >= 0 ? 'border-indigo-500' : 'border-red-500'} />
@@ -346,7 +346,7 @@ export default function IncomeStatementPage() {
           </div>
 
           {/* Margin indicators */}
-          <div className="grid grid-cols-3 gap-3 print:hidden">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 print:hidden">
             {[
               { label: 'Gross Margin', pct: grossMargin, color: grossMargin >= 40 ? 'bg-green-500' : grossMargin >= 20 ? 'bg-yellow-400' : 'bg-red-400' },
               { label: 'Op. Margin',   pct: opMargin,    color: opMargin   >= 15 ? 'bg-green-500' : opMargin   >= 5  ? 'bg-yellow-400' : 'bg-red-400' },
@@ -369,7 +369,7 @@ export default function IncomeStatementPage() {
           </div>
 
           {/* Charts row */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 print:hidden">
+          <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-4 print:hidden">
             <div className="xl:col-span-2 card p-5">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm font-semibold text-gray-700">P&L Waterfall</p>

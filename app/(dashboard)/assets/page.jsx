@@ -156,7 +156,7 @@ export default function AssetsPage() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <Stat label="Total Assets" value={summary.count} />
           <Stat label="Total Cost" value={formatCurrency(summary.totalCost)} />
           <Stat label="Accumulated Dep." value={formatCurrency(summary.totalAccumulated)} />

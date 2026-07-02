@@ -240,7 +240,7 @@ export default function ARAgingPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-5 border-l-4 border-l-green-500">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Receivable</p>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalOutstanding)}</p>
@@ -274,7 +274,7 @@ export default function ARAgingPage() {
       </div>
 
       {/* Charts + bucket summary */}
-      <div className="grid xl:grid-cols-3 gap-5">
+      <div className="grid xl:grid-cols-1 sm:grid-cols-3 gap-5">
         {/* Main chart */}
         <div className="card xl:col-span-2">
           <div className="card-header">

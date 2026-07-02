@@ -167,7 +167,7 @@ export default function VatSummaryPage() {
       ) : data ? (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard label="Total Sales (Net of VAT)" value={formatCurrency(data.totalSalesNet || 0)} sub="VATable + Zero + Exempt" icon={TrendingUp} color="text-blue-600" border="border-blue-500" />
             <StatCard label="Output VAT Collected"    value={formatCurrency(data.outputVat)}    sub="12% on VATable sales"  icon={PesoSign}   color="text-purple-600" border="border-purple-500" />
             <StatCard label="Input VAT (Purchases)"   value={formatCurrency(data.inputVat)}     sub="12% on VATable purchases" icon={TrendingDown} color="text-orange-500" border="border-orange-400" />
@@ -179,7 +179,7 @@ export default function VatSummaryPage() {
           </div>
 
           {/* Charts row */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Bar chart */}
             <div className="xl:col-span-2 card p-5">
               <div className="flex items-center justify-between mb-4">

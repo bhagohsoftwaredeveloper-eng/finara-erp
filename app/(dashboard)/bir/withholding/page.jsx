@@ -237,7 +237,7 @@ export default function WithholdingPage() {
           )}
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Employees This Period', value: data.employeeCount,                      sub: 'covered by 1601-C',          icon: Users,       color: 'text-blue-600'  },
               { label: 'Total Compensation',    value: formatCurrency(data.totalCompensation),   sub: 'gross pay + allowances',     icon: TrendingUp,  color: 'text-purple-600' },

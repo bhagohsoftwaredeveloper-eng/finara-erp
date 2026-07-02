@@ -69,7 +69,7 @@ function EmployeeModal({ emp, onClose, onSaved }) {
             </div>
             <hr />
             <p className="text-sm font-semibold text-gray-700">Government Numbers</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {[['TIN','tin','000-000-000-000'],['SSS No.','sssNo','XX-XXXXXXX-X'],['PhilHealth','philhealthNo','XX-000000000-X'],['Pag-IBIG','pagibigNo','XXXX-XXXX-XXXX']].map(([label,key,ph]) => (
                 <div key={key} className="form-group">
                   <label className="label">{label}</label>

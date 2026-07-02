@@ -36,13 +36,13 @@ function Drawer({ open, onClose, title, children, footer }) {
     <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-start overflow-y-auto">
       <div className="bg-white w-full max-w-3xl shadow-2xl flex flex-col"
         style={{ borderRadius: '0 0 1rem 1rem', maxHeight: '90vh', animation: 'topDrawerIn .28s cubic-bezier(.4,0,.2,1)' }}>
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+        <div className="px-4 lg:px-6 py-3 lg:py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
-        <div className="p-6 space-y-5 overflow-y-auto flex-1">{children}</div>
+        <div className="p-4 lg:p-6 space-y-4 overflow-y-auto flex-1">{children}</div>
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3 flex-shrink-0 bg-gray-50">
+          <div className="px-4 lg:px-6 py-3 border-t border-gray-200 flex flex-wrap items-center justify-end gap-2 flex-shrink-0 bg-gray-50">
             {footer}
           </div>
         )}
@@ -495,7 +495,7 @@ export default function RemittanceRecords() {
             )}
 
             {/* Amounts */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="form-group">
                 <label className="label">Employee Share (EE)</label>
                 <input type="number" className="input" value={eeShare} onChange={e => setEeShare(e.target.value)}

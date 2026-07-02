@@ -78,7 +78,7 @@ function CreatePeriodModal({ onClose, onCreated }) {
           <div className="modal-body space-y-4">
             <div className="form-group">
               <label className="label">Pay Frequency</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {FREQ_OPTS.map((f) => (
                   <button
                     key={f.value} type="button"
@@ -412,7 +412,7 @@ function PeriodCard({ period, onView, onAction }) {
 
         {/* Mini stats (if computed) */}
         {period._count && period.status !== 'OPEN' && (
-          <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
             {[
               { label: 'Employees', value: period._count.items },
               { label: 'Gross Pay', value: formatCurrency(period.totalGross || 0) },
@@ -500,7 +500,7 @@ export default function PayPeriodsPage() {
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
         {Object.entries(STATUS).map(([key, cfg]) => {
           const Icon = cfg.icon;
           const colorMap = {
@@ -555,7 +555,7 @@ export default function PayPeriodsPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-3 gap-4">
           {periods.map((p) => (
             <PeriodCard
               key={p.id}

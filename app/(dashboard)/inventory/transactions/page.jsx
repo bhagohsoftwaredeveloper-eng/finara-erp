@@ -60,7 +60,7 @@ function TxnModal({ items, onClose, onSaved }) {
           {/* Type selector */}
           <div>
             <label className="label">Transaction Type <span className="text-red-500">*</span></label>
-            <div className="grid grid-cols-3 gap-2 mt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
               {TXN_TYPES.map((t) => (
                 <button
                   key={t.value} type="button"

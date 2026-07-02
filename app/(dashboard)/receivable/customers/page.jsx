@@ -350,7 +350,7 @@ export default function CustomersPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Total Customers', value: customers.length,  color: 'bg-blue-100 text-blue-600',   icon: <Users className="w-5 h-5" /> },
           { label: 'Active',          value: activeCount,        color: 'bg-green-100 text-green-600', icon: <CheckCircle2 className="w-5 h-5" /> },
@@ -410,7 +410,7 @@ export default function CustomersPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-3 gap-4">
           {customers.map((customer) => (
             <div
               key={customer.id}

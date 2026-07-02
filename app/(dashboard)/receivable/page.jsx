@@ -131,7 +131,7 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid }) {
 
         <div className="modal-body space-y-5">
           {/* Info grid */}
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
             <div>
               <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Invoice Date</span>
               <span className="font-medium">{formatDate(invoice.invoiceDate)}</span>
@@ -745,7 +745,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
             label: 'Open Receivables',

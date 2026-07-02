@@ -89,7 +89,7 @@ function AlphalistRow({ emp, rank }) {
         <tr>
           <td colSpan={10} className="p-0">
             <div className="bg-blue-50/40 border-t border-b border-blue-100 px-10 py-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-gray-400 mb-2 font-semibold uppercase tracking-wide">Gross Pay Breakdown</p>
                   {[
@@ -252,7 +252,7 @@ export default function AlphalistPage() {
           <TinAlert count={missingTin} />
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Total Employees',         value: data.employees?.length || 0, sub: 'in alphalist',               icon: Users,      color: 'text-blue-600'   },
               { label: 'Total Gross Compensation', value: formatCurrency(totalGross), sub: 'annual aggregate',             icon: TrendingUp, color: 'text-purple-600' },
@@ -303,7 +303,7 @@ export default function AlphalistPage() {
                 </div>
               </div>
             </div>
-            <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-5 grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 ['Total Employees',      data.employees?.length || 0],
                 ['Total Gross Pay',      formatCurrency(totalGross)],

@@ -42,11 +42,11 @@ export default function BusinessSwitcher() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        className="flex items-center gap-1.5 px-2 lg:px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         title="Switch active business"
       >
         <Building2 className="w-4 h-4 text-blue-500 shrink-0" />
-        <span className="max-w-[140px] truncate">{activeBusiness?.name || 'Select business'}</span>
+        <span className="hidden sm:block max-w-[120px] truncate">{activeBusiness?.name || 'Select'}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 

@@ -302,7 +302,7 @@ export default function CalculatorPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-5">
 
         {/* ── Left: Input Panel ── */}
         <div className="space-y-4">
@@ -382,7 +382,7 @@ export default function CalculatorPage() {
 
             <div className="form-group">
               <label className="label">Pay Frequency</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {Object.entries(FREQ_LABELS).map(([key, label]) => (
                   <button
                     key={key} type="button"

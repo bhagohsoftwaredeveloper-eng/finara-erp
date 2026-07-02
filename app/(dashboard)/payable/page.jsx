@@ -113,7 +113,7 @@ function BillDetailModal({ bill, onClose, onPayment, onVoid }) {
 
         <div className="modal-body space-y-5">
           {/* Header info */}
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
             <div><span className="text-gray-500 block">Bill Date</span><span className="font-medium">{formatDate(bill.billDate)}</span></div>
             <div><span className="text-gray-500 block">Due Date</span>
               <span className={`font-medium ${new Date(bill.dueDate) < new Date() && bill.status !== 'PAID' ? 'text-red-600' : ''}`}>
@@ -639,7 +639,7 @@ export default function BillsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Open Payables',    value: formatCurrency(summary.open),    sub: `${summary.openCount} bills`,   color: 'bg-blue-100 text-blue-600',   icon: <Clock className="w-5 h-5" /> },
           { label: 'Overdue',          value: formatCurrency(summary.overdue),  sub: 'Past due date',                color: 'bg-red-100 text-red-600',     icon: <AlertCircle className="w-5 h-5" /> },

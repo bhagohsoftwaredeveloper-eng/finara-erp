@@ -299,7 +299,7 @@ export default function ReliefPage() {
           )}
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Total Sales Transactions',     value: sales.length,                 sub: 'invoices/receipts',      icon: ShoppingCart,  color: 'text-blue-600'   },
               { label: 'Total Purchases',              value: purchases.length,             sub: 'bills/vouchers',         icon: ShoppingBag,   color: 'text-purple-600' },
@@ -320,7 +320,7 @@ export default function ReliefPage() {
           </div>
 
           {/* Monthly chart */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="xl:col-span-2 card p-5">
               <p className="text-sm font-semibold text-gray-700 mb-4">Monthly Breakdown — {periodLabel}</p>
               <ResponsiveContainer width="100%" height={200}>

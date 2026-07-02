@@ -116,7 +116,7 @@ export default function CustomReportsPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-3 gap-4">
           {filtered.map((r) => {
             const meta = TYPE_META[r.reportType] || { label: r.reportType, Icon: FileText, color: 'blue' };
             const Icon = meta.Icon;
@@ -175,7 +175,7 @@ export default function CustomReportsPage() {
       {reports.length > 0 && (
         <div className="card p-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Report Types</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {Object.entries(TYPE_META).map(([key, { label, Icon, color }]) => (
               <div key={key} className="flex items-center gap-2">
                 <span className={`p-1.5 rounded-lg ${COLOR_BADGE[color]}`}><Icon className="w-3.5 h-3.5" /></span>

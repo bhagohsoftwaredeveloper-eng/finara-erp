@@ -195,7 +195,7 @@ export default function APAgingPage() {
       </div>
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-5 border-l-4 border-l-blue-500">
           <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Outstanding</p>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalOutstanding)}</p>
@@ -221,7 +221,7 @@ export default function APAgingPage() {
       </div>
 
       {/* Chart + Bucket summary */}
-      <div className="grid xl:grid-cols-3 gap-5">
+      <div className="grid xl:grid-cols-1 sm:grid-cols-3 gap-5">
         {/* Bar chart */}
         <div className="card xl:col-span-2">
           <div className="card-header">

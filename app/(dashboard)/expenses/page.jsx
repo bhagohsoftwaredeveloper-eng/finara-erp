@@ -47,16 +47,16 @@ function Drawer({ open, onClose, title, subtitle, children, footer, wide }) {
     <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-start overflow-y-auto">
       <div className={`bg-white ${wide ? 'max-w-4xl' : 'max-w-2xl'} w-full shadow-2xl flex flex-col`}
         style={{ borderRadius: '0 0 1rem 1rem', maxHeight: '92vh', animation: 'topDrawerIn .28s cubic-bezier(.4,0,.2,1)' }}>
-        <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between flex-shrink-0">
+        <div className="px-4 lg:px-6 py-3 lg:py-4 border-b border-gray-200 flex items-start justify-between flex-shrink-0">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
             {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-0.5"><X className="w-5 h-5" /></button>
         </div>
-        <div className="p-6 space-y-4 overflow-y-auto flex-1">{children}</div>
+        <div className="p-4 lg:p-6 space-y-4 overflow-y-auto flex-1">{children}</div>
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3 flex-shrink-0 bg-gray-50">
+          <div className="px-4 lg:px-6 py-3 lg:py-4 border-t border-gray-200 flex flex-wrap items-center justify-end gap-2 flex-shrink-0 bg-gray-50">
             {footer}
           </div>
         )}
@@ -68,12 +68,16 @@ function Drawer({ open, onClose, title, subtitle, children, footer, wide }) {
 // ─── Line-item row ────────────────────────────────────────────────
 function ItemRow({ item, index, accounts, onChange, onRemove }) {
   return (
-    <div className="grid grid-cols-12 gap-2 items-start">
-      <div className="col-span-5">
+    <div className="border border-gray-100 rounded-lg p-3 space-y-2 lg:border-0 lg:p-0 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-2 lg:items-start">
+      {/* Description */}
+      <div className="lg:col-span-5">
+        <label className="text-xs text-gray-400 lg:hidden">Description</label>
         <input className="input text-sm" placeholder="Description" value={item.description}
           onChange={e => onChange(index, 'description', e.target.value)} />
       </div>
-      <div className="col-span-3">
+      {/* COA Account */}
+      <div className="lg:col-span-3">
+        <label className="text-xs text-gray-400 lg:hidden">COA Account</label>
         <select className="input text-sm" value={item.accountId || ''} onChange={e => onChange(index, 'accountId', e.target.value ? Number(e.target.value) : null)}>
           <option value="">— COA Account (opt.) —</option>
           {accounts.filter(a => a.accountType === 'EXPENSE').map(a => (
@@ -81,18 +85,23 @@ function ItemRow({ item, index, accounts, onChange, onRemove }) {
           ))}
         </select>
       </div>
-      <div className="col-span-2">
-        <input type="number" className="input text-sm text-right" placeholder="0.00" step="0.01" min="0"
-          value={item.amount} onChange={e => onChange(index, 'amount', e.target.value)} />
-      </div>
-      <div className="col-span-1">
-        <input className="input text-sm" placeholder="Receipt#" value={item.receiptNo || ''}
-          onChange={e => onChange(index, 'receiptNo', e.target.value)} />
-      </div>
-      <div className="col-span-1 flex justify-end pt-1.5">
-        <button type="button" onClick={() => onRemove(index)} className="text-red-400 hover:text-red-600">
-          <X className="w-4 h-4" />
-        </button>
+      {/* Amount + Receipt on same row on mobile */}
+      <div className="flex gap-2 lg:contents">
+        <div className="flex-1 lg:col-span-2">
+          <label className="text-xs text-gray-400 lg:hidden">Amount</label>
+          <input type="number" className="input text-sm text-right" placeholder="0.00" step="0.01" min="0"
+            value={item.amount} onChange={e => onChange(index, 'amount', e.target.value)} />
+        </div>
+        <div className="w-24 lg:col-span-1">
+          <label className="text-xs text-gray-400 lg:hidden">Receipt #</label>
+          <input className="input text-sm" placeholder="Receipt#" value={item.receiptNo || ''}
+            onChange={e => onChange(index, 'receiptNo', e.target.value)} />
+        </div>
+        <div className="lg:col-span-1 flex items-end justify-end pb-0.5">
+          <button type="button" onClick={() => onRemove(index)} className="p-1.5 text-red-400 hover:text-red-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -601,44 +610,4 @@ export default function ExpensesPage() {
               <>
                 <div className="form-group">
                   <label className="label">{aCfg.fieldLabel}</label>
-                  <input className="input" value={actionForm.name} onChange={e => setActionForm(p => ({ ...p, name: e.target.value }))} />
-                </div>
-                {actionMode === 'pay' && (
-                  <>
-                    <div className="form-group">
-                      <label className="label">Payment Account <span className="text-red-500">*</span></label>
-                      <select
-                        className="input"
-                        value={actionForm.paymentAccountCode}
-                        onChange={e => setActionForm(p => ({ ...p, paymentAccountCode: e.target.value }))}
-                        required
-                      >
-                        <option value="">— Select account —</option>
-                        {(cashAccounts.length ? cashAccounts : accounts.filter(ac => ac.accountType === 'ASSET')).map(ac => (
-                          <option key={ac.id} value={ac.accountCode}>
-                            {ac.accountCode} — {ac.accountName}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-400 mt-1">Where the funds came from (Petty Cash, Cash in Bank, etc.)</p>
-                    </div>
-                    <div className="form-group">
-                      <label className="label">Payment Date</label>
-                      <input type="date" className="input" value={actionForm.date} onChange={e => setActionForm(p => ({ ...p, date: e.target.value }))} />
-                    </div>
-                  </>
-                )}
-              </>
-            ) : (
-              <div className="form-group">
-                <label className="label">Reason for Rejection *</label>
-                <textarea className="input h-24 resize-none" value={actionForm.reason}
-                  onChange={e => setActionForm(p => ({ ...p, reason: e.target.value }))} placeholder="Explain why this voucher is being rejected…" />
-              </div>
-            )}
-          </div>
-        )}
-      </Drawer>
-    </div>
-  );
-}
+                  <input className="input" value={ac

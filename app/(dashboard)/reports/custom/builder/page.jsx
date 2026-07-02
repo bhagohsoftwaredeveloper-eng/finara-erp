@@ -236,7 +236,7 @@ export default function ReportBuilderPage() {
 
       {/* Step 2 — Configure */}
       {step === 2 && selectedType && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-1 sm:grid-cols-3 gap-5">
           {/* Left: fields */}
           <div className="lg:col-span-2 space-y-4">
             {/* Name / description card */}
@@ -655,7 +655,7 @@ function ProfitLossPreview({ data, config, name }) {
   return (
     <div className="space-y-4">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card p-4 border-l-4 border-green-400">
           <p className="text-xs text-gray-400 mb-1">Total Revenue</p>
           <p className="text-xl font-bold text-green-600">{formatCurrency(data.revenue)}</p>

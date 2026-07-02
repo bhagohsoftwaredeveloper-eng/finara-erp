@@ -274,7 +274,7 @@ export default function VendorsPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Total Vendors',    value: vendors.length,    color: 'bg-blue-100 text-blue-600',   icon: <Building2 className="w-5 h-5" /> },
           { label: 'Active',           value: activeVendors,     color: 'bg-green-100 text-green-600', icon: <CheckCircle2 className="w-5 h-5" /> },
@@ -334,7 +334,7 @@ export default function VendorsPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-3 gap-4">
           {vendors.map((vendor) => (
             <div
               key={vendor.id}

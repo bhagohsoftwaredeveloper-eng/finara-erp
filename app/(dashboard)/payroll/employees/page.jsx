@@ -204,7 +204,7 @@ function EmployeeModal({ employee, onClose, onSaved }) {
                 </div>
                 <div className="form-group">
                   <label className="label">Pay Frequency</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
                       { val: 'MONTHLY',     label: 'Monthly',     sub: 'Once/month' },
                       { val: 'SEMI_MONTHLY', label: 'Semi-Monthly', sub: '15th & 30th' },
@@ -442,7 +442,7 @@ function EmployeeDrawer({ employee, payrollHistory, onClose, onEdit, onView2316 
                         <p className="text-xs text-gray-400">Net Pay</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 mt-2 text-xs text-gray-500">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 text-xs text-gray-500">
                       <div>Gross: <span className="font-medium text-gray-700">{formatCurrency(p.grossPay)}</span></div>
                       <div>Tax: <span className="font-medium text-red-500">{formatCurrency(p.withholdingTax)}</span></div>
                       <div>Deductions: <span className="font-medium text-red-500">{formatCurrency(p.totalDeductions)}</span></div>
@@ -609,7 +609,7 @@ export default function EmployeesPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Employees',   value: employees.length,       sub: 'on record',          color: 'bg-blue-100 text-blue-600',   icon: <Users className="w-5 h-5" /> },
           { label: 'Active',            value: activeCount,             sub: 'in payroll',          color: 'bg-green-100 text-green-600', icon: <CheckCircle2 className="w-5 h-5" /> },
@@ -725,7 +725,7 @@ export default function EmployeesPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-3 gap-4">
           {filtered.map((emp) => (
             <div key={emp.id} className={`card cursor-pointer group hover:shadow-md hover:border-blue-200 transition-all ${!emp.isActive ? 'opacity-60' : ''}`}
               onClick={() => openDrawer(emp)}>

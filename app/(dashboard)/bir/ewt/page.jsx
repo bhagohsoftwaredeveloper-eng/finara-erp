@@ -239,7 +239,7 @@ export default function EwtSummaryPage() {
       ) : data ? (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Vendors Subject to EWT', value: data.vendorCount || 0,             sub: `of ${data.totalVendors || 0} total vendors`, icon: Building2,   color: 'text-blue-600'   },
               { label: 'Total Payments Made',    value: formatCurrency(data.totalPayments), sub: 'gross amount (incl. VAT)',                   icon: PesoSign,  color: 'text-purple-600' },
@@ -260,7 +260,7 @@ export default function EwtSummaryPage() {
           </div>
 
           {/* Charts */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Top vendors bar */}
             <div className="xl:col-span-2 card p-5">
               <p className="text-sm font-semibold text-gray-700 mb-4">Top Vendors by EWT Amount</p>
