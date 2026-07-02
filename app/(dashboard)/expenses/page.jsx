@@ -610,4 +610,44 @@ export default function ExpensesPage() {
               <>
                 <div className="form-group">
                   <label className="label">{aCfg.fieldLabel}</label>
-                  <input className="input" value={ac
+                  <input className="input" value={actionForm.name} onChange={e => setActionForm(p => ({ ...p, name: e.target.value }))} />
+                </div>
+                {actionMode === 'pay' && (
+                  <>
+                    <div className="form-group">
+                      <label className="label">Payment Account <span className="text-red-500">*</span></label>
+                      <select
+                        className="input"
+                        value={actionForm.paymentAccountCode}
+                        onChange={e => setActionForm(p => ({ ...p, paymentAccountCode: e.target.value }))}
+                        required
+                      >
+                        <option value="">— Select account —</option>
+                        {(cashAccounts.length ? cashAccounts : accounts.filter(ac => ac.accountType === 'ASSET')).map(ac => (
+                          <option key={ac.id} value={ac.accountCode}>
+                            {ac.accountCode} — {ac.accountName}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">Where the funds came from (Petty Cash, Cash in Bank, etc.)</p>
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Payment Date</label>
+                      <input type="date" className="input" value={actionForm.date} onChange={e => setActionForm(p => ({ ...p, date: e.target.value }))} />
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <div className="form-group">
+                <label className="label">Reason for Rejection *</label>
+                <textarea className="input h-24 resize-none" value={actionForm.reason}
+                  onChange={e => setActionForm(p => ({ ...p, reason: e.target.value }))} placeholder="Explain why this voucher is being rejected…" />
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}
