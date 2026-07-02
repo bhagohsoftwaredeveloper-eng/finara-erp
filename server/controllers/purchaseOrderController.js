@@ -42,8 +42,8 @@ exports.list = async (req, res, next) => {
 
 exports.getOne = async (req, res, next) => {
   try {
-    const po = await prisma.purchaseOrder.findUnique({
-      where: { id: Number(req.params.id) },
+    const po = await prisma.purchaseOrder.findFirst({
+      where: { id: Number(req.params.id), businessId: req.businessId },
       include: { vendor: true, lines: { orderBy: { lineOrder: 'asc' } } },
     });
     if (!po) throw createError('Purchase order not found', 404);
@@ -90,7 +90,7 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, businessId: req.businessId } });
     if (!po) throw createError('Purchase order not found', 404);
     if (!['DRAFT', 'SENT'].includes(po.status)) throw createError('Only DRAFT or SENT purchase orders can be edited', 400);
 
@@ -129,7 +129,7 @@ exports.update = async (req, res, next) => {
 exports.send = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, businessId: req.businessId } });
     if (!po) throw createError('Purchase order not found', 404);
     if (po.status !== 'DRAFT') throw createError('Only DRAFT purchase orders can be sent', 400);
     const updated = await prisma.purchaseOrder.update({ where: { id }, data: { status: 'SENT' } });
@@ -142,7 +142,7 @@ exports.send = async (req, res, next) => {
 exports.receive = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const po = await prisma.purchaseOrder.findUnique({ where: { id }, include: { lines: true } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, businessId: req.businessId }, include: { lines: true } });
     if (!po) throw createError('Purchase order not found', 404);
     if (['CANCELLED', 'BILLED'].includes(po.status)) throw createError('Cannot receive on a cancelled or billed PO', 400);
 
@@ -172,7 +172,7 @@ exports.receive = async (req, res, next) => {
 exports.convertToBill = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const po = await prisma.purchaseOrder.findUnique({ where: { id }, include: { vendor: true, lines: true } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, businessId: req.businessId }, include: { vendor: true, lines: true } });
     if (!po) throw createError('Purchase order not found', 404);
     if (po.status === 'BILLED') throw createError('This PO has already been billed', 400);
     if (po.status === 'CANCELLED') throw createError('Cannot bill a cancelled PO', 400);
@@ -183,6 +183,7 @@ exports.convertToBill = async (req, res, next) => {
 
     const bill = await prisma.bill.create({
       data: {
+        businessId: req.businessId,
         billNo,
         vendorId: po.vendorId,
         billDate: billDate ? new Date(billDate) : new Date(),
@@ -215,6 +216,7 @@ exports.convertToBill = async (req, res, next) => {
       entryDate: bill.billDate,
       description: `AP Bill — ${bill.vendor.name} (${bill.billNo}) from ${po.poNumber}`,
       reference: bill.billNo,
+      businessId: req.businessId,
       lines: glLines,
       userId: req.user?.id || 1,
     });
@@ -228,7 +230,7 @@ exports.convertToBill = async (req, res, next) => {
 exports.cancel = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, businessId: req.businessId } });
     if (!po) throw createError('Purchase order not found', 404);
     if (po.status === 'BILLED') throw createError('Cannot cancel a billed PO', 400);
     const updated = await prisma.purchaseOrder.update({ where: { id }, data: { status: 'CANCELLED' } });
@@ -240,7 +242,7 @@ exports.cancel = async (req, res, next) => {
 exports.remove = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, businessId: req.businessId } });
     if (!po) throw createError('Purchase order not found', 404);
     if (po.status === 'BILLED') throw createError('Cannot delete a billed PO', 400);
     await prisma.purchaseOrder.delete({ where: { id } });
