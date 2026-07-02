@@ -7,7 +7,7 @@ import {
   Building2, FileText, Users, Database, Settings as SettingsIcon,
   Calculator, Hash, Shield, Save, RefreshCw, Download, AlertTriangle,
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
-  ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X,
+  ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X, ChevronDown,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
@@ -250,12 +250,15 @@ export default function SettingsPage() {
   const visibleTabs = TABS.filter((t) => !role || t.roles.includes(role));
 
   const [activeTab, setActiveTab] = useState('company');
+  const [menuOpen, setMenuOpen] = useState(false); // mobile: tab menu open/close
   // If the active tab isn't visible to this role, fall back to the first allowed tab.
   useEffect(() => {
     if (role && !visibleTabs.some((t) => t.key === activeTab) && visibleTabs[0]) {
       setActiveTab(visibleTabs[0].key);
     }
   }, [role]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const switchTab = (key) => { setActiveTab(key); setMenuOpen(false); };
   const [form,      setForm]      = useState({});
   const [original,  setOriginal]  = useState({});
   const [loading,   setLoading]   = useState(true);
@@ -428,9 +431,40 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <div className="flex gap-5 items-start">
-        {/* Sidebar tabs */}
-        <div className="w-48 flex-shrink-0 space-y-0.5">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-start">
+        {/* ── Mobile: collapsible dropdown menu ── */}
+        <div className="w-full lg:hidden">
+          <button
+            onClick={() => setMenuOpen(v => !v)}
+            className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm text-sm font-medium text-gray-700"
+          >
+            <span className="flex items-center gap-2">
+              {(() => { const t = visibleTabs.find(t => t.key === activeTab); return t ? <><t.icon className="w-4 h-4 text-blue-600" />{t.label}</> : null; })()}
+            </span>
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {menuOpen && (
+            <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-10 relative">
+              {visibleTabs.map((tab) => (
+                <button
+                  key={tab.key} onClick={() => switchTab(tab.key)}
+                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium transition-colors text-left border-b border-gray-100 last:border-0 ${
+                    activeTab === tab.key ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <tab.icon className="w-4 h-4 flex-shrink-0" />
+                  {tab.label}
+                </button>
+              ))}
+              <button onClick={() => { handleResetDefaults(); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-4 py-3 text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors border-t border-gray-100">
+                <RefreshCw className="w-3.5 h-3.5" /> Reset Defaults
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop: sidebar tabs ── */}
+        <div className="hidden lg:block w-48 flex-shrink-0 space-y-0.5">
           {visibleTabs.map((tab) => (
             <button
               key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -450,7 +484,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 card p-6 space-y-6">
+        <div className="flex-1 card p-4 lg:p-6 space-y-6 w-full">
 
           {/* ── Company ── */}
           {activeTab === 'company' && (

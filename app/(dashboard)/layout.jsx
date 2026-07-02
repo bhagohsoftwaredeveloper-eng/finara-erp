@@ -15,7 +15,7 @@ export default function DashboardLayout({ children }) {
   const pathname = usePathname();
 
   const [authed,    setAuthed]    = useState(null);
-  const [collapsed, setCollapsed] = useState(true);   // default: icon-only
+  const [collapsed, setCollapsed] = useState(false);   // desktop: expanded by default
   const [mobileOpen, setMobileOpen] = useState(false); // mobile nav: closed by default
   const [readonly,  setReadonly]  = useState(false);
   const [permReady, setPermReady] = useState(false);
@@ -26,9 +26,14 @@ export default function DashboardLayout({ children }) {
   }, [router]);
 
   useEffect(() => {
-    // Only override default if user explicitly set a preference
     const stored = localStorage.getItem('sidebarCollapsed');
-    if (stored !== null) setCollapsed(stored === '1');
+    if (stored !== null) {
+      // User has a saved preference — always honour it
+      setCollapsed(stored === '1');
+    } else {
+      // No preference yet: collapse only on mobile screens
+      setCollapsed(window.innerWidth < 1024);
+    }
   }, []);
   useEffect(() => { if (authed) setReadonly(!canWrite(getUser()?.role)); }, [authed]);
 
@@ -75,7 +80,7 @@ export default function DashboardLayout({ children }) {
           />
         )}
 
-        <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-all duration-200 lg:${collapsed ? 'ml-16' : 'ml-64'}`}>
+        <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-all duration-200 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
           <Header onMobileMenu={() => setMobileOpen(true)} />
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
             <PageTransition>
