@@ -4,6 +4,7 @@ import { assets as assetApi, accounts as acctApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import { Plus, TrendingDown, CalendarRange, Archive, Building2 } from 'lucide-react';
+import AccountSelect from '@/components/ui/AccountSelect';
 
 const STATUS_BADGE = { ACTIVE: 'badge-green', FULLY_DEPRECIATED: 'badge-blue', DISPOSED: 'badge-gray' };
 
@@ -60,10 +61,7 @@ function AssetModal({ accounts, onClose, onSaved }) {
 }
 
 const AcctSelect = ({ accounts, value, onChange }) => (
-  <select className="select w-full text-sm" value={value || ''} onChange={(e) => onChange(e.target.value)}>
-    <option value="">-- none --</option>
-    {accounts.map((a) => <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>)}
-  </select>
+  <AccountSelect accounts={accounts} value={value || ''} onChange={onChange} placeholder="-- none --" />
 );
 
 function ScheduleModal({ asset, onClose, onChanged }) {

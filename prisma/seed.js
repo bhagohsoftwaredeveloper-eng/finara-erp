@@ -34,6 +34,7 @@ async function main() {
     // Cash & Cash Equivalents
     { accountCode:'1010', accountName:'Cash on Hand',                        accountType:'ASSET',     normalBalance:'DEBIT',  parentCode:'1000' },
     { accountCode:'1011', accountName:'Petty Cash Fund',                     accountType:'ASSET',     normalBalance:'DEBIT',  parentCode:'1000' },
+    { accountCode:'1012', accountName:'Cash — GCash',                        accountType:'ASSET',     normalBalance:'DEBIT',  parentCode:'1000' },
     { accountCode:'1020', accountName:'Cash in Bank — BDO Checking',         accountType:'ASSET',     normalBalance:'DEBIT',  parentCode:'1000' },
     { accountCode:'1021', accountName:'Cash in Bank — BDO Savings',          accountType:'ASSET',     normalBalance:'DEBIT',  parentCode:'1000' },
     { accountCode:'1022', accountName:'Cash in Bank — BPI Checking',         accountType:'ASSET',     normalBalance:'DEBIT',  parentCode:'1000' },
@@ -294,9 +295,10 @@ async function main() {
   for (const acct of accounts) {
     const parentId = acct.parentCode ? codeMap[acct.parentCode] : null;
     const result = await prisma.account.upsert({
-      where:  { accountCode: acct.accountCode },
-      update: { accountName: acct.accountName, accountType: acct.accountType, normalBalance: acct.normalBalance },
+      where:  { businessId_accountCode: { businessId: 1, accountCode: acct.accountCode } },
+      update: { accountName: acct.accountName, accountType: acct.accountType, normalBalance: acct.normalBalance, parentId },
       create: {
+        businessId:    1,
         accountCode:   acct.accountCode,
         accountName:   acct.accountName,
         accountType:   acct.accountType,
@@ -312,19 +314,19 @@ async function main() {
 
   // ─── Sample Vendor ─────────────────────────────────────────
   await prisma.vendor.upsert({
-    where:  { vendorCode: 'VEN-001' },
+    where:  { businessId_vendorCode: { businessId: 1, vendorCode: 'VEN-001' } },
     update: {},
     create: {
-      vendorCode: 'VEN-001', name: 'ABC Office Supplies Inc.',
+      businessId: 1, vendorCode: 'VEN-001', name: 'ABC Office Supplies Inc.',
       tin: '123-456-789-000', address: 'Makati City, Metro Manila',
       contactName: 'Juan Cruz', email: 'abc@supplier.com', phone: '02-1234-5678',
     },
   });
   await prisma.vendor.upsert({
-    where:  { vendorCode: 'VEN-002' },
+    where:  { businessId_vendorCode: { businessId: 1, vendorCode: 'VEN-002' } },
     update: {},
     create: {
-      vendorCode: 'VEN-002', name: 'MediaMax Philippines Corp.',
+      businessId: 1, vendorCode: 'VEN-002', name: 'MediaMax Philippines Corp.',
       tin: '234-567-890-000', address: 'Ortigas Center, Pasig City',
       contactName: 'Maria Reyes', email: 'media@mediamax.com.ph', phone: '02-8765-4321',
     },
@@ -332,19 +334,19 @@ async function main() {
 
   // ─── Sample Customer ───────────────────────────────────────
   await prisma.customer.upsert({
-    where:  { customerCode: 'CUS-001' },
+    where:  { businessId_customerCode: { businessId: 1, customerCode: 'CUS-001' } },
     update: {},
     create: {
-      customerCode: 'CUS-001', name: 'XYZ Corporation',
+      businessId: 1, customerCode: 'CUS-001', name: 'XYZ Corporation',
       tin: '987-654-321-000', address: 'BGC, Taguig, Metro Manila',
       contactName: 'Maria Santos', email: 'xyz@client.com', phone: '02-9876-5432',
     },
   });
   await prisma.customer.upsert({
-    where:  { customerCode: 'CUS-002' },
+    where:  { businessId_customerCode: { businessId: 1, customerCode: 'CUS-002' } },
     update: {},
     create: {
-      customerCode: 'CUS-002', name: 'Sunrise Retail Group Inc.',
+      businessId: 1, customerCode: 'CUS-002', name: 'Sunrise Retail Group Inc.',
       tin: '876-543-210-000', address: 'Alabang, Muntinlupa City',
       contactName: 'Jose Mendoza', email: 'jose@sunrise.com', phone: '02-8888-1234',
     },
@@ -352,10 +354,10 @@ async function main() {
 
   // ─── Sample Employee ───────────────────────────────────────
   await prisma.employee.upsert({
-    where:  { employeeNo: 'EMP-001' },
+    where:  { businessId_employeeNo: { businessId: 1, employeeNo: 'EMP-001' } },
     update: {},
     create: {
-      employeeNo: 'EMP-001', firstName: 'Juan', lastName: 'dela Cruz', middleName: 'B.',
+      businessId: 1, employeeNo: 'EMP-001', firstName: 'Juan', lastName: 'dela Cruz', middleName: 'B.',
       position: 'Accountant', department: 'Finance & Accounting',
       tin: '111-222-333-000', sssNo: '33-1234567-8',
       philhealthNo: '01-234567890-1', pagibigNo: '1234-5678-9012',
@@ -364,10 +366,10 @@ async function main() {
     },
   });
   await prisma.employee.upsert({
-    where:  { employeeNo: 'EMP-002' },
+    where:  { businessId_employeeNo: { businessId: 1, employeeNo: 'EMP-002' } },
     update: {},
     create: {
-      employeeNo: 'EMP-002', firstName: 'Anna', lastName: 'Reyes', middleName: 'C.',
+      businessId: 1, employeeNo: 'EMP-002', firstName: 'Anna', lastName: 'Reyes', middleName: 'C.',
       position: 'Creative Director', department: 'Creative',
       tin: '222-333-444-000', sssNo: '33-9876543-2',
       philhealthNo: '01-987654321-0', pagibigNo: '9876-5432-1098',

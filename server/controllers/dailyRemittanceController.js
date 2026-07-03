@@ -18,7 +18,7 @@ exports.calculate = async (req, res, next) => {
 
     const range = dayRange(date);
 
-    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL] = await Promise.all([
+    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL, cashOnHandGL] = await Promise.all([
       prisma.invoice.findMany({
         where: { businessId: req.businessId, invoiceDate: range },
         include: { customer: { select: { name: true, customerCode: true } } },
@@ -57,6 +57,14 @@ exports.calculate = async (req, res, next) => {
         },
         _sum: { debit: true, credit: true },
       }),
+      // Cash on Hand (1010) running balance from all POSTED GL entries
+      prisma.journalLine.aggregate({
+        where: {
+          entry: { businessId: req.businessId, status: 'POSTED' },
+          account: { accountCode: '1010', businessId: req.businessId },
+        },
+        _sum: { debit: true, credit: true },
+      }),
     ]);
 
     // ── Expense voucher split ────────────────────────────────────
@@ -81,9 +89,13 @@ exports.calculate = async (req, res, next) => {
     // netCash = what should be physically remitted from daily collections
     const netCash        = cashReceived - cashDisbursed;
     // Petty Cash Fund running balance (1011): total debits − total credits on POSTED entries
-    const pcDebits       = Number(pettyCashGL._sum.debit  || 0);
-    const pcCredits      = Number(pettyCashGL._sum.credit || 0);
+    const pcDebits         = Number(pettyCashGL._sum.debit  || 0);
+    const pcCredits        = Number(pettyCashGL._sum.credit || 0);
     const pettyCashBalance = pcDebits - pcCredits;
+    // Cash on Hand running balance (1010)
+    const cohDebits         = Number(cashOnHandGL._sum.debit  || 0);
+    const cohCredits        = Number(cashOnHandGL._sum.credit || 0);
+    const cashOnHandBalance = cohDebits - cohCredits;
 
     // ── Detail line items ────────────────────────────────────────
     const items = [
@@ -156,7 +168,7 @@ exports.calculate = async (req, res, next) => {
     res.json({
       date,
       totalSales, vatCollected, cashReceived,
-      totalExpenses, pettyCashTotal, pettyCashBalance, cashDisbursed, netCash,
+      totalExpenses, pettyCashTotal, pettyCashBalance, cashOnHandBalance, cashDisbursed, netCash,
       counts: {
         invoices:      invoices.length,
         collections:   arPayments.length,

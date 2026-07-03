@@ -6,6 +6,7 @@ import {
   Plus, Search, Eye, Filter, X, FileText, Send, CheckCircle2,
   XCircle, Printer, Trash2, ArrowRightCircle, Edit2,
 } from 'lucide-react';
+import AccountSelect from '@/components/ui/AccountSelect';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import CustomerSelect from '@/components/CustomerSelect';
@@ -167,13 +168,12 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
                       return (
                         <tr key={i}>
                           <td className="py-2">
-                            <select className="select text-xs" value={line.accountId}
-                              onChange={(e) => setLine(i, 'accountId', e.target.value)}>
-                              <option value="">Select…</option>
-                              {accounts.map((a) => (
-                                <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>
-                              ))}
-                            </select>
+                            <AccountSelect
+                              value={line.accountId}
+                              onChange={(val) => setLine(i, 'accountId', val)}
+                              accounts={accounts}
+                              placeholder="Select…"
+                            />
                           </td>
                           <td className="py-2">
                             <DescriptionInput className="input text-xs" value={line.description}

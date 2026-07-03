@@ -4,6 +4,7 @@ import { recurring as recApi, accounts as acctApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import { Plus, Play, RefreshCw, Power, Trash2, Repeat } from 'lucide-react';
+import AccountSelect from '@/components/ui/AccountSelect';
 
 const emptyLine = () => ({ accountId: '', debit: '', credit: '', description: '' });
 
@@ -53,10 +54,12 @@ function RecurringModal({ accounts, onClose, onSaved }) {
                 <tbody>
                   {form.payload.map((l, i) => (
                     <tr key={i}>
-                      <td><select className="select w-full text-xs" value={l.accountId} onChange={(e) => setLine(i, 'accountId', e.target.value)}>
-                        <option value="">-- Account --</option>
-                        {accounts.map((a) => <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>)}
-                      </select></td>
+                      <td><AccountSelect
+                        value={l.accountId}
+                        onChange={(val) => setLine(i, 'accountId', val)}
+                        accounts={accounts}
+                        placeholder="-- Account --"
+                      /></td>
                       <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={l.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} /></td>
                       <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={l.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} /></td>
                       <td><input className="input w-full text-xs" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} /></td>

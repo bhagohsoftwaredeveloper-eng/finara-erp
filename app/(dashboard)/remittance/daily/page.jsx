@@ -303,6 +303,8 @@ export default function DailyRemittancePage() {
             ${summaryRow('Total Expenses Incurred', d.totalExpenses)}
             ${summaryRow('Cash Disbursed (Payments)', d.cashDisbursed)}
             ${summaryRow('Net Cash Flow', d.netCash, true)}
+            ${summaryRow('Cash on Hand (Acct 1010)', d.cashOnHandBalance)}
+            ${summaryRow('Petty Cash Fund (Acct 1011)', d.pettyCashBalance)}
           </tbody>
         </table>
         <div style="font-size:12px;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px">
@@ -456,7 +458,7 @@ export default function DailyRemittancePage() {
       {/* ── Summary Cards ── */}
       {hasData && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
             {/* Sales */}
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -493,27 +495,33 @@ export default function DailyRemittancePage() {
               <div className="text-xl font-bold text-red-700">{fmt(calcData.cashDisbursed)}</div>
               <div className="text-xs text-gray-400 mt-0.5">AP Payments</div>
             </div>
-            {/* Petty Cash (separate fund — not in net cash) */}
-            {Number(calcData.pettyCashTotal) > 0 && (
-              <div className="card p-4 border-yellow-200 bg-yellow-50">
-                <div className="flex items-center gap-2 mb-2">
-                  <Wallet className="w-4 h-4 text-yellow-600" />
-                  <span className="text-xs text-gray-500 font-medium">Petty Cash Used</span>
-                </div>
-                <div className="text-xl font-bold text-yellow-700">{fmt(calcData.pettyCashTotal)}</div>
-                <div className="text-xs text-gray-400 mt-0.5">Separate fund · not in remittance</div>
-                {calcData.pettyCashBalance != null && (
-                  <div className="mt-2 pt-2 border-t border-yellow-200">
-                    <span className="text-xs text-gray-500">Remaining balance: </span>
-                    <span className={`text-xs font-bold ${Number(calcData.pettyCashBalance) < 0 ? 'text-red-600' : 'text-green-700'}`}>
-                      {fmt(calcData.pettyCashBalance)}
-                    </span>
-                  </div>
-                )}
+            {/* Cash on Hand balance */}
+            <div className="card p-4 border-blue-200 bg-blue-50">
+              <div className="flex items-center gap-2 mb-2">
+                <Banknote className="w-4 h-4 text-blue-600" />
+                <span className="text-xs text-gray-500 font-medium">Cash on Hand</span>
               </div>
-            )}
+              <div className={`text-xl font-bold ${Number(calcData.cashOnHandBalance) < 0 ? 'text-red-700' : 'text-blue-700'}`}>
+                {fmt(calcData.cashOnHandBalance)}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">Account 1010 · GL balance</div>
+            </div>
+            {/* Petty Cash Fund balance */}
+            <div className="card p-4 border-yellow-200 bg-yellow-50">
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet className="w-4 h-4 text-yellow-600" />
+                <span className="text-xs text-gray-500 font-medium">Petty Cash Fund</span>
+              </div>
+              <div className={`text-xl font-bold ${Number(calcData.pettyCashBalance) < 0 ? 'text-red-700' : 'text-yellow-700'}`}>
+                {fmt(calcData.pettyCashBalance)}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                Account 1011 · GL balance
+                {Number(calcData.pettyCashTotal) > 0 && ` · Used today: ${fmt(calcData.pettyCashTotal)}`}
+              </div>
+            </div>
             {/* Net Cash */}
-            <div className={`card p-4 col-span-2 ${Number(calcData.netCash) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+            <div className={`card p-4 col-span-2 xl:col-span-2 ${Number(calcData.netCash) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
               <div className="flex items-center gap-2 mb-2">
                 {Number(calcData.netCash) >= 0
                   ? <TrendingUp className="w-4 h-4 text-green-600" />

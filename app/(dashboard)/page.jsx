@@ -62,7 +62,7 @@ export default function DashboardPage() {
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold">Welcome to PH-ERP</h2>
+            <h2 className="text-xl font-bold">Welcome to Finara Accounting System ERP</h2>
             <p className="text-blue-200 text-sm mt-1">BIR • SSS • PhilHealth • Pag-IBIG Compliant System</p>
           </div>
           <div className="hidden md:flex gap-1 h-6">

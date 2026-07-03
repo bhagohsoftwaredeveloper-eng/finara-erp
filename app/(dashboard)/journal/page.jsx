@@ -4,6 +4,7 @@ import { journal as jApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock, Printer } from 'lucide-react';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
+import AccountSelect from '@/components/ui/AccountSelect';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 const STATUS_BADGE = { DRAFT:'badge-yellow', POSTED:'badge-green', VOIDED:'badge-gray' };
@@ -303,10 +304,12 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
                     {form.lines.map((line, i) => (
                       <tr key={i}>
                         <td>
-                          <select className="select w-full text-xs" value={line.accountId} onChange={(e) => setLine(i, 'accountId', e.target.value)} required>
-                            <option value="">-- Select Account --</option>
-                            {accounts.map(a => <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>)}
-                          </select>
+                          <AccountSelect
+                            value={line.accountId}
+                            onChange={(val) => setLine(i, 'accountId', val)}
+                            accounts={accounts}
+                            placeholder="-- Select Account --"
+                          />
                         </td>
                         <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={line.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} placeholder="0.00" /></td>
                         <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={line.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} placeholder="0.00" /></td>

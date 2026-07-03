@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { settings as settingsApi, auth as authApi, permissions as permApi } from '@/lib/api';
+import { settings as settingsApi, auth as authApi, permissions as permApi, backup as backupApi } from '@/lib/api';
 import { MODULES, CONFIGURABLE_ROLES, isLocked, setPermissions } from '@/lib/permissions';
 import toast from 'react-hot-toast';
 import {
@@ -243,6 +243,65 @@ function DbResetModal({ onClose }) {
   );
 }
 
+// ─── Module Reset Modal ───────────────────────────────────────
+function ModuleResetModal({ modules, moduleList, onClose, onDone }) {
+  const [confirm,  setConfirm]  = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const phrase  = 'RESET';
+  const ready   = confirm === phrase && modules.length > 0;
+
+  const handleReset = async () => {
+    if (!ready) return;
+    setLoading(true);
+    try {
+      await backupApi.reset(modules, confirm);
+      toast.success(`Reset complete — ${modules.length} module${modules.length !== 1 ? 's' : ''} cleared`);
+      onDone();
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Reset failed');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-md">
+        <div className="modal-header bg-red-50">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertTriangle className="w-5 h-5" />
+            <h3 className="font-bold">DANGER: Module Reset</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
+        </div>
+        <div className="modal-body space-y-4">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 space-y-2">
+            <p className="font-bold">The following modules will be permanently cleared:</p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {modules.map((k) => (
+                <span key={k} className="px-2 py-0.5 bg-red-100 border border-red-300 rounded text-xs font-medium text-red-800">
+                  {moduleList.find((m) => m.key === k)?.label || k}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-red-500 mt-2">All records for the selected modules will be deleted. This cannot be undone.</p>
+          </div>
+          <div className="form-group">
+            <label className="label">Type <span className="font-mono font-bold text-red-600">RESET</span> to confirm</label>
+            <input className="input font-mono text-red-600" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="RESET" />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={handleReset} disabled={!ready || loading}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${ready ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-100 text-red-300 cursor-not-allowed'}`}>
+            {loading ? 'Resetting...' : 'Reset Selected Modules'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Settings Page ───────────────────────────────────────
 export default function SettingsPage() {
   const [role, setRole] = useState(null);
@@ -274,6 +333,21 @@ export default function SettingsPage() {
   const [userModal,   setUserModal]   = useState(null); // null | 'new' | user obj
   const [resetPwdFor, setResetPwdFor] = useState(null);
   const [showDbReset, setShowDbReset] = useState(false);
+
+  // Module backup/restore
+  const [moduleList,        setModuleList]        = useState([]);
+  const [selectedMods,      setSelectedMods]       = useState([]);
+  const [exportingMods,     setExportingMods]      = useState(false);
+  const [restoreFile,       setRestoreFile]        = useState(null);
+  const [restoreFileMeta,   setRestoreFileMeta]    = useState(null); // parsed header
+  const [restoreMods,       setRestoreMods]        = useState([]);
+  const [doReset,           setDoReset]            = useState(true);
+  const [restoring,         setRestoring]          = useState(false);
+  const [showRestoreConfirm,setShowRestoreConfirm] = useState(false);
+
+  // Module reset (Danger Zone)
+  const [resetMods,         setResetMods]          = useState([]);
+  const [showModResetModal, setShowModResetModal]  = useState(false);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target?.value ?? e }));
   const setB = (k) => (v) => setForm((f) => ({ ...f, [k]: String(v) }));
@@ -309,6 +383,61 @@ export default function SettingsPage() {
     finally { setDbLoading(false); }
   }, []);
 
+  // Load module list for backup
+  const loadModuleList = useCallback(async () => {
+    try { const r = await backupApi.modules(); setModuleList(r.data); } catch { /* silent */ }
+  }, []);
+
+  // Export selected modules
+  const handleModuleExport = async () => {
+    if (!selectedMods.length) return toast.error('Select at least one module');
+    setExportingMods(true);
+    try {
+      const r    = await backupApi.export(selectedMods);
+      const url  = URL.createObjectURL(r.data);
+      const a    = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = url; a.download = `finara-backup-${selectedMods.join('-')}-${stamp}.json`; a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Backup downloaded');
+    } catch { toast.error('Export failed'); }
+    finally { setExportingMods(false); }
+  };
+
+  // Parse uploaded backup file header
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRestoreFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed.version?.startsWith('finara')) { toast.error('Not a valid Finara backup file'); return; }
+        setRestoreFileMeta({ modules: parsed.modules, rowCount: parsed.rowCount, exportedAt: parsed.exportedAt, businessId: parsed.businessId });
+        setRestoreMods(parsed.modules); // default: restore all modules in file
+      } catch { toast.error('Cannot read file — invalid JSON'); }
+    };
+    reader.readAsText(file);
+  };
+
+  // Perform restore
+  const handleRestore = async () => {
+    if (!restoreFile || !restoreMods.length) return;
+    setRestoring(true);
+    setShowRestoreConfirm(false);
+    try {
+      const fd = new FormData();
+      fd.append('file', restoreFile);
+      fd.append('modules', restoreMods.join(','));
+      fd.append('reset', String(doReset));
+      const r = await backupApi.import(fd);
+      toast.success(r.data.message);
+      setRestoreFile(null); setRestoreFileMeta(null); setRestoreMods([]);
+    } catch (err) { toast.error(err.response?.data?.error || 'Restore failed'); }
+    finally { setRestoring(false); }
+  };
+
   // Load role permissions
   const loadPermissions = useCallback(async () => {
     try {
@@ -320,7 +449,7 @@ export default function SettingsPage() {
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => {
     if (activeTab === 'users')       loadUsers();
-    if (activeTab === 'database')    loadDbStats();
+    if (activeTab === 'database')    { loadDbStats(); loadModuleList(); }
     if (activeTab === 'permissions') loadPermissions();
   }, [activeTab]);
 
@@ -845,43 +974,193 @@ export default function SettingsPage() {
               {/* Backup */}
               <div className="border-t border-gray-100 pt-5">
                 <SectionTitle icon={HardDrive} color="text-green-600">Backup & Restore</SectionTitle>
-                <div className="bg-green-50 border border-green-200 rounded-xl p-5 space-y-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-green-800">Download Database Backup</p>
-                      <p className="text-xs text-green-600 mt-0.5">
-                        Exports all tables to a SQL dump (if mysqldump is available) or a JSON file. Download regularly to prevent data loss.
-                      </p>
-                    </div>
-                    <button onClick={handleBackup} disabled={backingUp} className="btn-success btn-sm flex-shrink-0 flex items-center gap-2">
-                      {backingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                      {backingUp ? 'Preparing...' : 'Download Backup'}
+
+                {/* Full backup (legacy) */}
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between gap-4 mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-green-800">Full Database Backup</p>
+                    <p className="text-xs text-green-600 mt-0.5">Exports everything (all modules) as a single JSON file.</p>
+                  </div>
+                  <button onClick={handleBackup} disabled={backingUp} className="btn-success btn-sm flex-shrink-0 flex items-center gap-2">
+                    {backingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {backingUp ? 'Preparing...' : 'Full Backup'}
+                  </button>
+                </div>
+
+                {/* Module-level export */}
+                <div className="border border-green-200 rounded-xl p-4 space-y-3 mb-4">
+                  <p className="text-sm font-semibold text-gray-800">Select Modules to Export</p>
+                  <p className="text-xs text-gray-500">Choose only the modules you need — keeps the file small and targeted.</p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {moduleList.map((m) => {
+                      const checked = selectedMods.includes(m.key);
+                      return (
+                        <label key={m.key} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors ${checked ? 'bg-green-50 border-green-400 text-green-800 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                          <input type="checkbox" className="accent-green-600" checked={checked}
+                            onChange={() => setSelectedMods((prev) => checked ? prev.filter((k) => k !== m.key) : [...prev, m.key])} />
+                          {m.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button className="text-xs text-green-700 underline" onClick={() => setSelectedMods(moduleList.map((m) => m.key))}>Select All</button>
+                    <span className="text-gray-300">·</span>
+                    <button className="text-xs text-gray-500 underline" onClick={() => setSelectedMods([])}>Clear</button>
+                    <div className="flex-1" />
+                    <button onClick={handleModuleExport} disabled={exportingMods || !selectedMods.length}
+                      className={`btn-sm flex items-center gap-2 ${selectedMods.length ? 'btn-primary' : 'bg-gray-100 text-gray-400 cursor-not-allowed rounded-lg px-3 py-1.5 text-xs'}`}>
+                      {exportingMods ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      {exportingMods ? 'Exporting...' : `Export ${selectedMods.length ? `(${selectedMods.length})` : ''}`}
                     </button>
                   </div>
-                  <div className="text-xs text-green-600 bg-green-100 rounded-lg px-3 py-2">
-                    💡 <strong>Tip:</strong> Schedule regular backups before major data entry days (payroll processing, month-end close, BIR filing).
-                  </div>
                 </div>
+
+                {/* Module-level restore */}
+                <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-semibold text-amber-900">Restore from Backup File</p>
+                  <p className="text-xs text-amber-700">Upload a Finara backup JSON. You can choose which modules to restore and whether to wipe existing data first.</p>
+
+                  {/* File picker */}
+                  <label className="flex items-center gap-3 border-2 border-dashed border-amber-300 rounded-lg p-4 cursor-pointer hover:border-amber-400 transition-colors">
+                    <HardDrive className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-amber-800">{restoreFile ? restoreFile.name : 'Click to choose a .json backup file'}</p>
+                      {restoreFileMeta && (
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          Exported {new Date(restoreFileMeta.exportedAt).toLocaleDateString()} · {restoreFileMeta.rowCount?.toLocaleString()} rows · Modules: {restoreFileMeta.modules?.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                    <input type="file" accept=".json" className="hidden" onChange={handleFileSelect} />
+                  </label>
+
+                  {/* Module selector from file */}
+                  {restoreFileMeta && (
+                    <>
+                      <div>
+                        <p className="text-xs font-medium text-amber-900 mb-2">Select modules to restore:</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {restoreFileMeta.modules.map((key) => {
+                            const mod   = moduleList.find((m) => m.key === key);
+                            const checked = restoreMods.includes(key);
+                            return (
+                              <label key={key} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors ${checked ? 'bg-amber-100 border-amber-400 text-amber-900 font-medium' : 'border-gray-200 text-gray-500 hover:border-gray-300 bg-white'}`}>
+                                <input type="checkbox" className="accent-amber-600" checked={checked}
+                                  onChange={() => setRestoreMods((prev) => checked ? prev.filter((k) => k !== key) : [...prev, key])} />
+                                {mod?.label || key}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Reset toggle */}
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" className="accent-red-600 w-4 h-4" checked={doReset} onChange={(e) => setDoReset(e.target.checked)} />
+                        <div>
+                          <p className="text-xs font-semibold text-red-800">Delete existing data before restoring</p>
+                          <p className="text-xs text-red-600">Removes current records for selected modules, then inserts from backup. Uncheck to merge (keeps existing, skips duplicates).</p>
+                        </div>
+                      </label>
+
+                      <button onClick={() => setShowRestoreConfirm(true)} disabled={!restoreMods.length || restoring}
+                        className="btn-sm bg-amber-600 hover:bg-amber-700 text-white rounded-lg px-4 py-2 text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-50">
+                        {restoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        {restoring ? 'Restoring...' : `Restore ${restoreMods.length} module${restoreMods.length !== 1 ? 's' : ''}`}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Restore confirm modal */}
+                {showRestoreConfirm && (
+                  <div className="modal-overlay">
+                    <div className="modal max-w-md">
+                      <div className="modal-header">
+                        <div className="flex items-center gap-2 text-amber-700">
+                          <AlertTriangle className="w-5 h-5" />
+                          <h3 className="font-bold">Confirm Restore</h3>
+                        </div>
+                        <button onClick={() => setShowRestoreConfirm(false)} className="text-gray-400 text-2xl">&times;</button>
+                      </div>
+                      <div className="modal-body space-y-3">
+                        <p className="text-sm text-gray-700">You are about to restore the following modules:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {restoreMods.map((k) => <span key={k} className="badge-yellow">{moduleList.find((m) => m.key === k)?.label || k}</span>)}
+                        </div>
+                        {doReset && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
+                            <strong>Warning:</strong> Existing data for the selected modules will be permanently deleted before restoring. This cannot be undone.
+                          </div>
+                        )}
+                        <p className="text-xs text-gray-500">Backup file: <strong>{restoreFile?.name}</strong></p>
+                      </div>
+                      <div className="modal-footer">
+                        <button onClick={() => setShowRestoreConfirm(false)} className="btn-secondary">Cancel</button>
+                        <button onClick={handleRestore} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                          Yes, Restore
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Danger zone */}
               <div className="border-t border-gray-100 pt-5">
                 <SectionTitle icon={AlertTriangle} color="text-red-600">Danger Zone</SectionTitle>
                 <div className="border-2 border-red-200 rounded-2xl p-5 space-y-4 bg-red-50">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-bold text-red-800">Reset Database</p>
-                      <p className="text-xs text-red-600 mt-0.5">
-                        Permanently deletes ALL transactional data: journal entries, bills, invoices, payroll, employees, vendors, customers, and accounts. Users and settings are preserved. <strong>This cannot be undone.</strong>
-                      </p>
-                    </div>
-                    <button onClick={() => setShowDbReset(true)} className="flex-shrink-0 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2">
-                      <Trash2 className="w-4 h-4" /> Reset
+                  <div>
+                    <p className="text-sm font-bold text-red-800">Reset Selected Modules</p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      Permanently deletes all data for the modules you choose. Users and system settings are always preserved. <strong>This cannot be undone.</strong>
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {moduleList.map((m) => {
+                      const checked = resetMods.includes(m.key);
+                      return (
+                        <label key={m.key} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors ${checked ? 'bg-red-100 border-red-400 text-red-800 font-medium' : 'bg-white border-gray-200 text-gray-600 hover:border-red-200'}`}>
+                          <input type="checkbox" className="accent-red-600" checked={checked}
+                            onChange={() => setResetMods((prev) => checked ? prev.filter((k) => k !== m.key) : [...prev, m.key])} />
+                          {m.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button className="text-xs text-red-700 underline" onClick={() => setResetMods(moduleList.map((m) => m.key))}>Select All</button>
+                    <span className="text-red-200">·</span>
+                    <button className="text-xs text-gray-400 underline" onClick={() => setResetMods([])}>Clear</button>
+                    <div className="flex-1" />
+                    <button
+                      onClick={() => setShowModResetModal(true)}
+                      disabled={!resetMods.length}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${resetMods.length ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-100 text-red-300 cursor-not-allowed'}`}>
+                      <Trash2 className="w-4 h-4" />
+                      Reset {resetMods.length ? `(${resetMods.length})` : ''}
                     </button>
                   </div>
+
                   <div className="text-xs text-red-500 bg-red-100 rounded-lg px-3 py-2">
                     ⚠ Always download a backup before resetting. Verify the backup is complete before proceeding.
                   </div>
+                </div>
+
+                {/* Legacy full reset */}
+                <div className="mt-3 flex items-center justify-between gap-4 px-4 py-3 border border-red-100 rounded-xl bg-white">
+                  <div>
+                    <p className="text-xs font-semibold text-red-700">Full Database Reset</p>
+                    <p className="text-xs text-gray-400">Deletes ALL modules at once (original behavior).</p>
+                  </div>
+                  <button onClick={() => setShowDbReset(true)} className="text-xs px-3 py-1.5 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-1.5">
+                    <Trash2 className="w-3.5 h-3.5" /> Full Reset
+                  </button>
                 </div>
               </div>
             </>
@@ -1082,6 +1361,14 @@ export default function SettingsPage() {
       )}
       {showDbReset && (
         <DbResetModal onClose={() => { setShowDbReset(false); loadDbStats(); }} />
+      )}
+      {showModResetModal && (
+        <ModuleResetModal
+          modules={resetMods}
+          moduleList={moduleList}
+          onClose={() => setShowModResetModal(false)}
+          onDone={() => { setResetMods([]); loadDbStats(); }}
+        />
       )}
     </div>
   );

@@ -24,4 +24,5 @@ module.exports = {
   recurring:     require('./recurring'),
   notifications: require('./notifications'),
   search:        require('./search'),
+  backup:        require('./backup'),
 };

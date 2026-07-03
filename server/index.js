@@ -135,6 +135,7 @@ app.use('/api/budget',         routes.budget);
 app.use('/api/recurring',      routes.recurring);
 app.use('/api/notifications',  routes.notifications);
 app.use('/api/search',         routes.search);
+app.use('/api/backup',         routes.backup);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {

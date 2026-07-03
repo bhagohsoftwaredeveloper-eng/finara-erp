@@ -4,6 +4,7 @@ import { expenses as expApi, accounts as accountsApi } from '@/lib/api';
 import { formatCurrency, getUser } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
 import Attachments from '@/components/Attachments';
+import AccountSelect from '@/components/ui/AccountSelect';
 import toast from 'react-hot-toast';
 import {
   Plus, X, Printer, RefreshCw, Trash2, Send, CheckCircle2,
@@ -78,12 +79,12 @@ function ItemRow({ item, index, accounts, onChange, onRemove }) {
       {/* COA Account */}
       <div className="lg:col-span-3">
         <label className="text-xs text-gray-400 lg:hidden">COA Account</label>
-        <select className="input text-sm" value={item.accountId || ''} onChange={e => onChange(index, 'accountId', e.target.value ? Number(e.target.value) : null)}>
-          <option value="">— COA Account (opt.) —</option>
-          {accounts.filter(a => a.accountType === 'EXPENSE').map(a => (
-            <option key={a.id} value={a.id}>{a.accountCode} {a.accountName}</option>
-          ))}
-        </select>
+        <AccountSelect
+          value={item.accountId || ''}
+          onChange={(val) => onChange(index, 'accountId', val ? Number(val) : null)}
+          accounts={accounts.filter(a => a.accountType === 'EXPENSE')}
+          placeholder="— COA Account (opt.) —"
+        />
       </div>
       {/* Amount + Receipt on same row on mobile */}
       <div className="flex gap-2 lg:contents">
