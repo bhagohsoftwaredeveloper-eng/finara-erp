@@ -4,6 +4,16 @@ import { payable as pApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Check, ChevronDown } from 'lucide-react';
 
+function useDropUp(ref, open) {
+  const [up, setUp] = useState(false);
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    setUp(window.innerHeight - rect.bottom < 280 && rect.top > window.innerHeight - rect.bottom);
+  }, [open, ref]);
+  return up;
+}
+
 /**
  * Type-to-search vendor combobox with inline quick-add.
  *
@@ -23,6 +33,7 @@ export default function VendorSelect({
   const [open, setOpen]     = useState(false);
   const [adding, setAdding] = useState(false);
   const boxRef = useRef(null);
+  const openUp = useDropUp(boxRef, open);
 
   // Fill the input with the selected vendor's name (edit mode / late-loaded list).
   // Guarded by `!text` so it never wipes what the user is typing.
@@ -90,7 +101,7 @@ export default function VendorSelect({
       </div>
 
       {open && !disabled && (
-        <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto">
+        <div className={`absolute z-30 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {filtered.length > 0 ? (
             filtered.map((v) => (
               <button

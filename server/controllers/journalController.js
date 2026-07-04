@@ -3,9 +3,17 @@ const { createError } = require('../middleware/errorHandler');
 const bcrypt = require('bcryptjs');
 const { recordAudit } = require('../utils/audit');
 
-const genEntryNo = async () => {
-  const count = await prisma.journalEntry.count();
-  return `JE-${String(count + 1).padStart(6, '0')}`;
+const genEntryNo = async (businessId = 1) => {
+  // Find the highest existing entry number to avoid collisions from deletions
+  // Entries may have format JE-000001 or JE-2-000001 — extract trailing digits
+  const last = await prisma.journalEntry.findFirst({
+    orderBy: { id: 'desc' },
+    select:  { entryNo: true },
+  });
+  if (!last) return `JE-${businessId}-000001`;
+  const match = last.entryNo.match(/(\d+)$/);
+  const n = match ? parseInt(match[1], 10) : 0;
+  return `JE-${businessId}-${String(n + 1).padStart(6, '0')}`;
 };
 
 exports.list = async (req, res, next) => {
@@ -53,7 +61,7 @@ exports.create = async (req, res, next) => {
       throw createError(`Entry is not balanced. Debits: ${totalDebit}, Credits: ${totalCredit}`, 400);
     }
 
-    const entryNo = await genEntryNo();
+    const entryNo = await genEntryNo(req.businessId);
     const entry = await prisma.journalEntry.create({
       data: {
         entryNo,

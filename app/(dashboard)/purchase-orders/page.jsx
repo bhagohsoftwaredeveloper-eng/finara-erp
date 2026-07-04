@@ -1,12 +1,13 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
-import { purchaseOrders as poApi, payable, accounts as acctApi } from '@/lib/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { purchaseOrders as poApi, payable, accounts as acctApi, poScanner, poForm as poFormApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 import toast from 'react-hot-toast';
 import {
   Plus, Send, PackageCheck, FileText, XCircle, Trash2,
   Eye, Printer, Edit2, Search, ChevronDown, CheckCircle2,
+  ScanLine, Download, Loader2, CheckCircle, AlertCircle, Banknote,
 } from 'lucide-react';
 import VendorSelect from '@/components/VendorSelect';
 import AccountSelect from '@/components/ui/AccountSelect';
@@ -128,7 +129,7 @@ async function printPO(po) {
 }
 
 // ─── View Modal ───────────────────────────────────────────────
-function POViewModal({ po, onClose, onEdit, onSend, onReceive, onConvert, onCancel }) {
+function POViewModal({ po, onClose, onEdit, onSend, onReceive, onConvert, onPettyCash, onCancel }) {
   const subtotal = (po.lines || []).reduce((s, l) => s + Number(l.quantity) * Number(l.unitPrice), 0);
 
   return (
@@ -256,6 +257,11 @@ function POViewModal({ po, onClose, onEdit, onSend, onReceive, onConvert, onCanc
                 <FileText className="w-3.5 h-3.5" /> Convert to Bill
               </button>
             )}
+            {['SENT', 'PARTIAL', 'RECEIVED'].includes(po.status) && (
+              <button onClick={onPettyCash} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600">
+                <Banknote className="w-3.5 h-3.5" /> Pay from Petty Cash
+              </button>
+            )}
             {!['BILLED', 'CANCELLED'].includes(po.status) && (
               <button onClick={onCancel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-100 text-red-700 text-sm font-medium hover:bg-red-200">
                 <XCircle className="w-3.5 h-3.5" /> Cancel PO
@@ -269,7 +275,7 @@ function POViewModal({ po, onClose, onEdit, onSend, onReceive, onConvert, onCanc
 }
 
 // ─── Create / Edit Modal ──────────────────────────────────────
-function POModal({ po, vendors, accounts, onClose, onSaved, onVendorAdded }) {
+function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendorAdded }) {
   const [form, setForm] = useState(po ? {
     vendorId:     po.vendorId,
     orderDate:    po.orderDate?.split('T')[0] || new Date().toISOString().split('T')[0],
@@ -277,6 +283,16 @@ function POModal({ po, vendors, accounts, onClose, onSaved, onVendorAdded }) {
     notes:        po.notes || '',
     taxAmount:    po.taxAmount || 0,
     lines:        po.lines?.map((l) => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, accountId: l.accountId || '' })) || [emptyLine()],
+  } : initialData ? {
+    // Pre-filled from scanned form
+    vendorId:     initialData.vendorId || '',
+    orderDate:    initialData.orderDate || new Date().toISOString().split('T')[0],
+    expectedDate: initialData.expectedDate || '',
+    notes:        initialData.notes || '',
+    taxAmount:    initialData.taxAmount || 0,
+    lines:        initialData.lines?.length > 0
+                    ? initialData.lines
+                    : [emptyLine(), emptyLine()],
   } : {
     vendorId: '', orderDate: new Date().toISOString().split('T')[0],
     expectedDate: '', notes: '', taxAmount: 0, lines: [emptyLine(), emptyLine()],
@@ -527,6 +543,393 @@ function ConvertModal({ po, onClose, onSaved }) {
   );
 }
 
+// ─── Pay from Petty Cash Modal ───────────────────────────────
+function PettyCashPayModal({ po, onClose, onSaved }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [paidDate,         setPaidDate]         = useState(today);
+  const [paidBy,           setPaidBy]           = useState('');
+  const [receiptNo,        setReceiptNo]        = useState('');
+  const [notes,            setNotes]            = useState('');
+  const [fundAccountCode,  setFundAccountCode]  = useState('1011');
+  const [saving,           setSaving]           = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const { data } = await poApi.pettyCash(po.id, { paidDate, paidBy, receiptNo, notes, fundAccountCode });
+      toast.success(data.message || 'Petty cash payment recorded');
+      onSaved();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Payment failed');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-sm">
+        <div className="modal-header">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Banknote className="w-5 h-5 text-amber-500" /> Pay from Petty Cash
+          </h3>
+          <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
+        </div>
+        <div className="modal-body space-y-4">
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
+            <p className="font-semibold">{po.poNumber} — {po.vendor?.name}</p>
+            <p className="text-xs mt-1 text-amber-600">Amount: <strong>{formatCurrency(po.total)}</strong></p>
+          </div>
+          <p className="text-xs text-gray-500">
+            This will create an Expense Voucher (Petty Cash) and post the GL entry:
+            <br/>Dr Expense accounts → Cr Petty Cash Fund (1011)
+          </p>
+          <div className="form-group">
+            <label className="label">Fund Source *</label>
+            <div className="flex gap-2">
+              <button type="button"
+                onClick={() => setFundAccountCode('1011')}
+                className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${fundAccountCode === '1011' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-amber-400'}`}
+              >
+                💵 Cash (1011)
+              </button>
+              <button type="button"
+                onClick={() => setFundAccountCode('1012')}
+                className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${fundAccountCode === '1012' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'}`}
+              >
+                📱 GCash (1012)
+              </button>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Payment Date *</label>
+            <input type="date" className="input" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="label">Paid By</label>
+            <input type="text" className="input" placeholder="Cashier / Petty Cash custodian" value={paidBy} onChange={(e) => setPaidBy(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="label">Receipt / OR No.</label>
+            <input type="text" className="input" placeholder="Official receipt number" value={receiptNo} onChange={(e) => setReceiptNo(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="label">Notes</label>
+            <input type="text" className="input" placeholder="Optional remarks" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <p className="text-xs text-gray-400">
+            Make sure all PO lines have an expense account assigned. The voucher will appear in today&apos;s Daily Remittance Report.
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={submit} disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 disabled:opacity-60">
+            <Banknote className="w-4 h-4" /> {saving ? 'Processing…' : 'Confirm Payment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Download Blank Form Button ───────────────────────────────
+function DownloadFormButton() {
+  const [busy, setBusy] = useState(false);
+
+  const download = async () => {
+    setBusy(true);
+    try {
+      const res = await poFormApi.downloadBlank();
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = 'PO_BlankForm.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error('Could not generate form');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <button
+      onClick={download}
+      disabled={busy}
+      className="btn-secondary flex items-center gap-1.5 text-sm"
+      title="Download blank PO form with company letterhead"
+    >
+      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+      {busy ? 'Generating…' : 'Blank Form'}
+    </button>
+  );
+}
+
+// ─── Scan Modal ───────────────────────────────────────────────
+function ScanModal({ vendors, accounts, onClose, onImport }) {
+  const fileRef  = useRef(null);
+  const [step,   setStep]   = useState('upload'); // upload | scanning | review
+  const [preview, setPreview] = useState(null);
+  const [result,  setResult]  = useState(null);
+  const [editData, setEditData] = useState(null);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setPreview(URL.createObjectURL(file));
+    setStep('scanning');
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const { data } = await poScanner.scan(fd);
+      if (!data.success) throw new Error(data.error || 'OCR failed');
+      setResult(data);
+      // Pre-fill editable form
+      setEditData({
+        vendorName:   data.vendor?.name   || '',
+        orderDate:    data.orderDate       || new Date().toISOString().split('T')[0],
+        expectedDate: data.expectedDate    || '',
+        notes:        data.notes           || '',
+        taxAmount:    data.taxAmount       || 0,
+        lines: (data.lines || []).length > 0
+          ? data.lines.map(l => ({
+              description: l.description || '',
+              quantity:    l.quantity    || 1,
+              unitPrice:   l.unitPrice   || 0,
+              accountId:   '',
+            }))
+          : [{ description: '', quantity: 1, unitPrice: 0, accountId: '' }],
+      });
+      setStep('review');
+    } catch (e) {
+      toast.error(e.response?.data?.error || e.message || 'OCR failed');
+      setStep('upload');
+    }
+  };
+
+  const setLine = (i, f, v) =>
+    setEditData(p => ({ ...p, lines: p.lines.map((l, idx) => idx === i ? { ...l, [f]: v } : l) }));
+  const addLine = () =>
+    setEditData(p => ({ ...p, lines: [...p.lines, { description: '', quantity: 1, unitPrice: 0, accountId: '' }] }));
+  const rmLine = (i) =>
+    setEditData(p => ({ ...p, lines: p.lines.filter((_, idx) => idx !== i) }));
+
+  const subtotal = editData?.lines?.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unitPrice || 0), 0) || 0;
+  const total    = subtotal + Number(editData?.taxAmount || 0);
+
+  const handleImport = () => {
+    if (!editData) return;
+    // Match vendor by name (best-effort)
+    const matchedVendor = vendors.find(v =>
+      v.name.toLowerCase().includes(editData.vendorName.toLowerCase()) ||
+      editData.vendorName.toLowerCase().includes(v.name.toLowerCase())
+    );
+    onImport({
+      vendorId:     matchedVendor?.id || '',
+      orderDate:    editData.orderDate,
+      expectedDate: editData.expectedDate,
+      notes:        editData.notes,
+      taxAmount:    editData.taxAmount,
+      lines:        editData.lines.filter(l => l.description),
+      _scannedVendorName: editData.vendorName,
+      _vendorMatched: !!matchedVendor,
+    });
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-4xl">
+        <div className="modal-header">
+          <div className="flex items-center gap-2">
+            <ScanLine className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold">Scan Purchase Order Form</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+
+        <div className="modal-body space-y-4">
+          {/* Step: Upload */}
+          {step === 'upload' && (
+            <div>
+              <div
+                className="border-2 border-dashed border-blue-200 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                onClick={() => fileRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+              >
+                <ScanLine className="w-12 h-12 mx-auto text-blue-300 mb-3" />
+                <p className="text-gray-600 font-medium">Click or drag & drop a scanned PO image</p>
+                <p className="text-xs text-gray-400 mt-1">Supports JPG, PNG, TIFF · Max 20 MB</p>
+                <p className="text-xs text-blue-500 mt-3">
+                  Best results: scan at 200+ DPI, straight alignment, good lighting
+                </p>
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => handleFile(e.target.files[0])} />
+
+              <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-xs text-amber-700">
+                <strong>Tips for best OCR accuracy:</strong> Use the official blank form (Download Blank Form button).
+                Fill fields clearly in print letters. Scan flat, avoid shadows. Min 200 DPI.
+              </div>
+            </div>
+          )}
+
+          {/* Step: Scanning */}
+          {step === 'scanning' && (
+            <div className="flex flex-col items-center py-16 gap-4">
+              {preview && (
+                <img src={preview} alt="Scanned PO" className="max-h-48 rounded-xl border border-gray-200 shadow mb-2" />
+              )}
+              <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+              <p className="text-gray-600 font-medium">Running OCR… please wait</p>
+              <p className="text-xs text-gray-400">This usually takes 5–20 seconds</p>
+            </div>
+          )}
+
+          {/* Step: Review */}
+          {step === 'review' && editData && (
+            <div className="space-y-4">
+              {/* Confidence summary */}
+              <div className={`rounded-xl px-4 py-3 flex items-start gap-3 text-sm ${
+                result.confidence.lineCount > 0 ? 'bg-green-50 border border-green-100 text-green-800'
+                  : 'bg-amber-50 border border-amber-100 text-amber-800'
+              }`}>
+                {result.confidence.lineCount > 0
+                  ? <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  : <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+                <div>
+                  <strong>OCR complete.</strong>{' '}
+                  Found {result.confidence.lineCount} line item(s),{' '}
+                  {result.confidence.hasVendor ? 'vendor name detected' : 'vendor not detected'},{' '}
+                  {result.confidence.hasTotal ? `total ₱${Number(result.total).toLocaleString()}` : 'total not found'}.
+                  {' '}<span className="opacity-70">Review and correct any errors before importing.</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Preview image */}
+                {preview && (
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium mb-1">Scanned Image</p>
+                    <img src={preview} alt="Scanned PO" className="rounded-xl border border-gray-200 w-full object-contain max-h-52" />
+                  </div>
+                )}
+                {/* Header fields */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="label text-xs">Vendor Name (detected)</label>
+                    <input className="input text-sm" value={editData.vendorName}
+                      onChange={e => setEditData(p => ({ ...p, vendorName: e.target.value }))} />
+                    {editData.vendorName && !vendors.find(v =>
+                      v.name.toLowerCase().includes(editData.vendorName.toLowerCase()) ||
+                      editData.vendorName.toLowerCase().includes(v.name.toLowerCase())
+                    ) && (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        ⚠ No matching vendor found — you'll need to select one after import
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="label text-xs">Order Date</label>
+                      <input type="date" className="input text-sm" value={editData.orderDate}
+                        onChange={e => setEditData(p => ({ ...p, orderDate: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="label text-xs">Expected Date</label>
+                      <input type="date" className="input text-sm" value={editData.expectedDate || ''}
+                        onChange={e => setEditData(p => ({ ...p, expectedDate: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label text-xs">Notes</label>
+                    <input className="input text-sm" value={editData.notes}
+                      onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Tax / VAT Amount</label>
+                    <input type="number" className="input text-sm" value={editData.taxAmount}
+                      onChange={e => setEditData(p => ({ ...p, taxAmount: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Line items review */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label mb-0 text-sm">Line Items (edit as needed)</label>
+                  <button type="button" onClick={addLine} className="btn-secondary btn-sm">+ Add Row</button>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-gray-100">
+                  <table className="table text-sm">
+                    <thead>
+                      <tr>
+                        <th>Description</th>
+                        <th className="w-20 text-right">Qty</th>
+                        <th className="w-28 text-right">Unit Price</th>
+                        <th className="w-40">Account</th>
+                        <th className="w-28 text-right">Amount</th>
+                        <th className="w-6"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editData.lines.map((l, i) => (
+                        <tr key={i}>
+                          <td>
+                            <input className="input w-full text-xs" value={l.description}
+                              onChange={e => setLine(i, 'description', e.target.value)} />
+                          </td>
+                          <td>
+                            <input type="number" min="0" step="0.01" className="input w-full text-right text-xs"
+                              value={l.quantity} onChange={e => setLine(i, 'quantity', e.target.value)} />
+                          </td>
+                          <td>
+                            <input type="number" min="0" step="0.01" className="input w-full text-right text-xs"
+                              value={l.unitPrice} onChange={e => setLine(i, 'unitPrice', e.target.value)} />
+                          </td>
+                          <td>
+                            <AccountSelect value={l.accountId || ''}
+                              onChange={v => setLine(i, 'accountId', v)}
+                              accounts={accounts} placeholder="-- (optional) --" />
+                          </td>
+                          <td className="text-right font-mono text-xs font-medium">
+                            {formatCurrency(Number(l.quantity || 0) * Number(l.unitPrice || 0))}
+                          </td>
+                          <td>
+                            {editData.lines.length > 1 && (
+                              <button type="button" onClick={() => rmLine(i)} className="text-red-400 hover:text-red-600">&times;</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex justify-end gap-6 mt-2 text-sm text-gray-500">
+                  <span>Subtotal: <strong className="font-mono text-gray-800">{formatCurrency(subtotal)}</strong></span>
+                  <span>Tax: <strong className="font-mono text-gray-800">{formatCurrency(editData.taxAmount)}</strong></span>
+                  <span className="font-bold text-gray-900">Total: <span className="font-mono text-blue-700">{formatCurrency(total)}</span></span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          {step === 'review' ? (
+            <>
+              <button onClick={() => { setStep('upload'); setPreview(null); setResult(null); }}
+                className="btn-secondary">Rescan</button>
+              <button onClick={handleImport} className="btn-primary flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4" /> Import to New PO
+              </button>
+            </>
+          ) : (
+            <button onClick={onClose} className="btn-secondary">Cancel</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────
 export default function PurchaseOrdersPage() {
   const [rows,     setRows]     = useState([]);
@@ -540,8 +943,11 @@ export default function PurchaseOrdersPage() {
   const [viewPO,    setViewPO]    = useState(null);
   const [editPO,    setEditPO]    = useState(null);
   const [newPO,     setNewPO]     = useState(false);
+  const [newPOInit, setNewPOInit] = useState(null);  // pre-filled from scan
   const [receivePO, setReceivePO] = useState(null);
-  const [convertPO, setConvertPO] = useState(null);
+  const [convertPO,   setConvertPO]   = useState(null);
+  const [pettyCashPO, setPettyCashPO] = useState(null);
+  const [scanOpen,    setScanOpen]    = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -590,9 +996,21 @@ export default function PurchaseOrdersPage() {
           <h1 className="page-title">Purchase Orders</h1>
           <p className="page-subtitle">{rows.length} total orders</p>
         </div>
-        <button className="btn-primary flex items-center gap-2" onClick={() => setNewPO(true)}>
-          <Plus className="w-4 h-4" /> New PO
-        </button>
+        <div className="flex gap-2 flex-wrap justify-end">
+          {/* Download blank PO form (dynamic — includes company logo & details) */}
+          <DownloadFormButton />
+          {/* Scan filled form */}
+          <button
+            className="btn-secondary flex items-center gap-1.5 text-sm"
+            onClick={() => setScanOpen(true)}
+            title="Scan a filled PO form and auto-import data"
+          >
+            <ScanLine className="w-4 h-4" /> Scan & Import
+          </button>
+          <button className="btn-primary flex items-center gap-2" onClick={() => { setNewPOInit(null); setNewPO(true); }}>
+            <Plus className="w-4 h-4" /> New PO
+          </button>
+        </div>
       </div>
 
       {/* Status filter chips */}
@@ -680,10 +1098,28 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {/* Modals */}
+      {scanOpen && (
+        <ScanModal
+          vendors={vendors}
+          accounts={accounts}
+          onClose={() => setScanOpen(false)}
+          onImport={(data) => {
+            setScanOpen(false);
+            setNewPOInit(data);
+            setNewPO(true);
+            if (!data._vendorMatched && data._scannedVendorName) {
+              toast(`Vendor "${data._scannedVendorName}" not matched — please select manually`, { icon: '⚠️' });
+            }
+          }}
+        />
+      )}
       {newPO && (
-        <POModal vendors={vendors} accounts={accounts}
-          onClose={() => setNewPO(false)}
-          onSaved={() => { setNewPO(false); load(); }}
+        <POModal
+          vendors={vendors}
+          accounts={accounts}
+          initialData={newPOInit}
+          onClose={() => { setNewPO(false); setNewPOInit(null); }}
+          onSaved={() => { setNewPO(false); setNewPOInit(null); load(); }}
           onVendorAdded={(v) => setVendors((p) => [v, ...p])} />
       )}
       {editPO && (
@@ -700,6 +1136,7 @@ export default function PurchaseOrdersPage() {
           onSend={() => doSend(viewPO)}
           onReceive={() => { setReceivePO(viewPO); setViewPO(null); }}
           onConvert={() => { setConvertPO(viewPO); setViewPO(null); }}
+          onPettyCash={() => { setPettyCashPO(viewPO); setViewPO(null); }}
           onCancel={() => doCancel(viewPO)}
         />
       )}
@@ -712,6 +1149,11 @@ export default function PurchaseOrdersPage() {
         <ConvertModal po={convertPO}
           onClose={() => setConvertPO(null)}
           onSaved={() => { setConvertPO(null); load(); }} />
+      )}
+      {pettyCashPO && (
+        <PettyCashPayModal po={pettyCashPO}
+          onClose={() => setPettyCashPO(null)}
+          onSaved={() => { setPettyCashPO(null); load(); }} />
       )}
     </div>
   );

@@ -136,6 +136,9 @@ app.use('/api/recurring',      routes.recurring);
 app.use('/api/notifications',  routes.notifications);
 app.use('/api/search',         routes.search);
 app.use('/api/backup',         routes.backup);
+app.use('/api/admin-override', routes.adminOverride);
+app.use('/api/po-scanner',    routes.poScanner);
+app.use('/api/po-form',       routes.poForm);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {

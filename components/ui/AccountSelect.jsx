@@ -14,6 +14,20 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, Search, X } from 'lucide-react';
 
+// Detect whether the dropdown should open upward
+function useDropDirection(wrapRef, open) {
+  const [openUp, setOpenUp] = useState(false);
+  useEffect(() => {
+    if (!open || !wrapRef.current) return;
+    const rect    = wrapRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    // Dropdown needs ~280px (search bar + 5 options); open up if below space is tight
+    setOpenUp(spaceBelow < 280 && spaceAbove > spaceBelow);
+  }, [open, wrapRef]);
+  return openUp;
+}
+
 export default function AccountSelect({
   value,
   onChange,
@@ -26,6 +40,7 @@ export default function AccountSelect({
   const [search, setSearch] = useState('');
   const wrapRef  = useRef(null);
   const inputRef = useRef(null);
+  const openUp   = useDropDirection(wrapRef, open);
 
   const selected = value ? accounts.find((a) => a.id === Number(value)) : null;
 
@@ -83,9 +98,9 @@ export default function AccountSelect({
         <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* Dropdown panel */}
+      {/* Dropdown panel — opens up or down based on available space */}
       {open && (
-        <div className="absolute z-[200] w-full min-w-[220px] mt-1 bg-white border border-gray-200 rounded-xl shadow-xl">
+        <div className={`absolute z-[200] w-full min-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {/* Search bar */}
           <div className="p-2 border-b border-gray-100">
             <div className="relative">

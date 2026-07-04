@@ -304,7 +304,8 @@ export default function DailyRemittancePage() {
             ${summaryRow('Cash Disbursed (Payments)', d.cashDisbursed)}
             ${summaryRow('Net Cash Flow', d.netCash, true)}
             ${summaryRow('Cash on Hand (Acct 1010)', d.cashOnHandBalance)}
-            ${summaryRow('Petty Cash Fund (Acct 1011)', d.pettyCashBalance)}
+            ${summaryRow('Petty Cash – Cash (Acct 1011)', d.pettyCashBalance)}
+            ${d.pettyCashGcashBalance != null ? summaryRow('Petty Cash – GCash (Acct 1012)', d.pettyCashGcashBalance) : ''}
           </tbody>
         </table>
         <div style="font-size:12px;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px">
@@ -506,20 +507,60 @@ export default function DailyRemittancePage() {
               </div>
               <div className="text-xs text-gray-400 mt-0.5">Account 1010 · GL balance</div>
             </div>
-            {/* Petty Cash Fund balance */}
+            {/* Petty Cash Fund – Cash (1011) */}
             <div className="card p-4 border-yellow-200 bg-yellow-50">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <Wallet className="w-4 h-4 text-yellow-600" />
-                <span className="text-xs text-gray-500 font-medium">Petty Cash Fund</span>
+                <span className="text-xs text-gray-500 font-medium">Petty Cash – Cash</span>
               </div>
               <div className={`text-xl font-bold ${Number(calcData.pettyCashBalance) < 0 ? 'text-red-700' : 'text-yellow-700'}`}>
-                {fmt(calcData.pettyCashBalance)}
+                {fmt(calcData.pettyCashBalance)} <span className="text-sm font-normal text-gray-400">remaining</span>
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">
-                Account 1011 · GL balance
-                {Number(calcData.pettyCashTotal) > 0 && ` · Used today: ${fmt(calcData.pettyCashTotal)}`}
-              </div>
+              {calcData.pettyCashFunded > 0 && (
+                <>
+                  <div className="mt-2 h-1.5 rounded-full bg-yellow-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-yellow-500 transition-all"
+                      style={{ width: `${Math.min(100, (calcData.pettyCashUsed / calcData.pettyCashFunded) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {fmt(calcData.pettyCashUsed)} used · {fmt(calcData.pettyCashFunded)} total (1011)
+                  </div>
+                </>
+              )}
+              {!calcData.pettyCashFunded && (
+                <div className="text-xs text-gray-400 mt-0.5">Account 1011 · GL balance</div>
+              )}
             </div>
+            {/* Petty Cash Fund – GCash (1012) — only show if account exists */}
+            {(Number(calcData.pettyCashGcashBalance) !== 0 || calcData.pettyCashGcashBalance != null) && (
+              <div className="card p-4 border-blue-200 bg-blue-50">
+                <div className="flex items-center gap-2 mb-1">
+                  <Wallet className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs text-gray-500 font-medium">Petty Cash – GCash</span>
+                </div>
+                <div className={`text-xl font-bold ${Number(calcData.pettyCashGcashBalance) < 0 ? 'text-red-700' : 'text-blue-700'}`}>
+                  {fmt(calcData.pettyCashGcashBalance)} <span className="text-sm font-normal text-gray-400">remaining</span>
+                </div>
+                {calcData.pettyCashGcashFunded > 0 && (
+                  <>
+                    <div className="mt-2 h-1.5 rounded-full bg-blue-200 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-blue-500 transition-all"
+                        style={{ width: `${Math.min(100, (calcData.pettyCashGcashUsed / calcData.pettyCashGcashFunded) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {fmt(calcData.pettyCashGcashUsed)} used · {fmt(calcData.pettyCashGcashFunded)} total (1012)
+                    </div>
+                  </>
+                )}
+                {!calcData.pettyCashGcashFunded && (
+                  <div className="text-xs text-gray-400 mt-0.5">Account 1012 · GL balance</div>
+                )}
+              </div>
+            )}
             {/* Net Cash */}
             <div className={`card p-4 col-span-2 xl:col-span-2 ${Number(calcData.netCash) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
               <div className="flex items-center gap-2 mb-2">

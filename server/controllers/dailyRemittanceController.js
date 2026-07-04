@@ -18,7 +18,7 @@ exports.calculate = async (req, res, next) => {
 
     const range = dayRange(date);
 
-    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL, cashOnHandGL] = await Promise.all([
+    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL, pettyCashGcashGL, cashOnHandGL] = await Promise.all([
       prisma.invoice.findMany({
         where: { businessId: req.businessId, invoiceDate: range },
         include: { customer: { select: { name: true, customerCode: true } } },
@@ -49,11 +49,19 @@ exports.calculate = async (req, res, next) => {
         where: { businessId: req.businessId, date: range, status: { in: ['APPROVED', 'PAID'] } },
         orderBy: { voucherNo: 'asc' },
       }),
-      // Petty Cash Fund (1011) running balance from all POSTED GL entries
+      // Petty Cash Fund – Cash (1011) running balance
       prisma.journalLine.aggregate({
         where: {
           entry: { businessId: req.businessId, status: 'POSTED' },
           account: { accountCode: '1011', businessId: req.businessId },
+        },
+        _sum: { debit: true, credit: true },
+      }),
+      // Petty Cash Fund – GCash (1012) running balance
+      prisma.journalLine.aggregate({
+        where: {
+          entry: { businessId: req.businessId, status: 'POSTED' },
+          account: { accountCode: '1012', businessId: req.businessId },
         },
         _sum: { debit: true, credit: true },
       }),
@@ -88,10 +96,14 @@ exports.calculate = async (req, res, next) => {
                          + paidCashOutflow.reduce((s, v) => s + Number(v.totalAmount), 0);
     // netCash = what should be physically remitted from daily collections
     const netCash        = cashReceived - cashDisbursed;
-    // Petty Cash Fund running balance (1011): total debits − total credits on POSTED entries
+    // Petty Cash Fund – Cash (1011) running balance
     const pcDebits         = Number(pettyCashGL._sum.debit  || 0);
     const pcCredits        = Number(pettyCashGL._sum.credit || 0);
     const pettyCashBalance = pcDebits - pcCredits;
+    // Petty Cash Fund – GCash (1012) running balance
+    const pcGcashDebits   = Number(pettyCashGcashGL._sum.debit  || 0);
+    const pcGcashCredits  = Number(pettyCashGcashGL._sum.credit || 0);
+    const pettyCashGcashBalance = pcGcashDebits - pcGcashCredits;
     // Cash on Hand running balance (1010)
     const cohDebits         = Number(cashOnHandGL._sum.debit  || 0);
     const cohCredits        = Number(cashOnHandGL._sum.credit || 0);
@@ -168,7 +180,10 @@ exports.calculate = async (req, res, next) => {
     res.json({
       date,
       totalSales, vatCollected, cashReceived,
-      totalExpenses, pettyCashTotal, pettyCashBalance, cashOnHandBalance, cashDisbursed, netCash,
+      totalExpenses, pettyCashTotal,
+      pettyCashBalance, pettyCashFunded: pcDebits, pettyCashUsed: pcCredits,
+      pettyCashGcashBalance, pettyCashGcashFunded: pcGcashDebits, pettyCashGcashUsed: pcGcashCredits,
+      cashOnHandBalance, cashDisbursed, netCash,
       counts: {
         invoices:      invoices.length,
         collections:   arPayments.length,

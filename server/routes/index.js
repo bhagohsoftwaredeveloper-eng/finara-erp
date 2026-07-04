@@ -25,4 +25,7 @@ module.exports = {
   notifications: require('./notifications'),
   search:        require('./search'),
   backup:        require('./backup'),
+  adminOverride: require('./admin'),
+  poScanner:     require('./poScanner'),
+  poForm:        require('./poForm'),
 };

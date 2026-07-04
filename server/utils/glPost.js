@@ -27,12 +27,15 @@ async function getAccountByCode(code, businessId = 1) {
 
 // ── Sequential entry number ────────────────────────────────────────────────────
 async function nextEntryNo(businessId = 1) {
+  // Look at ALL entries (any business) to avoid collisions — entryNo is globally unique
   const last = await prisma.journalEntry.findFirst({
-    where:   { businessId },
     orderBy: { id: 'desc' },
+    select:  { entryNo: true },
   });
-  const seq = last ? last.id + 1 : 1;
-  return `JE-${businessId}-${String(seq).padStart(6, '0')}`;
+  if (!last) return `JE-${businessId}-000001`;
+  const match = last.entryNo.match(/(\d+)$/);
+  const n = match ? parseInt(match[1], 10) : 0;
+  return `JE-${businessId}-${String(n + 1).padStart(6, '0')}`;
 }
 
 // ── Main post function ─────────────────────────────────────────────────────────

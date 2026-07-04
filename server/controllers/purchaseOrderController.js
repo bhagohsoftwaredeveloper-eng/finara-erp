@@ -9,8 +9,11 @@ const genPONumber = async () => {
 };
 
 const genBillNo = async () => {
-  const count = await prisma.bill.count();
-  return `BILL-${String(count + 1).padStart(6, '0')}`;
+  const last = await prisma.bill.findFirst({ orderBy: { id: 'desc' }, select: { billNo: true } });
+  if (!last) return 'BILL-000001';
+  const match = last.billNo.match(/(\d+)$/);
+  const n = match ? parseInt(match[1], 10) : 0;
+  return `BILL-${String(n + 1).padStart(6, '0')}`;
 };
 
 const computeTotals = (lines, taxAmount = 0) => {
@@ -224,6 +227,115 @@ exports.convertToBill = async (req, res, next) => {
     await prisma.purchaseOrder.update({ where: { id }, data: { status: 'BILLED', billId: bill.id } });
     await recordAudit({ req, action: 'CONVERT', entity: 'PurchaseOrder', entityId: id, summary: `Converted PO ${po.poNumber} → Bill ${bill.billNo}` });
     res.status(201).json({ bill, message: `PO converted to ${bill.billNo}` });
+  } catch (err) { next(err); }
+};
+
+// ─── Pay from Petty Cash ─────────────────────────────────────
+exports.payFromPettyCash = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const po = await prisma.purchaseOrder.findFirst({
+      where:   { id, businessId: req.businessId },
+      include: { vendor: true, lines: true },
+    });
+    if (!po) throw createError('Purchase order not found', 404);
+    if (po.status === 'BILLED')    throw createError('This PO has already been billed/paid', 400);
+    if (po.status === 'CANCELLED') throw createError('Cannot pay a cancelled PO', 400);
+
+    // Every line needs an expense account for GL posting
+    const linesWithAccount = po.lines.filter(l => l.accountId);
+    if (linesWithAccount.length === 0)
+      throw createError('At least one line must have an expense account assigned', 400);
+
+    const { paidDate, paidBy, receiptNo, notes, fundAccountCode = '1011' } = req.body;
+    // Validate fund account — only 1011 (Cash) and 1012 (GCash) allowed
+    const allowedFunds = ['1011', '1012'];
+    const pcAccount = allowedFunds.includes(fundAccountCode) ? fundAccountCode : '1011';
+    const payDate = paidDate ? new Date(paidDate) : new Date();
+
+    // ── 1. Generate voucher number (same logic as expenseController) ──
+    const lastVoucher = await prisma.expenseVoucher.findFirst({
+      orderBy: { id: 'desc' },
+      select:  { voucherNo: true },
+    });
+    const voucherNo = lastVoucher
+      ? `EV-${String(parseInt(lastVoucher.voucherNo.replace('EV-', ''), 10) + 1).padStart(6, '0')}`
+      : 'EV-000001';
+
+    // ── 2. Create Expense Voucher (PETTY_CASH, PAID) ───────────
+    const voucher = await prisma.expenseVoucher.create({
+      data: {
+        businessId:  req.businessId,
+        voucherNo,
+        type:        'PETTY_CASH',
+        date:        payDate,
+        payee:       po.vendor?.name || 'Unknown Vendor',
+        category:    'Purchase Order',
+        purpose:     `Payment for PO ${po.poNumber} via ${pcAccount === '1012' ? 'GCash Petty Cash' : 'Cash Petty Cash'}`,
+        totalAmount: Number(po.total),
+        receiptNo:   receiptNo || po.poNumber,
+        status:      'PAID',
+        paidDate:    payDate,
+        paidBy:      paidBy || req.user?.firstName || 'Admin',
+        notes:       notes || `PO Reference: ${po.poNumber}`,
+        items: {
+          create: po.lines.map(l => ({
+            description: l.description,
+            accountId:   l.accountId || null,
+            amount:      Number(l.quantity) * Number(l.unitPrice),
+          })),
+        },
+      },
+      include: { items: true },
+    });
+
+    // ── 3. Post GL Journal Entry ────────────────────────────────
+    // Dr each expense account (per line), Cr Petty Cash Fund (1011)
+    const glLines = [];
+
+    // Group by accountId for cleaner GL
+    const acctMap = {};
+    for (const l of po.lines) {
+      if (!l.accountId) continue;
+      const amt = Number(l.quantity) * Number(l.unitPrice);
+      acctMap[l.accountId] = (acctMap[l.accountId] || 0) + amt;
+    }
+    for (const [accountId, debit] of Object.entries(acctMap)) {
+      glLines.push({ accountId: Number(accountId), debit, description: `PO ${po.poNumber} — petty cash` });
+    }
+
+    // Tax / VAT amount → Input VAT account if applicable
+    if (Number(po.taxAmount) > 0) {
+      glLines.push({ accountCode: '1330', debit: Number(po.taxAmount), description: 'Input VAT' });
+    }
+
+    // Credit the selected Petty Cash Fund (1011 = Cash, 1012 = GCash)
+    glLines.push({
+      accountCode: pcAccount,
+      credit:      Number(po.total),
+      description: `Petty Cash (${pcAccount === '1012' ? 'GCash' : 'Cash'}) — ${po.vendor?.name} (${voucherNo})`,
+    });
+
+    await glPost.post({
+      entryDate:   payDate,
+      description: `Petty Cash Payment — ${po.vendor?.name} (${po.poNumber})`,
+      reference:   voucherNo,
+      businessId:  req.businessId,
+      lines:       glLines,
+    });
+
+    // ── 4. Mark PO as BILLED ───────────────────────────────────
+    await prisma.purchaseOrder.update({ where: { id }, data: { status: 'BILLED' } });
+
+    await recordAudit({
+      req, action: 'PETTY_CASH_PAY', entity: 'PurchaseOrder', entityId: id,
+      summary: `PO ${po.poNumber} paid from petty cash → ${voucherNo} (₱${Number(po.total).toLocaleString()})`,
+    });
+
+    res.status(201).json({
+      voucher,
+      message: `PO paid from Petty Cash — Voucher ${voucherNo} created and GL posted`,
+    });
   } catch (err) { next(err); }
 };
 
