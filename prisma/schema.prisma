@@ -1045,3 +1045,22 @@ model RecurringTemplate {
   @@index([isActive, nextRunDate])
   @@map("recurring_templates")
 }
+
+// ─── Marketing Leads (website contact form) ────────────────
+model Lead {
+  id        Int        @id @default(autoincrement())
+  name      String     @db.VarChar(100)
+  company   String?    @db.VarChar(150)
+  email     String     @db.VarChar(150)
+  phone     String?    @db.VarChar(30)
+  message   String     @db.Text
+  source    String     @default("contact") @db.VarChar(50)
+  status    LeadStatus @default(NEW)
+  createdAt DateTime   @default(now())
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  CLOSED
+}
