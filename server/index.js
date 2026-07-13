@@ -139,6 +139,7 @@ app.use('/api/backup',         routes.backup);
 app.use('/api/admin-override', routes.adminOverride);
 app.use('/api/po-scanner',    routes.poScanner);
 app.use('/api/po-form',       routes.poForm);
+app.use('/api/leads',         routes.leads);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {

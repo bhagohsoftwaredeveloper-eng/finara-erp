@@ -28,4 +28,5 @@ module.exports = {
   adminOverride: require('./admin'),
   poScanner:     require('./poScanner'),
   poForm:        require('./poForm'),
+  leads:         require('./leads'),
 };
