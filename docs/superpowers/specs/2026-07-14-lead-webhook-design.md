@@ -50,7 +50,7 @@ Both sides share `LEAD_WEBHOOK_SECRET` out-of-band (set in each app's own `.env`
 
 - HTTP call via Node's built-in `fetch` (Node 24 in this repo — no new dependency).
 - Per-attempt timeout: 5s (`AbortSignal.timeout(5000)`).
-- Up to 3 attempts total, backoff delays 1s → 5s → 15s between attempts, only on network error or non-2xx response.
+- Up to 3 attempts total, backoff delays 1s → 5s between attempts (2 gaps for 3 attempts), only on network error or non-2xx response.
 - If all attempts fail, log once via the existing `server/utils/logger.js` (`logger.error`) with the lead id and last error/status — no delivery-tracking table or admin UI for retries (YAGNI; can revisit if failed deliveries become a real operational problem).
 - This all happens after the controller has already responded — a background task, not part of the request lifecycle.
 
