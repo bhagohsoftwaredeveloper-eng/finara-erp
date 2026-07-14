@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const { validateLead } = require('../utils/validateLead');
+const { sendLeadWebhook } = require('../utils/leadWebhook');
 
 // POST /api/leads — public (marketing site contact form)
 exports.create = async (req, res, next) => {
@@ -7,6 +8,7 @@ exports.create = async (req, res, next) => {
     const { valid, errors, data } = validateLead(req.body);
     if (!valid) return res.status(400).json({ error: 'Validation failed', details: errors });
     const lead = await prisma.lead.create({ data });
+    sendLeadWebhook(lead);
     res.status(201).json({ id: lead.id, message: 'Thank you! We will get back to you shortly.' });
   } catch (err) {
     next(err);
