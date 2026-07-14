@@ -50,7 +50,7 @@ export default function DashboardLayout({ children }) {
     const role = getUser()?.role;
     if (!canAccess(pathname, role)) {
       toast.error('You do not have access to that page');
-      router.replace('/');
+      router.replace('/dashboard');
     }
   }, [authed, permReady, pathname, router]);
 

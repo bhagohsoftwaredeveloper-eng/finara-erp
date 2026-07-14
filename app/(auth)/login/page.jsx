@@ -83,7 +83,7 @@ export default function LoginPage() {
       const { data } = await authApi.login(form);
       setSession(data);
       toast.success(`Welcome back, ${data.user.firstName}!`);
-      router.push('/');
+      router.push('/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Login failed. Check your credentials.');
     } finally {
