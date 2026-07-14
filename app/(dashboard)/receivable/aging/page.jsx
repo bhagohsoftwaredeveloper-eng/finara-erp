@@ -194,8 +194,8 @@ export default function ARAgingPage() {
 
   // Sort customers: worst bucket first, then by outstanding desc
   const sortedCustomers = Object.entries(grouped).sort(([, a], [, b]) => {
-    const aWorst = [...BUCKETS].reverse().findIndex((b) => a.some((i) => i.bucket === b));
-    const bWorst = [...BUCKETS].reverse().findIndex((b) => b.some((i) => i.bucket === b));
+    const aWorst = [...BUCKETS].reverse().findIndex((bucket) => a.some((i) => i.bucket === bucket));
+    const bWorst = [...BUCKETS].reverse().findIndex((bucket) => b.some((i) => i.bucket === bucket));
     if (bWorst !== aWorst) return bWorst - aWorst;
     return b.reduce((s, i) => s + i.outstanding, 0) - a.reduce((s, i) => s + i.outstanding, 0);
   });
