@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { settings as settingsApi, auth as authApi, permissions as permApi, backup as backupApi } from '@/lib/api';
+import { settings as settingsApi, auth as authApi, permissions as permApi, backup as backupApi, leads as leadsApi } from '@/lib/api';
 import { MODULES, CONFIGURABLE_ROLES, isLocked, setPermissions } from '@/lib/permissions';
 import toast from 'react-hot-toast';
 import {
@@ -8,6 +8,7 @@ import {
   Calculator, Hash, Shield, Save, RefreshCw, Download, AlertTriangle,
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X, ChevronDown,
+  Inbox,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
@@ -24,8 +25,10 @@ const TABS = [
   { key: 'system',      label: 'System',       icon: SettingsIcon, roles: ['ADMIN', 'MANAGER'] },
   { key: 'permissions', label: 'Permissions',  icon: Key,          roles: ['ADMIN'] },
   { key: 'audit',       label: 'Audit Trail',  icon: Shield,       roles: ['ADMIN', 'MANAGER'] },
+  { key: 'inquiries',   label: 'Inquiries',    icon: Inbox,        roles: ['ADMIN', 'MANAGER'] },
 ];
 
+const INQUIRY_STATUS_COLORS = { NEW: 'badge-blue', CONTACTED: 'badge-yellow', CLOSED: 'badge-green' };
 const ROLES        = ['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'];
 const ROLE_COLORS  = { ADMIN: 'badge-red', MANAGER: 'badge-blue', ACCOUNTANT: 'badge-green', VIEWER: 'badge-gray' };
 const PROVINCES    = ['Metro Manila', 'Cebu', 'Davao', 'Laguna', 'Cavite', 'Rizal', 'Bulacan', 'Pampanga', 'Iloilo', 'Batangas'];
@@ -328,6 +331,9 @@ export default function SettingsPage() {
   const [backingUp, setBackingUp] = useState(false);
   const [permConfig, setPermConfig] = useState(null); // { MANAGER:[], ACCOUNTANT:[], VIEWER:[] }
   const [permSaving, setPermSaving] = useState(false);
+  const [inquiries,        setInquiries]        = useState([]);
+  const [inquiriesLoading, setInquiriesLoading] = useState(false);
+  const [expandedInquiry,  setExpandedInquiry]  = useState(null); // lead id whose full message is shown
 
   // Modals
   const [userModal,   setUserModal]   = useState(null); // null | 'new' | user obj
@@ -438,6 +444,16 @@ export default function SettingsPage() {
     finally { setRestoring(false); }
   };
 
+  // Load landing-page inquiries (leads)
+  const loadInquiries = useCallback(async () => {
+    setInquiriesLoading(true);
+    try {
+      const r = await leadsApi.list();
+      setInquiries(r.data);
+    } catch { toast.error('Failed to load inquiries'); }
+    finally { setInquiriesLoading(false); }
+  }, []);
+
   // Load role permissions
   const loadPermissions = useCallback(async () => {
     try {
@@ -451,6 +467,7 @@ export default function SettingsPage() {
     if (activeTab === 'users')       loadUsers();
     if (activeTab === 'database')    { loadDbStats(); loadModuleList(); }
     if (activeTab === 'permissions') loadPermissions();
+    if (activeTab === 'inquiries')   loadInquiries();
   }, [activeTab]);
 
   const togglePerm = (role, moduleKey) => {
@@ -1327,6 +1344,58 @@ export default function SettingsPage() {
                   Open Audit Trail
                 </Link>
               </div>
+            </div>
+          )}
+
+          {/* ── Inquiries ── */}
+          {activeTab === 'inquiries' && (
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <SectionTitle icon={Inbox}>Landing Page Inquiries</SectionTitle>
+                <button onClick={loadInquiries} disabled={inquiriesLoading} className="btn-secondary btn-sm">
+                  {inquiriesLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Refresh
+                </button>
+              </div>
+              <p className="text-sm text-gray-500">
+                Messages submitted through the Finara website contact form. Click a row to read the full message.
+              </p>
+              {inquiriesLoading && !inquiries.length ? (
+                <div className="flex items-center justify-center py-14 text-gray-400">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                </div>
+              ) : !inquiries.length ? (
+                <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                  <Inbox className="w-8 h-8 mb-2" />
+                  <p className="text-sm">No inquiries yet</p>
+                </div>
+              ) : (
+                <div className="table-wrapper">
+                  <table className="table text-sm">
+                    <thead>
+                      <tr><th>Date</th><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Message</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {inquiries.map((q) => {
+                        const expanded = expandedInquiry === q.id;
+                        return (
+                          <tr key={q.id} onClick={() => setExpandedInquiry(expanded ? null : q.id)} className="cursor-pointer">
+                            <td className="text-xs text-gray-400 whitespace-nowrap">{formatDate(q.createdAt)}</td>
+                            <td><p className="font-medium">{q.name}</p></td>
+                            <td className="text-gray-500 text-xs">{q.company || '—'}</td>
+                            <td className="text-gray-500 text-xs">{q.email}</td>
+                            <td className="text-gray-500 text-xs">{q.phone || '—'}</td>
+                            <td className={`text-gray-600 text-xs ${expanded ? 'whitespace-pre-wrap' : 'max-w-[280px] truncate'}`}>{q.message}</td>
+                            <td>
+                              <span className={`badge text-xs ${INQUIRY_STATUS_COLORS[q.status] || 'badge-gray'}`}>{q.status}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
