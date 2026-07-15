@@ -24,3 +24,33 @@ exports.list = async (req, res, next) => {
     next(err);
   }
 };
+
+const EXPORT_STATUSES = ['NEW', 'CONTACTED', 'CLOSED'];
+
+// GET /api/leads/export — X-API-Key (external systems); ?since=<ISO>&status=<LeadStatus>
+exports.exportList = async (req, res, next) => {
+  try {
+    const { since, status } = req.query;
+    const where = {};
+
+    if (since !== undefined) {
+      const from = new Date(since);
+      if (Number.isNaN(from.getTime())) {
+        return res.status(400).json({ error: 'Invalid since — expected an ISO-8601 date' });
+      }
+      where.createdAt = { gte: from };
+    }
+
+    if (status !== undefined) {
+      if (!EXPORT_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `Invalid status — expected one of ${EXPORT_STATUSES.join(', ')}` });
+      }
+      where.status = status;
+    }
+
+    const leads = await prisma.lead.findMany({ where, orderBy: { createdAt: 'desc' } });
+    res.json(leads);
+  } catch (err) {
+    next(err);
+  }
+};
