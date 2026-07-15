@@ -1,0 +1,70 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - complementary [ref=f3e3]:
+      - generic [ref=f3e4]:
+        - img "Finara" [ref=f3e5]
+        - button "Collapse sidebar" [ref=f3e6] [cursor=pointer]
+      - navigation [ref=f3e10]:
+        - link "Dashboard" [ref=f3e13] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f3e19]:
+          - paragraph [ref=f3e20]: Accounting
+          - generic [ref=f3e21]:
+            - link "Chart of Accounts" [ref=f3e22] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=f3e26] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=f3e30] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=f3e36]:
+          - paragraph [ref=f3e37]: Sales
+          - button "Accounts Receivable" [ref=f3e40] [cursor=pointer]
+        - generic [ref=f3e47]:
+          - paragraph [ref=f3e48]: Purchases
+          - generic [ref=f3e49]:
+            - button "Accounts Payable" [ref=f3e51] [cursor=pointer]
+            - link "Purchase Orders" [ref=f3e57] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=f3e62] [cursor=pointer]:
+              - /url: /expenses
+        - generic [ref=f3e66]:
+          - paragraph [ref=f3e67]: Payroll
+          - button "Payroll" [ref=f3e70] [cursor=pointer]
+        - generic [ref=f3e79]:
+          - paragraph [ref=f3e80]: Inventory & Assets
+          - generic [ref=f3e81]:
+            - button "Inventory" [ref=f3e83] [cursor=pointer]
+            - link "Fixed Assets" [ref=f3e91] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=f3e96]:
+          - paragraph [ref=f3e97]: Banking & Compliance
+          - generic [ref=f3e98]:
+            - link "Bank Reconciliation" [ref=f3e99] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=f3e104] [cursor=pointer]
+            - button "Remittances" [ref=f3e112] [cursor=pointer]
+        - generic [ref=f3e118]:
+          - paragraph [ref=f3e119]: Planning & Reports
+          - generic [ref=f3e120]:
+            - link "Budgeting" [ref=f3e121] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=f3e125] [cursor=pointer]
+      - generic [ref=f3e132]:
+        - link "Settings" [ref=f3e133] [cursor=pointer]:
+          - /url: /settings
+        - link "Businesses" [ref=f3e137] [cursor=pointer]:
+          - /url: /settings/businesses
+        - button "Logout" [ref=f3e144] [cursor=pointer]
+    - generic [ref=f3e148]:
+      - banner [ref=f3e149]:
+        - generic [ref=f3e150]:
+          - heading "Finara ERP" [level=1] [ref=f3e151]
+          - paragraph [ref=f3e152]: Jul 15, 2026
+        - button "Search… ⌘K" [ref=f3e153] [cursor=pointer]:
+          - generic [ref=f3e157]: Search…
+          - generic [ref=f3e158]: ⌘K
+        - generic [ref=f3e159]: Loading…
+        - button "Notifications" [ref=f3e167] [cursor=pointer]
+      - main [ref=f3e171]:
+        - generic [ref=f3e172]: Loading settings...
+  - alert [ref=f3e176]
