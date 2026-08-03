@@ -33,7 +33,7 @@ exports.getOne = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { name, frequency, startDate, endDate, description, reference, payload } = req.body;
+    const { name, frequency, startDate, endDate, description, notes, reference, payload } = req.body;
     validatePayload(payload);
     const t = await prisma.recurringTemplate.create({
       data: {
@@ -44,7 +44,7 @@ exports.create = async (req, res, next) => {
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         nextRunDate: new Date(startDate),
-        description, reference,
+        description, notes, reference,
         payload,
         createdBy: req.user?.id ?? null,
       },
@@ -57,7 +57,7 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { name, frequency, startDate, endDate, description, reference, payload, nextRunDate } = req.body;
+    const { name, frequency, startDate, endDate, description, notes, reference, payload, nextRunDate } = req.body;
     if (payload) validatePayload(payload);
     // Verify ownership before update
     const existing = await prisma.recurringTemplate.findFirst({ where: { id, businessId: req.businessId } });
@@ -71,6 +71,7 @@ exports.update = async (req, res, next) => {
         endDate: endDate ? new Date(endDate) : null,
         ...(nextRunDate && { nextRunDate: new Date(nextRunDate) }),
         ...(description != null && { description }),
+        ...(notes != null && { notes }),
         ...(reference != null && { reference }),
         ...(payload && { payload }),
       },
@@ -85,6 +86,7 @@ const runTemplate = async (t, userId) => {
   const entry = await glPost.post({
     entryDate:   t.nextRunDate,
     description: t.description || `Recurring — ${t.name}`,
+    notes:       t.notes || null,
     reference:   t.reference || null,
     userId:      userId || t.createdBy || 1,
     businessId:  t.businessId,          // ← fixed: was always defaulting to 1

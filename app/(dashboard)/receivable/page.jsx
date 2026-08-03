@@ -4,12 +4,14 @@ import { receivable as rApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Ban, Filter, X,
-  AlertCircle, Clock, CheckCircle2, FileText, Receipt,
+  AlertCircle, Clock, CheckCircle2, FileText,
   Printer, ChevronDown, ChevronUp,
 } from 'lucide-react';
+import PesoReceipt from '@/components/icons/PesoReceipt';
 import PesoSign from '@/components/icons/PesoSign';
 import CustomerSelect from '@/components/CustomerSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
+import NumberInput from '@/components/NumberInput';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
@@ -301,6 +303,10 @@ function CollectionModal({ invoice, onClose, onCollected }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!(Number(form.amount) > 0)) {
+      toast.error('Enter an amount greater than zero');
+      return;
+    }
     if (Number(form.amount) > balance + 0.01) {
       toast.error(`Amount exceeds receivable balance of ${formatCurrency(balance)}`);
       return;
@@ -361,12 +367,12 @@ function CollectionModal({ invoice, onClose, onCollected }) {
               <label className="label">Amount Collected (₱) *</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">₱</span>
-                <input
-                  type="number" step="0.01" min="0.01" max={balance}
+                <NumberInput
                   className="input pl-8"
                   required
                   value={form.amount}
-                  onChange={set('amount')}
+                  onChange={(v) => setForm((f) => ({ ...f, amount: v }))}
+                  placeholder="0.00"
                 />
               </div>
               <div className="flex gap-2 mt-1.5">
@@ -425,6 +431,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
     invoiceDate:  new Date().toISOString().split('T')[0],
     dueDate:      '',
     description:  '',
+    notes:        '',
     lines: [
       { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
     ],
@@ -492,7 +499,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-4xl">
+      <div className="modal max-w-6xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">New Sales Invoice</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -538,15 +545,15 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
               </div>
 
               <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="table">
+                <table className="table table-compact">
                   <thead>
                     <tr>
-                      <th className="w-48">Revenue Account</th>
+                      <th className="w-56">Revenue Account</th>
                       <th>Description</th>
-                      <th className="w-20">VAT</th>
-                      <th className="w-20 text-right">Qty</th>
-                      <th className="w-32 text-right">Unit Price (₱)</th>
-                      <th className="w-36 text-right">Amount (₱)</th>
+                      <th className="w-28">VAT</th>
+                      <th className="w-32 text-right">Qty</th>
+                      <th className="w-40 text-right">Unit Price (₱)</th>
+                      <th className="w-44 text-right">Amount (₱)</th>
                       <th className="w-8" />
                     </tr>
                   </thead>
@@ -556,7 +563,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
                       const v   = computeVAT(amt, line.vatCode);
                       return (
                         <tr key={i} className="align-top">
-                          <td className="py-2">
+                          <td>
                             <select
                               className="select text-xs"
                               value={line.accountId}
@@ -568,7 +575,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
                               ))}
                             </select>
                           </td>
-                          <td className="py-2">
+                          <td>
                             <DescriptionInput
                               className="input text-xs"
                               value={line.description}
@@ -576,7 +583,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
                               placeholder="Item / service description"
                             />
                           </td>
-                          <td className="py-2">
+                          <td>
                             <select
                               className="select text-xs"
                               value={line.vatCode}
@@ -585,25 +592,24 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
                               {VAT_CODES.map((c) => <option key={c}>{c}</option>)}
                             </select>
                           </td>
-                          <td className="py-2">
-                            <input
-                              type="number" step="0.001" min="0.001"
+                          <td>
+                            <NumberInput
+                              decimals={3}
                               className="input text-xs text-right"
                               value={line.quantity}
-                              onChange={(e) => setLine(i, 'quantity', e.target.value)}
+                              onChange={(v) => setLine(i, 'quantity', v)}
                             />
                           </td>
-                          <td className="py-2">
-                            <input
-                              type="number" step="0.01" min="0"
+                          <td>
+                            <NumberInput
                               className="input text-xs text-right"
                               value={line.unitPrice}
-                              onChange={(e) => setLine(i, 'unitPrice', e.target.value)}
+                              onChange={(v) => setLine(i, 'unitPrice', v)}
                               placeholder="0.00"
                             />
                           </td>
-                          <td className="py-2">
-                            <div className="text-right text-sm font-semibold text-gray-800 py-2">
+                          <td>
+                            <div className="text-right text-sm font-semibold text-gray-800 py-1.5">
                               {formatCurrency(v.total)}
                             </div>
                             {line.vatCode === 'VAT' && amt > 0 && (
@@ -612,7 +618,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
                               </div>
                             )}
                           </td>
-                          <td className="py-2">
+                          <td>
                             {form.lines.length > 1 && (
                               <button
                                 type="button"
@@ -651,9 +657,14 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
           </div>
 
           <div className="modal-footer">
+            <div className="footer-notes">
+              <label className="label mb-0 whitespace-nowrap text-xs text-gray-500">Notes</label>
+              <input className="input" placeholder="Internal remarks, payment terms…"
+                value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
-              <Receipt className="w-4 h-4" />
+              <PesoReceipt className="w-4 h-4" />
               {saving ? 'Creating Invoice...' : 'Create Invoice'}
             </button>
           </div>
@@ -766,7 +777,7 @@ export default function InvoicesPage() {
             value: formatCurrency(invoices.reduce((s, i) => s + Number(i.totalAmount), 0)),
             sub: 'shown records',
             color: 'bg-purple-100 text-purple-600',
-            icon: <Receipt className="w-5 h-5" />,
+            icon: <PesoReceipt className="w-5 h-5" />,
           },
           {
             label: 'Page Collected',
@@ -892,7 +903,7 @@ export default function InvoicesPage() {
                 <tr>
                   <td colSpan={9} className="text-center py-12">
                     <div className="flex flex-col items-center gap-3 text-gray-400">
-                      <Receipt className="w-10 h-10 text-gray-200" />
+                      <PesoReceipt className="w-10 h-10 text-gray-200" />
                       <p>No invoices found.</p>
                       <button
                         className="btn-primary btn-sm"

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, Edit2, Users, Phone, Mail, MapPin,
   Hash, ChevronRight, ToggleLeft, ToggleRight, X,
-  CheckCircle2, TrendingUp, Receipt, AlertCircle,
+  CheckCircle2, TrendingUp, AlertCircle,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import Link from 'next/link';

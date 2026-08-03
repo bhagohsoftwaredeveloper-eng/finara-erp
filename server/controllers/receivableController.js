@@ -100,7 +100,7 @@ exports.getInvoice = async (req, res, next) => {
 
 exports.createInvoice = async (req, res, next) => {
   try {
-    const { customerId, invoiceDate, dueDate, description, lines } = req.body;
+    const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
     let subtotal = 0, vatAmount = 0;
     const processedLines = lines.map((l) => {
       const amt = Number(l.quantity) * Number(l.unitPrice);
@@ -115,7 +115,7 @@ exports.createInvoice = async (req, res, next) => {
         businessId: req.businessId,
         invoiceNo, customerId: Number(customerId),
         invoiceDate: new Date(invoiceDate), dueDate: new Date(dueDate),
-        description, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
+        description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
