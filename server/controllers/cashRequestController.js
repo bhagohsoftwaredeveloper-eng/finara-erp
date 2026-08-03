@@ -123,10 +123,10 @@ exports.update = async (req, res, next) => {
         where: { id },
         data: {
           ...(requestDate  && { requestDate: new Date(requestDate) }),
-          neededDate:   neededDate ? new Date(neededDate) : null,
+          ...(neededDate !== undefined && { neededDate: neededDate ? new Date(neededDate) : null }),
           ...(requestedFor && { requestedFor: requestedFor.trim() }),
           ...(purpose      && { purpose: purpose.trim() }),
-          notes: notes ?? null,
+          ...(notes !== undefined && { notes: notes || null }),
           ...(rows && { requestedAmount: sumItems(rows) }),
         },
         include: { items: true },
