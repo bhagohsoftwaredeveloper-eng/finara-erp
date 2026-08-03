@@ -701,7 +701,7 @@ exports.release = async (req, res, next) => {
     if (!cashAccountCode) throw createError('Select the cash account the money comes from', 400);
 
     const cashAccount = await prisma.account.findFirst({
-      where: { accountCode: String(cashAccountCode) },
+      where: { accountCode: String(cashAccountCode), businessId: req.businessId },
       select: { id: true },
     });
     if (!cashAccount) throw createError(`Cash account ${cashAccountCode} does not exist`, 400);
