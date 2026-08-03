@@ -335,3 +335,52 @@ exports.liquidate = async (req, res, next) => {
     res.json({ ...result.updated, variance, mode });
   } catch (err) { next(err); }
 };
+
+exports.summary = async (req, res, next) => {
+  try {
+    const where = { businessId: req.businessId };
+    const [pendingApproval, awaitingRelease, released] = await Promise.all([
+      prisma.cashRequest.count({ where: { ...where, status: 'SUBMITTED' } }),
+      prisma.cashRequest.count({ where: { ...where, status: 'APPROVED' } }),
+      prisma.cashRequest.findMany({
+        where: { ...where, status: 'RELEASED' },
+        select: { releasedAmount: true },
+      }),
+    ]);
+
+    res.json({
+      pendingApproval,
+      awaitingRelease,
+      releasedCount:     released.length,
+      outstandingAmount: released.reduce((s, r) => s + Number(r.releasedAmount), 0),
+    });
+  } catch (err) { next(err); }
+};
+
+// Outstanding advances grouped by holder. Groups by the free-text name, so
+// spelling variants of the same person appear as separate rows.
+exports.unliquidated = async (req, res, next) => {
+  try {
+    const rows = await prisma.cashRequest.findMany({
+      where: { businessId: req.businessId, status: 'RELEASED' },
+      select: { requestNo: true, requestedFor: true, releasedAmount: true, releasedDate: true },
+      orderBy: { releasedDate: 'asc' },
+    });
+
+    const now = Date.now();
+    const byPerson = new Map();
+    for (const r of rows) {
+      const key = r.requestedFor;
+      const days = r.releasedDate
+        ? Math.floor((now - new Date(r.releasedDate).getTime()) / 86400000)
+        : 0;
+      const cur = byPerson.get(key) || { requestedFor: key, count: 0, amount: 0, oldestDays: 0 };
+      cur.count  += 1;
+      cur.amount += Number(r.releasedAmount);
+      cur.oldestDays = Math.max(cur.oldestDays, days);
+      byPerson.set(key, cur);
+    }
+
+    res.json([...byPerson.values()].sort((a, b) => b.amount - a.amount));
+  } catch (err) { next(err); }
+};
