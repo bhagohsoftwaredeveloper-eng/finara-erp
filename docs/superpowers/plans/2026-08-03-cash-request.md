@@ -360,7 +360,7 @@ module.exports = { buildReleaseEntry, buildLiquidationEntry, ADVANCES_ACCOUNT };
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx jest tests/cashAdvance.test.js`
-Expected: PASS, 7 tests.
+Expected: PASS, 9 tests.
 
 If `isBalanced` is not exported from `server/utils/finance.js`, check its export list — `tests/finance.test.js` imports it, so it exists.
 
