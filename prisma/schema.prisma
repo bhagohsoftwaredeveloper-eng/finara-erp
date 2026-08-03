@@ -123,6 +123,7 @@ model Account {
   cogsItems        InventoryItem[]     @relation("InvCogsAccount")
   revenueItems     InventoryItem[]     @relation("InvRevenueAccount")
   expenseItems     ExpenseVoucherItem[]
+  cashRequestItems CashRequestItem[]
 
   @@unique([businessId, accountCode])
   @@index([businessId])
@@ -717,6 +718,8 @@ model ExpenseVoucher {
   rejectedReason String?              @db.Text
   notes          String?              @db.Text
   items          ExpenseVoucherItem[]
+  cashRequestId  Int?                 @unique
+  cashRequest    CashRequest?         @relation(fields: [cashRequestId], references: [id])
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -1068,4 +1071,58 @@ enum LeadStatus {
   NEW
   CONTACTED
   CLOSED
+}
+
+// ─── Cash Requests (advance & liquidation) ─────────────────
+enum CashRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RELEASED
+  LIQUIDATED
+  REJECTED
+  CANCELLED
+}
+
+model CashRequest {
+  id              Int       @id @default(autoincrement())
+  businessId      Int       @default(1)
+  requestNo       String    @unique @db.VarChar(30)
+  requestDate     DateTime  @db.Date
+  neededDate      DateTime? @db.Date
+  requestedFor    String    @db.VarChar(100)
+  purpose         String    @db.Text
+  requestedAmount Decimal   @default(0) @db.Decimal(15, 2)
+  releasedAmount  Decimal   @default(0) @db.Decimal(15, 2)
+  cashAccountCode String?   @db.VarChar(10)
+  status          CashRequestStatus @default(DRAFT)
+  requestedBy     String?   @db.VarChar(100)
+  approvedBy      String?   @db.VarChar(100)
+  releasedBy      String?   @db.VarChar(100)
+  releasedDate    DateTime? @db.Date
+  rejectedReason  String?   @db.Text
+  notes           String?   @db.Text
+  items           CashRequestItem[]
+  liquidation     ExpenseVoucher?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([businessId])
+  @@index([status])
+  @@index([requestDate])
+  @@map("cash_requests")
+}
+
+model CashRequestItem {
+  id            Int         @id @default(autoincrement())
+  requestId     Int
+  request       CashRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  description   String      @db.VarChar(255)
+  quantity      Decimal?    @db.Decimal(15, 3)
+  estimatedCost Decimal     @db.Decimal(15, 2)
+  accountId     Int?
+  account       Account?    @relation(fields: [accountId], references: [id])
+
+  @@index([requestId])
+  @@map("cash_request_items")
 }
