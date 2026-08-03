@@ -283,8 +283,8 @@ exports.pay = async (req, res, next) => {
     }
 
     if (voucher.type === 'LIQUIDATION' && voucher.cashRequestId) {
-      const request = await prisma.cashRequest.findUnique({
-        where: { id: voucher.cashRequestId },
+      const request = await prisma.cashRequest.findFirst({
+        where: { id: voucher.cashRequestId, businessId: voucher.businessId },
         select: { requestNo: true, releasedAmount: true, cashAccountCode: true },
       });
       if (!request) throw createError('Linked cash request not found', 404);

@@ -444,7 +444,7 @@ export default function ExpensesPage() {
                 return (
                   <tr key={v.id}>
                     <td className="font-mono text-xs text-blue-600 font-semibold">{v.voucherNo}</td>
-                    <td><span className={`badge badge-${tOpt?.color || 'gray'}`}>{tOpt?.label}</span></td>
+                    <td><span className={`badge badge-${tOpt?.color || 'gray'}`}>{tOpt?.label || v.type}</span></td>
                     <td className="text-sm text-gray-600">{new Date(v.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     <td className="font-medium max-w-[140px] truncate" title={v.payee}>{v.payee}</td>
                     <td className="text-xs text-gray-500">{v.category?.replace('_', ' ')}</td>
@@ -474,7 +474,7 @@ export default function ExpensesPage() {
       {/* ── New / Edit Voucher Drawer ── */}
       <Drawer wide open={drawerOpen} onClose={() => setDrawerOpen(false)}
         title={editing ? `Edit — ${editing.voucherNo}` : 'New Expense Voucher'}
-        subtitle={editing ? `${TYPE_OPTS.find(t=>t.value===editing.type)?.label} · ${editing.status}` : 'Fill in the details below'}
+        subtitle={editing ? `${TYPE_OPTS.find(t=>t.value===editing.type)?.label || editing.type} · ${editing.status}` : 'Fill in the details below'}
         footer={
           <>
             <button className="btn-secondary" onClick={() => setDrawerOpen(false)}>Cancel</button>
@@ -602,7 +602,7 @@ export default function ExpensesPage() {
         {actionRecord && (
           <div className="space-y-4">
             <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-sm">
-              <div className="font-semibold text-gray-900">{actionRecord.voucherNo} — {TYPE_OPTS.find(t=>t.value===actionRecord.type)?.label}</div>
+              <div className="font-semibold text-gray-900">{actionRecord.voucherNo} — {TYPE_OPTS.find(t=>t.value===actionRecord.type)?.label || actionRecord.type}</div>
               <div className="text-gray-500 mt-0.5">Payee: <strong>{actionRecord.payee}</strong> · Amount: <strong>{fmt(actionRecord.totalAmount)}</strong></div>
               <div className="text-gray-400 mt-0.5 text-xs">{actionRecord.purpose}</div>
             </div>
