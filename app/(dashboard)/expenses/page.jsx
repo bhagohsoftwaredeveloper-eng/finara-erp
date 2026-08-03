@@ -20,7 +20,6 @@ const TYPE_OPTS = [
   { value: 'PETTY_CASH',     label: 'Petty Cash',      sub: 'Small cash purchases from petty fund',  color: 'blue'   },
   { value: 'REIMBURSEMENT',  label: 'Reimbursement',   sub: 'Employee personal spend for company',   color: 'green'  },
   { value: 'DIRECT_PAYMENT', label: 'Direct Payment',  sub: 'Utilities, rent, service payments',     color: 'purple' },
-  { value: 'CASH_ADVANCE',   label: 'Cash Advance',    sub: 'Advance given before the expense',      color: 'orange' },
   { value: 'LIQUIDATION',    label: 'Liquidation',     sub: 'Settlement of a cash advance',          color: 'red'    },
 ];
 

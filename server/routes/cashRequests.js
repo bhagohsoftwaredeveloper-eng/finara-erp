@@ -14,5 +14,6 @@ router.post('/:id/approve', authorize('ADMIN', 'MANAGER'),               ctrl.ap
 router.post('/:id/reject',  authorize('ADMIN', 'MANAGER'),               ctrl.reject);
 router.post('/:id/cancel',  authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), ctrl.cancel);
 router.post('/:id/release', authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), ctrl.release);
+router.post('/:id/liquidate', authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), ctrl.liquidate);
 
 module.exports = router;

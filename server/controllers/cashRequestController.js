@@ -3,7 +3,7 @@ const { createError } = require('../middleware/errorHandler');
 const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
 const glPost = require('../utils/glPost');
-const { buildReleaseEntry } = require('../utils/cashAdvance');
+const { buildReleaseEntry, buildLiquidationEntry } = require('../utils/cashAdvance');
 
 const genRequestNo = async () => {
   const last = await prisma.cashRequest.findFirst({
@@ -236,5 +236,102 @@ exports.release = async (req, res, next) => {
       summary: `Released ₱${amount.toLocaleString()} on ${cr.requestNo} to ${cr.requestedFor}`,
     });
     res.json(updated);
+  } catch (err) { next(err); }
+};
+
+// Settle the advance against receipts. Clears 1104 and books the real expense.
+exports.liquidate = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { lines, receiptNo, liquidationDate, notes } = req.body;
+
+    const cr = await prisma.cashRequest.findFirst({
+      where: { id, businessId: req.businessId },
+      include: { liquidation: { select: { id: true } } },
+    });
+    if (!cr) throw createError('Cash request not found', 404);
+    if (cr.status !== 'RELEASED') throw createError('Only RELEASED requests can be liquidated', 400);
+    if (cr.liquidation) throw createError('This request has already been liquidated', 400);
+
+    const spent = (lines || [])
+      .filter((l) => l.description && Number(l.amount) > 0)
+      .map((l) => ({
+        description: l.description,
+        amount:      Number(l.amount),
+        accountId:   l.accountId ? Number(l.accountId) : null,
+        receiptNo:   l.receiptNo || null,
+      }));
+    if (!spent.length) throw createError('Add at least one liquidation line', 400);
+
+    // Throws on bad input before anything is written
+    const { lines: glLines, variance, mode } = buildLiquidationEntry({
+      requestNo:       cr.requestNo,
+      releasedAmount:  Number(cr.releasedAmount),
+      lines:           spent,
+      cashAccountCode: cr.cashAccountCode,
+    });
+
+    const actualSpent = spent.reduce((s, l) => s + l.amount, 0);
+    const dateStr = liquidationDate || new Date().toISOString().slice(0, 10);
+
+    const voucherNo = await (async () => {
+      const last = await prisma.expenseVoucher.findFirst({
+        orderBy: { id: 'desc' }, select: { voucherNo: true },
+      });
+      return nextDocNumber('EV-', last?.voucherNo);
+    })();
+
+    const result = await prisma.$transaction(async (tx) => {
+      const voucher = await tx.expenseVoucher.create({
+        data: {
+          businessId:  req.businessId,
+          voucherNo,
+          type:        'LIQUIDATION',
+          date:        new Date(dateStr),
+          payee:       cr.requestedFor,
+          category:    'MISCELLANEOUS',
+          purpose:     `Liquidation of ${cr.requestNo} — ${cr.purpose}`,
+          totalAmount: actualSpent,
+          receiptNo:   receiptNo || null,
+          status:      'PAID',
+          requestedBy: cr.requestedFor,
+          approvedBy:  cr.approvedBy,
+          paidDate:    new Date(dateStr),
+          notes:       notes || null,
+          cashRequestId: cr.id,
+          items: { create: spent.map((l) => ({
+            description: l.description,
+            accountId:   l.accountId,
+            amount:      l.amount,
+            receiptNo:   l.receiptNo,
+          })) },
+        },
+        include: { items: true },
+      });
+
+      const updated = await tx.cashRequest.update({
+        where: { id },
+        data: { status: 'LIQUIDATED' },
+        include: { items: true, liquidation: { include: { items: true } } },
+      });
+
+      return { voucher, updated };
+    });
+
+    await glPost.safePost({
+      entryDate:   dateStr,
+      description: `Liquidation — ${cr.requestNo} (${cr.requestedFor})`,
+      reference:   cr.requestNo,
+      lines:       glLines,
+      userId:      req.user?.id || 1,
+      businessId:  req.businessId,
+    });
+
+    await recordAudit({
+      req, action: 'LIQUIDATE', entity: 'CashRequest', entityId: id,
+      summary: `Liquidated ${cr.requestNo} — spent ₱${actualSpent.toLocaleString()} of ₱${Number(cr.releasedAmount).toLocaleString()} (${mode})`,
+    });
+
+    res.json({ ...result.updated, variance, mode });
   } catch (err) { next(err); }
 };
