@@ -10,13 +10,21 @@ function dayRange(dateStr) {
   return { gte: start, lte: end };
 }
 
+// Cutoff for an "as of end of this date" running balance. Cash balances are
+// cumulative — every POSTED entry up to and including the chosen day — so they
+// answer "how much should be in the drawer at close of business that day?"
+function asOfEndOf(dateStr) {
+  return { lte: new Date(`${dateStr}T23:59:59.999Z`) };
+}
+
 // ─── Auto-Calculate from existing transactions ────────────────────
 exports.calculate = async (req, res, next) => {
   try {
     const { date } = req.query;
     if (!date) throw createError('date query param required (YYYY-MM-DD)', 400);
 
-    const range = dayRange(date);
+    const range   = dayRange(date);
+    const asOfEnd = asOfEndOf(date);   // cash balances are cumulative to end of day
 
     const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL, pettyCashGcashGL, cashOnHandGL] = await Promise.all([
       prisma.invoice.findMany({
@@ -49,26 +57,26 @@ exports.calculate = async (req, res, next) => {
         where: { businessId: req.businessId, date: range, status: { in: ['APPROVED', 'PAID'] } },
         orderBy: { voucherNo: 'asc' },
       }),
-      // Petty Cash Fund – Cash (1011) running balance
+      // Petty Cash Fund – Cash (1011) balance as of end of the selected date
       prisma.journalLine.aggregate({
         where: {
-          entry: { businessId: req.businessId, status: 'POSTED' },
+          entry: { businessId: req.businessId, status: 'POSTED', entryDate: asOfEnd },
           account: { accountCode: '1011', businessId: req.businessId },
         },
         _sum: { debit: true, credit: true },
       }),
-      // Petty Cash Fund – GCash (1012) running balance
+      // Petty Cash Fund – GCash (1012) balance as of end of the selected date
       prisma.journalLine.aggregate({
         where: {
-          entry: { businessId: req.businessId, status: 'POSTED' },
+          entry: { businessId: req.businessId, status: 'POSTED', entryDate: asOfEnd },
           account: { accountCode: '1012', businessId: req.businessId },
         },
         _sum: { debit: true, credit: true },
       }),
-      // Cash on Hand (1010) running balance from all POSTED GL entries
+      // Cash on Hand (1010) balance as of end of the selected date
       prisma.journalLine.aggregate({
         where: {
-          entry: { businessId: req.businessId, status: 'POSTED' },
+          entry: { businessId: req.businessId, status: 'POSTED', entryDate: asOfEnd },
           account: { accountCode: '1010', businessId: req.businessId },
         },
         _sum: { debit: true, credit: true },
@@ -96,15 +104,15 @@ exports.calculate = async (req, res, next) => {
                          + paidCashOutflow.reduce((s, v) => s + Number(v.totalAmount), 0);
     // netCash = what should be physically remitted from daily collections
     const netCash        = cashReceived - cashDisbursed;
-    // Petty Cash Fund – Cash (1011) running balance
+    // Petty Cash Fund – Cash (1011) balance as of end of the selected date
     const pcDebits         = Number(pettyCashGL._sum.debit  || 0);
     const pcCredits        = Number(pettyCashGL._sum.credit || 0);
     const pettyCashBalance = pcDebits - pcCredits;
-    // Petty Cash Fund – GCash (1012) running balance
+    // Petty Cash Fund – GCash (1012) balance as of end of the selected date
     const pcGcashDebits   = Number(pettyCashGcashGL._sum.debit  || 0);
     const pcGcashCredits  = Number(pettyCashGcashGL._sum.credit || 0);
     const pettyCashGcashBalance = pcGcashDebits - pcGcashCredits;
-    // Cash on Hand running balance (1010)
+    // Cash on Hand (1010) balance as of end of the selected date
     const cohDebits         = Number(cashOnHandGL._sum.debit  || 0);
     const cohCredits        = Number(cashOnHandGL._sum.credit || 0);
     const cashOnHandBalance = cohDebits - cohCredits;
