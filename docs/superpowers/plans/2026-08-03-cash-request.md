@@ -910,20 +910,72 @@ In `server/routes/cashRequests.js`:
 router.post('/:id/liquidate', authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), ctrl.liquidate);
 ```
 
-- [ ] **Step 4: Stop the expense module from double-posting liquidations**
+- [ ] **Step 4: Make `markPaid` post liquidations against 1104, not cash**
 
 `expenseController.markPaid` posts `DR expense / CR cash` for every voucher type.
-A liquidation created by Task 5 is already `PAID` and already posted, so `markPaid`
-must refuse it rather than post a second, wrong entry.
+For a liquidation that is wrong — the credit must clear `1104`, not cash.
 
-In `server/controllers/expenseController.js`, immediately after the existing
-`if (voucher.status !== 'APPROVED')` guard in `markPaid`, add:
+This is a defensive branch, not the normal path: the cash request `/liquidate`
+endpoint creates its voucher already `PAID` and already posted, and `markPaid`'s
+existing `if (voucher.status !== 'APPROVED')` guard rejects an already-`PAID`
+voucher. The branch matters only if a `LIQUIDATION` voucher ever reaches
+`APPROVED` by another route, and it guarantees such a voucher can never post the
+wrong entry.
+
+In `server/controllers/expenseController.js`, add the import at the top:
 
 ```js
-    if (voucher.cashRequestId) {
-      throw createError('Liquidation vouchers are settled from the Cash Request module', 400);
+const { buildLiquidationEntry } = require('../utils/cashAdvance');
+```
+
+Then in `markPaid`, replace the single `glPost.safePost({...})` call with this
+branch. Keep the existing `drLines` and `cashCode` construction above it
+untouched:
+
+```js
+    if (voucher.type === 'LIQUIDATION' && voucher.cashRequestId) {
+      const request = await prisma.cashRequest.findUnique({
+        where: { id: voucher.cashRequestId },
+        select: { requestNo: true, releasedAmount: true, cashAccountCode: true },
+      });
+      if (!request) throw createError('Linked cash request not found', 404);
+
+      const { lines } = buildLiquidationEntry({
+        requestNo:       request.requestNo,
+        releasedAmount:  Number(request.releasedAmount),
+        lines:           voucher.items.map((i) => ({
+          description: i.description,
+          amount:      Number(i.amount),
+          accountId:   i.accountId,
+        })),
+        cashAccountCode: request.cashAccountCode,
+      });
+
+      await glPost.safePost({
+        entryDate:   paidDate || new Date().toISOString().slice(0, 10),
+        description: `Liquidation — ${request.requestNo} (${voucher.payee})`,
+        reference:   request.requestNo,
+        lines,
+        userId:      req.user?.id || 1,
+        businessId:  req.businessId,
+      });
+    } else {
+      await glPost.safePost({
+        entryDate:   paidDate || new Date().toISOString().slice(0, 10),
+        description: `Expense Voucher — ${voucher.voucherNo} (${voucher.payee})`,
+        reference:   voucher.voucherNo,
+        lines: [
+          ...drLines,
+          { accountCode: cashCode, credit: totalAmt, description: `Cash paid — ${voucher.voucherNo}` },
+        ],
+        userId:     req.user?.id || 1,
+        businessId: req.businessId,
+      });
     }
 ```
+
+A `LIQUIDATION` voucher must never post `CR cash` for the full amount — that
+would leave `1104` uncleared and double-count the cash outflow.
 
 - [ ] **Step 5: Remove CASH_ADVANCE from the Expense Voucher type picker**
 
