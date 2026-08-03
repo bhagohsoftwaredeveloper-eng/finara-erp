@@ -2,6 +2,8 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
+const glPost = require('../utils/glPost');
+const { buildReleaseEntry } = require('../utils/cashAdvance');
 
 const genRequestNo = async () => {
   const last = await prisma.cashRequest.findFirst({
@@ -183,3 +185,56 @@ exports.reject = async (req, res, next) => {
 exports.cancel = transition(
   ['DRAFT', 'SUBMITTED', 'APPROVED'], 'CANCELLED', 'cancelled',
 );
+
+// Hand over the cash. Creates the accountability in 1104.
+exports.release = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { releasedAmount, cashAccountCode, releasedBy, releasedDate } = req.body;
+
+    const cr = await prisma.cashRequest.findFirst({ where: { id, businessId: req.businessId } });
+    if (!cr) throw createError('Cash request not found', 404);
+    if (cr.status !== 'APPROVED') throw createError('Only APPROVED requests can be released', 400);
+
+    const amount = Number(releasedAmount);
+    if (!(amount > 0)) throw createError('Released amount must be greater than zero', 400);
+    if (!cashAccountCode) throw createError('Select the cash account the money comes from', 400);
+
+    const cashAccount = await prisma.account.findFirst({
+      where: { accountCode: String(cashAccountCode), businessId: req.businessId },
+      select: { id: true },
+    });
+    if (!cashAccount) throw createError(`Cash account ${cashAccountCode} does not exist`, 400);
+
+    // Throws on bad input before anything is written
+    const { lines } = buildReleaseEntry({ requestNo: cr.requestNo, amount, cashAccountCode });
+
+    const updated = await prisma.cashRequest.update({
+      where: { id },
+      data: {
+        status:          'RELEASED',
+        releasedAmount:  amount,
+        cashAccountCode: String(cashAccountCode),
+        releasedBy:      releasedBy
+          || (req.user ? `${req.user.firstName} ${req.user.lastName}`.trim() : null),
+        releasedDate:    releasedDate ? new Date(releasedDate) : new Date(),
+      },
+      include: { items: true },
+    });
+
+    await glPost.safePost({
+      entryDate:   releasedDate || new Date().toISOString().slice(0, 10),
+      description: `Cash Advance — ${cr.requestNo} (${cr.requestedFor})`,
+      reference:   cr.requestNo,
+      lines,
+      userId:      req.user?.id || 1,
+      businessId:  req.businessId,
+    });
+
+    await recordAudit({
+      req, action: 'RELEASE', entity: 'CashRequest', entityId: id,
+      summary: `Released ₱${amount.toLocaleString()} on ${cr.requestNo} to ${cr.requestedFor}`,
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+};

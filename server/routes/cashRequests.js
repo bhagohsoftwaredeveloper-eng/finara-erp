@@ -13,5 +13,6 @@ router.post('/:id/submit',  authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), ctrl.su
 router.post('/:id/approve', authorize('ADMIN', 'MANAGER'),               ctrl.approve);
 router.post('/:id/reject',  authorize('ADMIN', 'MANAGER'),               ctrl.reject);
 router.post('/:id/cancel',  authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), ctrl.cancel);
+router.post('/:id/release', authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), ctrl.release);
 
 module.exports = router;
