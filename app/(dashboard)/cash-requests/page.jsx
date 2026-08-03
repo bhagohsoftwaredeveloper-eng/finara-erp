@@ -4,7 +4,7 @@ import { cashRequests as crApi, accounts as acctApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import {
-  Plus, Search, Eye, Check, X, Send, HandCoins, AlertCircle, Clock, CheckCircle2, Ban,
+  Plus, Search, Check, X, Send, HandCoins, CheckCircle2, Ban,
 } from 'lucide-react';
 import AccountSelect from '@/components/ui/AccountSelect';
 import NumberInput from '@/components/NumberInput';
@@ -265,6 +265,13 @@ function ReleaseModal({ request, onClose, onDone }) {
                 onChange={(e) => setForm((f) => ({ ...f, releasedDate: e.target.value }))} />
             </div>
 
+            <div className="form-group">
+              <label className="label">Released By</label>
+              <input className="input" placeholder="Defaults to the logged-in user if blank"
+                value={form.releasedBy}
+                onChange={(e) => setForm((f) => ({ ...f, releasedBy: e.target.value }))} />
+            </div>
+
             <p className="text-xs text-gray-500">
               Posts <strong>DR 1104 Advances</strong> / <strong>CR {form.cashAccountCode}</strong>.
               The amount stays outstanding until liquidated.
@@ -347,7 +354,7 @@ function LiquidateModal({ request, accounts, onClose, onDone }) {
                   <thead>
                     <tr>
                       <th>Description</th>
-                      <th className="w-56">Account *</th>
+                      <th className="w-56">Account</th>
                       <th className="w-32">Receipt #</th>
                       <th className="w-40 text-right">Amount (₱)</th>
                       <th className="w-8" />
@@ -412,6 +419,52 @@ function LiquidateModal({ request, accounts, onClose, onDone }) {
   );
 }
 
+// ─── Reject Modal ─────────────────────────────────────────────
+function RejectModal({ request, onClose, onDone }) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!reason.trim()) return;
+    setSaving(true);
+    try {
+      await crApi.reject(request.id, { reason });
+      toast.success('Request rejected');
+      onDone();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Reject failed');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-md">
+        <div className="modal-header">
+          <h3 className="text-lg font-semibold">Reject {request.requestNo}</h3>
+          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body space-y-4">
+            <div className="form-group">
+              <label className="label">Reason for Rejection *</label>
+              <textarea className="input" rows={3} required
+                value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="Explain why this request is being rejected…" />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || !reason.trim()} className="btn-danger">
+              {saving ? 'Rejecting…' : 'Reject'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────
 export default function CashRequestsPage() {
   const [rows, setRows]       = useState([]);
@@ -450,10 +503,9 @@ export default function CashRequestsPage() {
     catch (err) { toast.error(err.response?.data?.error || 'Action failed'); }
   };
 
-  const reject = async (r) => {
-    const reason = window.prompt(`Reason for rejecting ${r.requestNo}?`);
-    if (!reason?.trim()) return;
-    act(() => crApi.reject(r.id, { reason }), 'Request rejected');
+  const cancel = (r) => {
+    if (!window.confirm(`Cancel ${r.requestNo}? This cannot be undone.`)) return;
+    act(() => crApi.cancel(r.id), 'Request cancelled');
   };
 
   return (
@@ -542,26 +594,33 @@ export default function CashRequestsPage() {
                       </button>
                     )}
                     {r.status === 'SUBMITTED' && (
-                      <>
-                        <button onClick={() => act(() => crApi.approve(r.id, {}), 'Approved')}
-                          className="btn-success btn-sm" title="Approve">
-                          <Check className="w-3 h-3" />
-                        </button>
-                        <button onClick={() => reject(r)} className="btn-danger btn-sm ml-1" title="Reject">
-                          <Ban className="w-3 h-3" />
-                        </button>
-                      </>
+                      <button onClick={() => act(() => crApi.approve(r.id, {}), 'Approved')}
+                        className="btn-success btn-sm ml-1" title="Approve">
+                        <Check className="w-3 h-3" />
+                      </button>
                     )}
                     {r.status === 'APPROVED' && (
                       <button onClick={() => setModal({ type: 'release', request: r })}
-                        className="btn-primary btn-sm" title="Release cash">
+                        className="btn-primary btn-sm ml-1" title="Release cash">
                         <HandCoins className="w-3 h-3" /> Release
+                      </button>
+                    )}
+                    {(r.status === 'SUBMITTED' || r.status === 'APPROVED') && (
+                      <button onClick={() => setModal({ type: 'reject', request: r })}
+                        className="btn-danger btn-sm ml-1" title="Reject">
+                        <Ban className="w-3 h-3" />
                       </button>
                     )}
                     {r.status === 'RELEASED' && (
                       <button onClick={() => setModal({ type: 'liquidate', request: r })}
                         className="btn-primary btn-sm" title="Liquidate">
                         <CheckCircle2 className="w-3 h-3" /> Liquidate
+                      </button>
+                    )}
+                    {(r.status === 'DRAFT' || r.status === 'SUBMITTED' || r.status === 'APPROVED') && (
+                      <button onClick={() => cancel(r)}
+                        className="btn-secondary btn-sm ml-1" title="Cancel request">
+                        <Ban className="w-3 h-3" />
                       </button>
                     )}
                   </td>
@@ -579,6 +638,11 @@ export default function CashRequestsPage() {
       )}
       {modal?.type === 'release' && (
         <ReleaseModal request={modal.request}
+          onClose={() => setModal(null)}
+          onDone={() => { setModal(null); load(); }} />
+      )}
+      {modal?.type === 'reject' && (
+        <RejectModal request={modal.request}
           onClose={() => setModal(null)}
           onDone={() => { setModal(null); load(); }} />
       )}
