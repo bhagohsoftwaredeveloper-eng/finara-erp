@@ -5,6 +5,7 @@ import { formatCurrency, getUser } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
 import Attachments from '@/components/Attachments';
 import AccountSelect from '@/components/ui/AccountSelect';
+import NumberInput from '@/components/NumberInput';
 import toast from 'react-hot-toast';
 import {
   Plus, X, Printer, RefreshCw, Trash2, Send, CheckCircle2,
@@ -90,8 +91,8 @@ function ItemRow({ item, index, accounts, onChange, onRemove }) {
       <div className="flex gap-2 lg:contents">
         <div className="flex-1 lg:col-span-2">
           <label className="text-xs text-gray-400 lg:hidden">Amount</label>
-          <input type="number" className="input text-sm text-right" placeholder="0.00" step="0.01" min="0"
-            value={item.amount} onChange={e => onChange(index, 'amount', e.target.value)} />
+          <NumberInput className="input text-sm text-right" placeholder="0.00"
+            value={item.amount} onChange={v => onChange(index, 'amount', v)} />
         </div>
         <div className="w-24 lg:col-span-1">
           <label className="text-xs text-gray-400 lg:hidden">Receipt #</label>

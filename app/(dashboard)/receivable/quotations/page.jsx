@@ -11,6 +11,7 @@ import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import CustomerSelect from '@/components/CustomerSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
+import NumberInput from '@/components/NumberInput';
 
 // ─── Constants ────────────────────────────────────────────────
 const VAT_CODES = ['VAT', 'ZERO', 'EXEMPT'];
@@ -42,6 +43,7 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
           quotationDate: quotation.quotationDate?.split('T')[0] || todayStr(),
           validUntil:    quotation.validUntil?.split('T')[0] || plusDays(30),
           description:   quotation.description || '',
+          notes:         quotation.notes || '',
           lines: quotation.lines?.length
             ? quotation.lines.map((l) => ({
                 accountId: String(l.accountId), description: l.description,
@@ -50,7 +52,7 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
             : [{ accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }],
         }
       : {
-          customerId: '', quotationDate: todayStr(), validUntil: plusDays(30), description: '',
+          customerId: '', quotationDate: todayStr(), validUntil: plusDays(30), description: '', notes: '',
           lines: [{ accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }],
         }
   );
@@ -86,6 +88,7 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
         quotationDate: form.quotationDate,
         validUntil: form.validUntil,
         description: form.description,
+        notes: form.notes,
         lines: validLines.map((l) => ({
           accountId:   Number(l.accountId),
           description: l.description,
@@ -107,7 +110,7 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-4xl">
+      <div className="modal max-w-6xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">{isEdit ? 'Edit Quotation' : 'New Quotation'}</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -149,15 +152,15 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
                 </button>
               </div>
               <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="table">
+                <table className="table table-compact">
                   <thead>
                     <tr>
-                      <th className="w-48">Revenue Account</th>
+                      <th className="w-56">Revenue Account</th>
                       <th>Description</th>
-                      <th className="w-20">VAT</th>
-                      <th className="w-20 text-right">Qty</th>
-                      <th className="w-32 text-right">Unit Price (₱)</th>
-                      <th className="w-36 text-right">Amount (₱)</th>
+                      <th className="w-28">VAT</th>
+                      <th className="w-32 text-right">Qty</th>
+                      <th className="w-40 text-right">Unit Price (₱)</th>
+                      <th className="w-44 text-right">Amount (₱)</th>
                       <th className="w-8" />
                     </tr>
                   </thead>
@@ -167,7 +170,7 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
                       const v = computeVAT(amt, line.vatCode);
                       return (
                         <tr key={i}>
-                          <td className="py-2">
+                          <td>
                             <AccountSelect
                               value={line.accountId}
                               onChange={(val) => setLine(i, 'accountId', val)}
@@ -175,31 +178,31 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
                               placeholder="Select…"
                             />
                           </td>
-                          <td className="py-2">
+                          <td>
                             <DescriptionInput className="input text-xs" value={line.description}
                               onChange={(v) => setLine(i, 'description', v)} placeholder="Item / service" />
                           </td>
-                          <td className="py-2">
+                          <td>
                             <select className="select text-xs" value={line.vatCode}
                               onChange={(e) => setLine(i, 'vatCode', e.target.value)}>
                               {VAT_CODES.map((c) => <option key={c}>{c}</option>)}
                             </select>
                           </td>
-                          <td className="py-2">
-                            <input type="number" step="0.001" min="0.001" className="input text-xs text-right"
-                              value={line.quantity} onChange={(e) => setLine(i, 'quantity', e.target.value)} />
+                          <td>
+                            <NumberInput decimals={3} className="input text-xs text-right"
+                              value={line.quantity} onChange={(v) => setLine(i, 'quantity', v)} />
                           </td>
-                          <td className="py-2">
-                            <input type="number" step="0.01" min="0" className="input text-xs text-right"
-                              value={line.unitPrice} onChange={(e) => setLine(i, 'unitPrice', e.target.value)} placeholder="0.00" />
+                          <td>
+                            <NumberInput className="input text-xs text-right"
+                              value={line.unitPrice} onChange={(v) => setLine(i, 'unitPrice', v)} placeholder="0.00" />
                           </td>
-                          <td className="py-2 text-right text-sm font-medium">
+                          <td className="text-right text-sm font-medium">
                             {formatCurrency(v.total)}
                             {line.vatCode === 'VAT' && amt > 0 && (
                               <div className="text-xs text-gray-400">incl. {formatCurrency(v.vat)} VAT</div>
                             )}
                           </td>
-                          <td className="py-2">
+                          <td>
                             {form.lines.length > 1 && (
                               <button type="button" onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600">
                                 <X className="w-4 h-4" />
@@ -224,6 +227,11 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
             </div>
           </div>
           <div className="modal-footer">
+            <div className="footer-notes">
+              <label className="label mb-0 whitespace-nowrap text-xs text-gray-500">Notes</label>
+              <input className="input" placeholder="Validity terms, scope notes…"
+                value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create Quotation')}

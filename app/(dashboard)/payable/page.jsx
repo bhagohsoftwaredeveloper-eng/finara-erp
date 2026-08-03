@@ -11,6 +11,7 @@ import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import VendorSelect from '@/components/VendorSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
+import NumberInput from '@/components/NumberInput';
 
 // ─── Constants ────────────────────────────────────────────────
 const VAT_CODES  = ['VAT', 'ZERO', 'EXEMPT'];
@@ -239,6 +240,10 @@ function PaymentModal({ bill, onClose, onPaid }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!(Number(form.amount) > 0)) {
+      toast.error('Enter an amount greater than zero');
+      return;
+    }
     if (Number(form.amount) > balance + 0.01) {
       toast.error(`Amount exceeds balance of ${formatCurrency(balance)}`);
       return;
@@ -280,8 +285,8 @@ function PaymentModal({ bill, onClose, onPaid }) {
 
             <div className="form-group">
               <label className="label">Amount (₱) *</label>
-              <input type="number" step="0.01" min="0.01" max={balance} className="input" required
-                value={form.amount} onChange={set('amount')} />
+              <NumberInput className="input" required placeholder="0.00"
+                value={form.amount} onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
               <p className="text-xs text-gray-400 mt-1">Max: {formatCurrency(balance)}</p>
             </div>
 
@@ -322,6 +327,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
     billDate: new Date().toISOString().split('T')[0],
     dueDate: '',
     description: '',
+    notes: '',
     lines: [
       { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
     ],
@@ -390,7 +396,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-4xl">
+      <div className="modal max-w-6xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">New Bill / Purchase Invoice</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
@@ -433,15 +439,15 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
               </div>
 
               <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="table">
+                <table className="table table-compact">
                   <thead>
                     <tr>
-                      <th className="w-48">Account (Expense)</th>
+                      <th className="w-56">Account (Expense)</th>
                       <th>Description</th>
-                      <th className="w-20">VAT</th>
-                      <th className="w-20 text-right">Qty</th>
-                      <th className="w-32 text-right">Unit Price (₱)</th>
-                      <th className="w-32 text-right">Amount (₱)</th>
+                      <th className="w-28">VAT</th>
+                      <th className="w-32 text-right">Qty</th>
+                      <th className="w-40 text-right">Unit Price (₱)</th>
+                      <th className="w-44 text-right">Amount (₱)</th>
                       <th className="w-10" />
                     </tr>
                   </thead>
@@ -451,7 +457,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
                       const v = computeVAT(amt, line.vatCode);
                       return (
                         <tr key={i} className="align-top">
-                          <td className="py-2">
+                          <td>
                             <select
                               className="select text-xs"
                               value={line.accountId}
@@ -463,7 +469,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
                               ))}
                             </select>
                           </td>
-                          <td className="py-2">
+                          <td>
                             <DescriptionInput
                               className="input text-xs"
                               value={line.description}
@@ -471,7 +477,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
                               placeholder="Item description"
                             />
                           </td>
-                          <td className="py-2">
+                          <td>
                             <select
                               className="select text-xs"
                               value={line.vatCode}
@@ -480,25 +486,24 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
                               {VAT_CODES.map((c) => <option key={c}>{c}</option>)}
                             </select>
                           </td>
-                          <td className="py-2">
-                            <input
-                              type="number" step="0.001" min="0.001"
+                          <td>
+                            <NumberInput
+                              decimals={3}
                               className="input text-xs text-right"
                               value={line.quantity}
-                              onChange={(e) => setLine(i, 'quantity', e.target.value)}
+                              onChange={(v) => setLine(i, 'quantity', v)}
                             />
                           </td>
-                          <td className="py-2">
-                            <input
-                              type="number" step="0.01" min="0"
+                          <td>
+                            <NumberInput
                               className="input text-xs text-right"
                               value={line.unitPrice}
-                              onChange={(e) => setLine(i, 'unitPrice', e.target.value)}
+                              onChange={(v) => setLine(i, 'unitPrice', v)}
                               placeholder="0.00"
                             />
                           </td>
-                          <td className="py-2">
-                            <div className="text-right text-sm font-medium text-gray-700 py-2">
+                          <td>
+                            <div className="text-right text-sm font-medium text-gray-700 py-1.5">
                               {formatCurrency(v.total)}
                             </div>
                             {line.vatCode === 'VAT' && amt > 0 && (
@@ -507,7 +512,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
                               </div>
                             )}
                           </td>
-                          <td className="py-2">
+                          <td>
                             {form.lines.length > 1 && (
                               <button
                                 type="button"
@@ -540,6 +545,11 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
           </div>
 
           <div className="modal-footer">
+            <div className="footer-notes">
+              <label className="label mb-0 whitespace-nowrap text-xs text-gray-500">Notes</label>
+              <input className="input" placeholder="Internal remarks, PO ref, delivery terms…"
+                value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               <FileText className="w-4 h-4" />

@@ -7,9 +7,10 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import {
-  Receipt, TrendingUp, TrendingDown, AlertCircle,
+  TrendingUp, TrendingDown, AlertCircle,
   CheckCircle, FileText, Download, RefreshCw, Info,
 } from 'lucide-react';
+import PesoReceipt from '@/components/icons/PesoReceipt';
 import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
@@ -372,7 +373,7 @@ export default function VatSummaryPage() {
         </>
       ) : (
         <div className="card p-12 text-center">
-          <Receipt className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+          <PesoReceipt className="w-12 h-12 text-gray-200 mx-auto mb-3" />
           <p className="text-gray-500">No VAT data for {periodLabel}</p>
           <p className="text-xs text-gray-400 mt-1">Post invoices and bills with VAT codes to see data here</p>
         </div>

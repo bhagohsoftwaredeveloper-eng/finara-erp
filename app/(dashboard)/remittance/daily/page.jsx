@@ -7,9 +7,10 @@ import toast from 'react-hot-toast';
 import {
   CalendarDays, TrendingUp, TrendingDown, Wallet, RefreshCw,
   Printer, Save, CheckCircle2, ChevronRight, ChevronDown,
-  ShoppingCart, Banknote, Receipt, CreditCard, Package,
+  ShoppingCart, Banknote, CreditCard, Package,
   AlertCircle, FileText, RotateCcw, Send,
 } from 'lucide-react';
+import PesoReceipt from '@/components/icons/PesoReceipt';
 
 const fmt = n => formatCurrency(Number(n || 0));
 const today = () => new Date().toISOString().slice(0, 10);
@@ -17,7 +18,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const CATEGORIES = {
   SALES:        { label: 'Sales Invoices',           icon: ShoppingCart, color: 'blue',   sign: +1 },
   COLLECTION:   { label: 'Collections',              icon: Banknote,     color: 'green',  sign: +1 },
-  EXPENSE:      { label: 'Expenses / Bills',         icon: Receipt,      color: 'orange', sign: -1 },
+  EXPENSE:      { label: 'Expenses / Bills',         icon: PesoReceipt,  color: 'orange', sign: -1 },
   DISBURSEMENT: { label: 'Disbursements',            icon: CreditCard,   color: 'red',    sign: -1 },
   PETTY_CASH:   { label: 'Petty Cash Disbursements', icon: Wallet,       color: 'yellow', sign:  0 },
   INVENTORY:    { label: 'Inventory Moves',          icon: Package,      color: 'purple', sign:  0 },
@@ -481,7 +482,7 @@ export default function DailyRemittancePage() {
             {/* Expenses */}
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Receipt className="w-4 h-4 text-orange-500" />
+                <PesoReceipt className="w-4 h-4 text-orange-500" />
                 <span className="text-xs text-gray-500 font-medium">Expenses</span>
               </div>
               <div className="text-xl font-bold text-orange-700">{fmt(calcData.totalExpenses)}</div>

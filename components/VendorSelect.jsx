@@ -3,16 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { payable as pApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Check, ChevronDown } from 'lucide-react';
-
-function useDropUp(ref, open) {
-  const [up, setUp] = useState(false);
-  useEffect(() => {
-    if (!open || !ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    setUp(window.innerHeight - rect.bottom < 280 && rect.top > window.innerHeight - rect.bottom);
-  }, [open, ref]);
-  return up;
-}
+import DropdownPanel from '@/components/ui/DropdownPanel';
 
 /**
  * Type-to-search vendor combobox with inline quick-add.
@@ -32,8 +23,8 @@ export default function VendorSelect({
   const [text, setText]     = useState('');
   const [open, setOpen]     = useState(false);
   const [adding, setAdding] = useState(false);
-  const boxRef = useRef(null);
-  const openUp = useDropUp(boxRef, open);
+  const boxRef   = useRef(null);
+  const panelRef = useRef(null);
 
   // Fill the input with the selected vendor's name (edit mode / late-loaded list).
   // Guarded by `!text` so it never wipes what the user is typing.
@@ -45,7 +36,11 @@ export default function VendorSelect({
   }, [vendors, value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const h = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    // the panel is portalled out of boxRef, so test it separately
+    const h = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target) &&
+          !panelRef.current?.contains(e.target)) setOpen(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -101,7 +96,12 @@ export default function VendorSelect({
       </div>
 
       {open && !disabled && (
-        <div className={`absolute z-30 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+        <DropdownPanel
+          anchorRef={boxRef}
+          panelRef={panelRef}
+          minWidth={260}
+          className="bg-white border border-gray-200 rounded-xl shadow-lg"
+        >
           {filtered.length > 0 ? (
             filtered.map((v) => (
               <button
@@ -125,7 +125,7 @@ export default function VendorSelect({
               {adding ? 'Adding…' : <>Add &quot;{text.trim()}&quot; as new vendor</>}
             </button>
           )}
-        </div>
+        </DropdownPanel>
       )}
     </div>
   );

@@ -52,7 +52,7 @@ exports.getOne = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { entryDate, reference, description, lines } = req.body;
+    const { entryDate, reference, description, notes, lines } = req.body;
 
     // Validate balanced entry
     const totalDebit  = lines.reduce((s, l) => s + Number(l.debit  || 0), 0);
@@ -69,6 +69,7 @@ exports.create = async (req, res, next) => {
         entryDate: new Date(entryDate),
         reference,
         description,
+        notes,
         createdBy: req.user.id,
         lines: {
           create: lines.map((l, i) => ({
@@ -94,7 +95,7 @@ exports.update = async (req, res, next) => {
     if (!entry) throw createError('Entry not found', 404);
     if (entry.status !== 'DRAFT') throw createError('Only DRAFT entries can be edited', 400);
 
-    const { description, reference, lines } = req.body;
+    const { description, reference, notes, lines } = req.body;
     if (lines) {
       const totalDebit  = lines.reduce((s, l) => s + Number(l.debit  || 0), 0);
       const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
@@ -108,7 +109,7 @@ exports.update = async (req, res, next) => {
           data: lines.map((l, i) => ({ entryId: id, accountId: l.accountId, debit: l.debit || 0, credit: l.credit || 0, description: l.description, lineOrder: i })),
         });
       }
-      return tx.journalEntry.update({ where: { id }, data: { description, reference }, include: { lines: true } });
+      return tx.journalEntry.update({ where: { id }, data: { description, reference, notes }, include: { lines: true } });
     });
     await recordAudit({ req, action: 'UPDATE', entity: 'JournalEntry', entityId: id, summary: `Updated journal entry ${entry.entryNo}` });
     res.json(updated);

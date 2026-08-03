@@ -13,20 +13,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, Search, X } from 'lucide-react';
-
-// Detect whether the dropdown should open upward
-function useDropDirection(wrapRef, open) {
-  const [openUp, setOpenUp] = useState(false);
-  useEffect(() => {
-    if (!open || !wrapRef.current) return;
-    const rect    = wrapRef.current.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    // Dropdown needs ~280px (search bar + 5 options); open up if below space is tight
-    setOpenUp(spaceBelow < 280 && spaceAbove > spaceBelow);
-  }, [open, wrapRef]);
-  return openUp;
-}
+import DropdownPanel from './DropdownPanel';
 
 export default function AccountSelect({
   value,
@@ -40,7 +27,7 @@ export default function AccountSelect({
   const [search, setSearch] = useState('');
   const wrapRef  = useRef(null);
   const inputRef = useRef(null);
-  const openUp   = useDropDirection(wrapRef, open);
+  const panelRef = useRef(null);
 
   const selected = value ? accounts.find((a) => a.id === Number(value)) : null;
 
@@ -54,7 +41,9 @@ export default function AccountSelect({
   // Close on outside click
   useEffect(() => {
     const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+      // the panel is portalled out of wrapRef, so test it separately
+      if (wrapRef.current && !wrapRef.current.contains(e.target) &&
+          !panelRef.current?.contains(e.target)) {
         setOpen(false);
         setSearch('');
       }
@@ -98,11 +87,18 @@ export default function AccountSelect({
         <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* Dropdown panel — opens up or down based on available space */}
+      {/* Dropdown panel — portalled so modal/table overflow can't clip it */}
       {open && (
-        <div className={`absolute z-[200] w-full min-w-[220px] bg-white border border-gray-200 rounded-xl shadow-xl ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+        <DropdownPanel
+          anchorRef={wrapRef}
+          panelRef={panelRef}
+          minHeight={280}
+          maxHeight={320}
+          minWidth={240}
+          className="bg-white border border-gray-200 rounded-xl shadow-xl"
+        >
           {/* Search bar */}
-          <div className="p-2 border-b border-gray-100">
+          <div className="p-2 border-b border-gray-100 sticky top-0 bg-white">
             <div className="relative">
               <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
               <input
@@ -125,8 +121,8 @@ export default function AccountSelect({
             </div>
           </div>
 
-          {/* Option list */}
-          <div className="max-h-60 overflow-y-auto py-1">
+          {/* Option list — the portalled panel owns the scrolling */}
+          <div className="py-1">
             {/* Clear / none option */}
             <button
               type="button"
@@ -156,7 +152,7 @@ export default function AccountSelect({
               ))
             )}
           </div>
-        </div>
+        </DropdownPanel>
       )}
     </div>
   );

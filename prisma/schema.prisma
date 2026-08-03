@@ -151,6 +151,7 @@ model JournalEntry {
   entryDate   DateTime        @db.Date
   reference   String?         @db.VarChar(100)
   description String          @db.Text
+  notes       String?         @db.Text
   status      JournalStatus   @default(DRAFT)
   createdBy   Int
   postedAt    DateTime?
@@ -219,6 +220,7 @@ model Bill {
   billDate    DateTime   @db.Date
   dueDate     DateTime   @db.Date
   description String?    @db.Text
+  notes       String?    @db.Text
   subtotal    Decimal    @default(0) @db.Decimal(15, 2)
   vatAmount   Decimal    @default(0) @db.Decimal(15, 2)
   totalAmount Decimal    @default(0) @db.Decimal(15, 2)
@@ -315,6 +317,7 @@ model Invoice {
   invoiceDate DateTime      @db.Date
   dueDate     DateTime      @db.Date
   description String?       @db.Text
+  notes       String?       @db.Text
   subtotal    Decimal       @default(0) @db.Decimal(15, 2)
   vatAmount   Decimal       @default(0) @db.Decimal(15, 2)
   totalAmount Decimal       @default(0) @db.Decimal(15, 2)
@@ -383,6 +386,7 @@ model Quotation {
   quotationDate DateTime        @db.Date
   validUntil    DateTime        @db.Date
   description   String?         @db.Text
+  notes         String?         @db.Text
   subtotal      Decimal         @default(0) @db.Decimal(15, 2)
   vatAmount     Decimal         @default(0) @db.Decimal(15, 2)
   totalAmount   Decimal         @default(0) @db.Decimal(15, 2)
@@ -1035,6 +1039,7 @@ model RecurringTemplate {
   lastRunDate DateTime?
   isActive    Boolean            @default(true)
   description String?            @db.VarChar(255)
+  notes       String?            @db.Text
   reference   String?            @db.VarChar(80)
   payload     Json
   createdBy   Int?

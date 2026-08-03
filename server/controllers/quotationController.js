@@ -62,7 +62,7 @@ exports.get = async (req, res, next) => {
 // ─── Create ───────────────────────────────────────────────────────
 exports.create = async (req, res, next) => {
   try {
-    const { customerId, quotationDate, validUntil, description, lines } = req.body;
+    const { customerId, quotationDate, validUntil, description, notes, lines } = req.body;
     const { subtotal, vatAmount, processed } = computeTotals(lines);
     const quotationNo = await genQuotationNo();
 
@@ -71,7 +71,7 @@ exports.create = async (req, res, next) => {
         businessId: req.businessId,
         quotationNo, customerId: Number(customerId),
         quotationDate: new Date(quotationDate), validUntil: new Date(validUntil),
-        description, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
+        description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
         lines: { create: processed.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
@@ -91,7 +91,7 @@ exports.update = async (req, res, next) => {
     if (!existing) throw createError('Quotation not found', 404);
     if (existing.status !== 'DRAFT') throw createError('Only DRAFT quotations can be edited', 400);
 
-    const { customerId, quotationDate, validUntil, description, lines } = req.body;
+    const { customerId, quotationDate, validUntil, description, notes, lines } = req.body;
     const { subtotal, vatAmount, processed } = computeTotals(lines || []);
 
     await prisma.quotation.update({
@@ -101,6 +101,7 @@ exports.update = async (req, res, next) => {
         quotationDate: quotationDate ? new Date(quotationDate) : undefined,
         validUntil:    validUntil ? new Date(validUntil) : undefined,
         description,
+        notes,
         ...(Array.isArray(lines) ? { subtotal, vatAmount, totalAmount: subtotal + vatAmount } : {}),
       },
     });

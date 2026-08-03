@@ -2,12 +2,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, BookOpen, FileText, CreditCard, Receipt,
+  LayoutDashboard, BookOpen, FileText, CreditCard,
   Users, ClipboardList, Building2, ChevronDown, LogOut, Settings,
   Package, Landmark, Wallet,
   ShoppingCart, Banknote, BarChart3, Repeat,
   PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
+import PesoReceipt from '@/components/icons/PesoReceipt';
 import { clearSession, getUser } from '@/lib/auth';
 import { canAccess } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
@@ -35,7 +36,7 @@ const NAV = [
     section: 'Sales',
     items: [
       {
-        label: 'Accounts Receivable', icon: Receipt,
+        label: 'Accounts Receivable', icon: PesoReceipt,
         children: [
           { label: 'Invoices',   href: '/receivable' },
           { label: 'Quotations', href: '/receivable/quotations' },

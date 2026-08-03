@@ -1,10 +1,11 @@
 import {
-  Receipt, FileText, Boxes, ShoppingCart, PiggyBank, Building2, ScrollText, Briefcase,
+  FileText, Boxes, ShoppingCart, PiggyBank, Building2, ScrollText, Briefcase,
 } from 'lucide-react';
+import PesoReceipt from '@/components/icons/PesoReceipt';
 import { Reveal, Stagger, StaggerItem } from './Reveal';
 
 const FEATURES = [
-  { icon: Receipt,      title: 'Accounts Payable',    text: 'Track vendor bills, due dates, and payments with aging reports.' },
+  { icon: PesoReceipt,      title: 'Accounts Payable',    text: 'Track vendor bills, due dates, and payments with aging reports.' },
   { icon: FileText,     title: 'Accounts Receivable', text: 'Invoices, quotations, collections, and customer aging at a glance.' },
   { icon: Boxes,        title: 'Inventory',           text: 'Items, stock transactions, and inventory valuation reports.' },
   { icon: ShoppingCart, title: 'Purchase Orders',     text: 'Create POs and convert them straight into vendor bills.' },
