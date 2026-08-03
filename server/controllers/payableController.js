@@ -104,7 +104,7 @@ exports.getBill = async (req, res, next) => {
 
 exports.createBill = async (req, res, next) => {
   try {
-    const { vendorId, billDate, dueDate, description, lines } = req.body;
+    const { vendorId, billDate, dueDate, description, notes, lines } = req.body;
 
     let subtotal = 0, vatAmount = 0;
     const processedLines = lines.map((l) => {
@@ -121,7 +121,7 @@ exports.createBill = async (req, res, next) => {
         businessId: req.businessId,
         billNo, vendorId: Number(vendorId),
         billDate: new Date(billDate), dueDate: new Date(dueDate),
-        description, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
+        description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,

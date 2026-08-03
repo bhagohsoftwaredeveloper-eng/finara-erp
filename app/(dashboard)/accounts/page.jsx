@@ -6,8 +6,9 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, Edit2, Trash2, Printer, RefreshCw,
   ChevronLeft, ChevronRight, X, Landmark, CreditCard,
-  Scale, TrendingUp, Receipt, LayoutGrid,
+  Scale, TrendingUp, LayoutGrid,
 } from 'lucide-react';
+import PesoReceipt from '@/components/icons/PesoReceipt';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const TYPES    = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'];
@@ -18,7 +19,7 @@ const TYPE_META = {
   LIABILITY: { label: 'Liabilities',  icon: CreditCard, color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-200',    badge: 'badge-red',    header: 'bg-red-700'    },
   EQUITY:    { label: 'Equity',       icon: Scale,      color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', badge: 'badge-purple', header: 'bg-purple-700' },
   REVENUE:   { label: 'Revenue',      icon: TrendingUp, color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-200',  badge: 'badge-green',  header: 'bg-green-700'  },
-  EXPENSE:   { label: 'Expenses',     icon: Receipt,    color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-200', badge: 'badge-yellow', header: 'bg-yellow-700' },
+  EXPENSE:   { label: 'Expenses',     icon: PesoReceipt,    color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-200', badge: 'badge-yellow', header: 'bg-yellow-700' },
 };
 
 const NB_BADGE = {

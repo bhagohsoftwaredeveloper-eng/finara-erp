@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import VendorSelect from '@/components/VendorSelect';
 import AccountSelect from '@/components/ui/AccountSelect';
+import NumberInput from '@/components/NumberInput';
 
 // ─── Constants ────────────────────────────────────────────────
 const STATUS_BADGE = {
@@ -324,7 +325,7 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-4xl">
+      <div className="modal max-w-6xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">{po?.id ? `Edit — ${po.poNumber}` : 'New Purchase Order'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -346,11 +347,6 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="label">Notes / Terms</label>
-              <textarea className="input" rows={2} value={form.notes || ''} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Payment terms, delivery instructions, etc." />
-            </div>
-
             {/* Line items */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -358,14 +354,14 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
                 <button type="button" onClick={addLine} className="btn-secondary btn-sm">+ Add Line</button>
               </div>
               <div className="overflow-x-auto rounded-xl border border-gray-100">
-                <table className="table text-sm">
+                <table className="table table-compact text-sm">
                   <thead>
                     <tr>
                       <th>Description</th>
-                      <th className="w-20 text-right">Qty</th>
-                      <th className="w-28 text-right">Unit Price</th>
-                      <th className="w-48">Expense Account</th>
-                      <th className="w-28 text-right">Amount</th>
+                      <th className="w-32 text-right">Qty</th>
+                      <th className="w-40 text-right">Unit Price</th>
+                      <th className="w-56">Expense Account</th>
+                      <th className="w-40 text-right">Amount</th>
                       <th className="w-8"></th>
                     </tr>
                   </thead>
@@ -373,8 +369,8 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
                     {form.lines.map((l, i) => (
                       <tr key={i}>
                         <td><input className="input w-full text-xs" placeholder="Item description" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} /></td>
-                        <td><input type="number" min="0" step="0.01" className="input w-full text-right text-xs" value={l.quantity} onChange={(e) => setLine(i, 'quantity', e.target.value)} /></td>
-                        <td><input type="number" min="0" step="0.01" className="input w-full text-right text-xs" value={l.unitPrice} onChange={(e) => setLine(i, 'unitPrice', e.target.value)} /></td>
+                        <td><NumberInput decimals={3} className="input w-full text-right text-xs" value={l.quantity} onChange={(v) => setLine(i, 'quantity', v)} /></td>
+                        <td><NumberInput className="input w-full text-right text-xs" value={l.unitPrice} onChange={(v) => setLine(i, 'unitPrice', v)} /></td>
                         <td>
                           <AccountSelect
                             value={l.accountId || ''}
@@ -401,14 +397,19 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
                 <span className="text-gray-500">Subtotal: <span className="font-mono font-medium text-gray-800">{formatCurrency(subtotal)}</span></span>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 whitespace-nowrap">Tax / VAT:</span>
-                  <input type="number" min="0" step="0.01" className="input w-32 text-right text-sm"
-                    value={form.taxAmount} onChange={(e) => setForm((f) => ({ ...f, taxAmount: e.target.value }))} />
+                  <NumberInput className="input w-32 text-right text-sm"
+                    value={form.taxAmount} onChange={(v) => setForm((f) => ({ ...f, taxAmount: v }))} />
                 </div>
                 <span className="font-bold text-base">Total: <span className="font-mono text-blue-700">{formatCurrency(total)}</span></span>
               </div>
             </div>
           </div>
           <div className="modal-footer">
+            <div className="footer-notes">
+              <label className="label mb-0 whitespace-nowrap text-xs text-gray-500">Notes</label>
+              <input className="input" placeholder="Payment terms, delivery instructions…"
+                value={form.notes || ''} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving…' : po?.id ? 'Update PO' : 'Create PO'}</button>
           </div>
@@ -426,6 +427,11 @@ function ReceiveModal({ po, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
+    const over = lines.find((l) => l.receivedQty > l.quantity);
+    if (over) {
+      toast.error(`"${over.description}" — received qty exceeds the ${over.quantity} ordered`);
+      return;
+    }
     setSaving(true);
     try {
       await poApi.receive(po.id, { lines: lines.map((l) => ({ id: l.id, receivedQty: l.receivedQty })) });
@@ -448,8 +454,8 @@ function ReceiveModal({ po, onClose, onSaved }) {
         <div className="modal-body space-y-3">
           <p className="text-xs text-gray-500">Enter the quantity actually received for each line item.</p>
           <div className="rounded-xl border border-gray-100 overflow-hidden">
-            <table className="table text-sm">
-              <thead><tr><th>Item</th><th className="text-right">Ordered</th><th className="text-right w-32">Qty Received</th></tr></thead>
+            <table className="table table-compact text-sm">
+              <thead><tr><th>Item</th><th className="text-right">Ordered</th><th className="text-right w-36">Qty Received</th></tr></thead>
               <tbody>
                 {lines.map((l, i) => {
                   const pct = l.quantity > 0 ? (l.receivedQty / l.quantity) * 100 : 0;
@@ -463,9 +469,9 @@ function ReceiveModal({ po, onClose, onSaved }) {
                       </td>
                       <td className="text-right font-mono">{l.quantity.toFixed(2)}</td>
                       <td>
-                        <input type="number" min="0" max={l.quantity} step="0.01" className="input w-full text-right"
+                        <NumberInput decimals={3} className="input w-full text-right"
                           value={l.receivedQty}
-                          onChange={(e) => setLines((p) => p.map((x, idx) => idx === i ? { ...x, receivedQty: Number(e.target.value) } : x))} />
+                          onChange={(v) => setLines((p) => p.map((x, idx) => idx === i ? { ...x, receivedQty: Number(v) || 0 } : x))} />
                       </td>
                     </tr>
                   );
@@ -845,8 +851,8 @@ function ScanModal({ vendors, accounts, onClose, onImport }) {
                   </div>
                   <div>
                     <label className="label text-xs">Tax / VAT Amount</label>
-                    <input type="number" className="input text-sm" value={editData.taxAmount}
-                      onChange={e => setEditData(p => ({ ...p, taxAmount: e.target.value }))} />
+                    <NumberInput className="input text-sm" value={editData.taxAmount}
+                      onChange={v => setEditData(p => ({ ...p, taxAmount: v }))} />
                   </div>
                 </div>
               </div>
@@ -858,14 +864,14 @@ function ScanModal({ vendors, accounts, onClose, onImport }) {
                   <button type="button" onClick={addLine} className="btn-secondary btn-sm">+ Add Row</button>
                 </div>
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="table text-sm">
+                  <table className="table table-compact text-sm">
                     <thead>
                       <tr>
                         <th>Description</th>
-                        <th className="w-20 text-right">Qty</th>
-                        <th className="w-28 text-right">Unit Price</th>
-                        <th className="w-40">Account</th>
-                        <th className="w-28 text-right">Amount</th>
+                        <th className="w-32 text-right">Qty</th>
+                        <th className="w-40 text-right">Unit Price</th>
+                        <th className="w-48">Account</th>
+                        <th className="w-40 text-right">Amount</th>
                         <th className="w-6"></th>
                       </tr>
                     </thead>
@@ -877,12 +883,12 @@ function ScanModal({ vendors, accounts, onClose, onImport }) {
                               onChange={e => setLine(i, 'description', e.target.value)} />
                           </td>
                           <td>
-                            <input type="number" min="0" step="0.01" className="input w-full text-right text-xs"
-                              value={l.quantity} onChange={e => setLine(i, 'quantity', e.target.value)} />
+                            <NumberInput decimals={3} className="input w-full text-right text-xs"
+                              value={l.quantity} onChange={v => setLine(i, 'quantity', v)} />
                           </td>
                           <td>
-                            <input type="number" min="0" step="0.01" className="input w-full text-right text-xs"
-                              value={l.unitPrice} onChange={e => setLine(i, 'unitPrice', e.target.value)} />
+                            <NumberInput className="input w-full text-right text-xs"
+                              value={l.unitPrice} onChange={v => setLine(i, 'unitPrice', v)} />
                           </td>
                           <td>
                             <AccountSelect value={l.accountId || ''}

@@ -5,13 +5,14 @@ import { formatCurrency, formatDate } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import { Plus, Play, RefreshCw, Power, Trash2, Repeat } from 'lucide-react';
 import AccountSelect from '@/components/ui/AccountSelect';
+import NumberInput, { groupThousands } from '@/components/NumberInput';
 
 const emptyLine = () => ({ accountId: '', debit: '', credit: '', description: '' });
 
 function RecurringModal({ accounts, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: '', frequency: 'MONTHLY', startDate: new Date().toISOString().split('T')[0],
-    endDate: '', description: '', reference: '', payload: [emptyLine(), emptyLine()],
+    endDate: '', description: '', notes: '', reference: '', payload: [emptyLine(), emptyLine()],
   });
   const [saving, setSaving] = useState(false);
   const totalDr = form.payload.reduce((s, l) => s + Number(l.debit || 0), 0);
@@ -31,7 +32,7 @@ function RecurringModal({ accounts, onClose, onSaved }) {
   };
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-3xl">
+      <div className="modal max-w-5xl">
         <div className="modal-header"><h3 className="text-lg font-semibold">New Recurring Entry</h3><button onClick={onClose} className="text-gray-400 text-2xl">&times;</button></div>
         <form onSubmit={submit}>
           <div className="modal-body space-y-4">
@@ -49,8 +50,8 @@ function RecurringModal({ accounts, onClose, onSaved }) {
             </div>
             <div>
               <div className="flex items-center justify-between mb-2"><label className="label mb-0">Journal Template</label><button type="button" onClick={addLine} className="btn-secondary btn-sm">+ Add Line</button></div>
-              <table className="table text-sm">
-                <thead><tr><th>Account</th><th className="w-28">Debit</th><th className="w-28">Credit</th><th>Memo</th><th className="w-8"></th></tr></thead>
+              <table className="table table-compact text-sm">
+                <thead><tr><th>Account</th><th className="w-36 text-right">Debit</th><th className="w-36 text-right">Credit</th><th>Memo</th><th className="w-8"></th></tr></thead>
                 <tbody>
                   {form.payload.map((l, i) => (
                     <tr key={i}>
@@ -60,23 +61,31 @@ function RecurringModal({ accounts, onClose, onSaved }) {
                         accounts={accounts}
                         placeholder="-- Account --"
                       /></td>
-                      <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={l.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} /></td>
-                      <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={l.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} /></td>
+                      <td><NumberInput className="input w-full text-right" value={l.debit} onChange={(v) => setLine(i, 'debit', v)} placeholder="0.00" /></td>
+                      <td><NumberInput className="input w-full text-right" value={l.credit} onChange={(v) => setLine(i, 'credit', v)} placeholder="0.00" /></td>
                       <td><input className="input w-full text-xs" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} /></td>
                       <td>{form.payload.length > 2 && <button type="button" onClick={() => rmLine(i)} className="text-red-400 hover:text-red-600 text-lg">&times;</button>}</td>
                     </tr>
                   ))}
                   <tr className="bg-gray-50 font-semibold text-sm">
                     <td className="text-right text-gray-500">Totals</td>
-                    <td className="text-right font-mono">{totalDr.toFixed(2)}</td>
-                    <td className="text-right font-mono">{totalCr.toFixed(2)}</td>
+                    <td className="text-right font-mono">{groupThousands(totalDr.toFixed(2))}</td>
+                    <td className="text-right font-mono">{groupThousands(totalCr.toFixed(2))}</td>
                     <td colSpan={2}>{balanced ? <span className="text-green-600 text-xs">✓ Balanced</span> : <span className="text-red-500 text-xs">✗ Off by {Math.abs(totalDr - totalCr).toFixed(2)}</span>}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
-          <div className="modal-footer"><button type="button" onClick={onClose} className="btn-secondary">Cancel</button><button type="submit" disabled={saving || !balanced} className="btn-primary">{saving ? 'Saving…' : 'Create'}</button></div>
+          <div className="modal-footer">
+            <div className="footer-notes">
+              <label className="label mb-0 whitespace-nowrap text-xs text-gray-500">Notes</label>
+              <input className="input" placeholder="Purpose of this recurring entry…"
+                value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || !balanced} className="btn-primary">{saving ? 'Saving…' : 'Create'}</button>
+          </div>
         </form>
       </div>
     </div>

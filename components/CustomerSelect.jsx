@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { receivable as rApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Check, ChevronDown } from 'lucide-react';
+import DropdownPanel from '@/components/ui/DropdownPanel';
 
 /**
  * Type-to-search customer combobox with inline quick-add.
@@ -22,7 +23,8 @@ export default function CustomerSelect({
   const [text, setText]   = useState('');
   const [open, setOpen]   = useState(false);
   const [adding, setAdding] = useState(false);
-  const boxRef = useRef(null);
+  const boxRef   = useRef(null);
+  const panelRef = useRef(null);
 
   // Fill the input with the selected customer's name (e.g. edit mode / late-loaded list).
   // Guarded by `!text` so it never wipes what the user is typing.
@@ -35,7 +37,11 @@ export default function CustomerSelect({
 
   // Close dropdown on outside click
   useEffect(() => {
-    const h = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    // the panel is portalled out of boxRef, so test it separately
+    const h = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target) &&
+          !panelRef.current?.contains(e.target)) setOpen(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -91,7 +97,12 @@ export default function CustomerSelect({
       </div>
 
       {open && !disabled && (
-        <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto">
+        <DropdownPanel
+          anchorRef={boxRef}
+          panelRef={panelRef}
+          minWidth={260}
+          className="bg-white border border-gray-200 rounded-xl shadow-lg"
+        >
           {filtered.length > 0 ? (
             filtered.map((c) => (
               <button
@@ -116,7 +127,7 @@ export default function CustomerSelect({
               {adding ? 'Adding…' : <>Add &quot;{text.trim()}&quot; as new customer</>}
             </button>
           )}
-        </div>
+        </DropdownPanel>
       )}
     </div>
   );

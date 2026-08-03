@@ -44,11 +44,12 @@ async function nextEntryNo(businessId = 1) {
  * @param {Date|string} opts.entryDate
  * @param {string}      opts.description
  * @param {string}      [opts.reference]
+ * @param {string}      [opts.notes]
  * @param {number}      [opts.userId=1]
  * @param {number}      [opts.businessId=1]
  * @param {Array}       opts.lines  — [{accountCode|accountId, debit, credit, description}]
  */
-async function post({ entryDate, description, reference, lines, userId = 1, businessId = 1 }) {
+async function post({ entryDate, description, reference, notes, lines, userId = 1, businessId = 1 }) {
   const resolved = await Promise.all(
     lines.map(async (l, i) => {
       let accountId;
@@ -86,6 +87,7 @@ async function post({ entryDate, description, reference, lines, userId = 1, busi
       entryDate:   entryDate instanceof Date ? entryDate : new Date(entryDate),
       reference:   reference || null,
       description,
+      notes:       notes || null,
       status:      'POSTED',
       createdBy:   Number(userId),
       postedAt:    new Date(),

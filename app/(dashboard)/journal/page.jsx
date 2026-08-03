@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock, Printer } from 'lucide-react';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import AccountSelect from '@/components/ui/AccountSelect';
+import NumberInput, { groupThousands } from '@/components/NumberInput';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 const STATUS_BADGE = { DRAFT:'badge-yellow', POSTED:'badge-green', VOIDED:'badge-gray' };
@@ -233,13 +234,16 @@ function printEntry(entry) {
 }
 
 function JournalModal({ entry, accounts, onClose, onSaved }) {
-  const [form, setForm] = useState(entry || {
-    entryDate: new Date().toISOString().split('T')[0],
-    reference: '', description: '',
-    lines: [
-      { accountId: '', debit: '', credit: '', description: '' },
-      { accountId: '', debit: '', credit: '', description: '' },
-    ],
+  const [form, setForm] = useState({
+    ...(entry || {
+      entryDate: new Date().toISOString().split('T')[0],
+      reference: '', description: '',
+      lines: [
+        { accountId: '', debit: '', credit: '', description: '' },
+        { accountId: '', debit: '', credit: '', description: '' },
+      ],
+    }),
+    notes: entry?.notes || '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -270,7 +274,7 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-3xl">
+      <div className="modal max-w-5xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">{entry?.id ? `Edit — ${entry.entryNo}` : 'New Journal Entry'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -298,8 +302,8 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
                 <button type="button" onClick={addLine} className="btn-secondary btn-sm">+ Add Line</button>
               </div>
               <div className="overflow-x-auto">
-                <table className="table text-sm">
-                  <thead><tr><th>Account</th><th className="w-28">Debit</th><th className="w-28">Credit</th><th>Memo</th><th className="w-8"></th></tr></thead>
+                <table className="table table-compact text-sm">
+                  <thead><tr><th>Account</th><th className="w-36 text-right">Debit</th><th className="w-36 text-right">Credit</th><th>Memo</th><th className="w-8"></th></tr></thead>
                   <tbody>
                     {form.lines.map((line, i) => (
                       <tr key={i}>
@@ -311,16 +315,16 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
                             placeholder="-- Select Account --"
                           />
                         </td>
-                        <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={line.debit} onChange={(e) => setLine(i, 'debit', e.target.value)} placeholder="0.00" /></td>
-                        <td><input type="number" min="0" step="0.01" className="input w-full text-right" value={line.credit} onChange={(e) => setLine(i, 'credit', e.target.value)} placeholder="0.00" /></td>
+                        <td><NumberInput className="input w-full text-right" value={line.debit} onChange={(v) => setLine(i, 'debit', v)} placeholder="0.00" /></td>
+                        <td><NumberInput className="input w-full text-right" value={line.credit} onChange={(v) => setLine(i, 'credit', v)} placeholder="0.00" /></td>
                         <td><input className="input w-full text-xs" value={line.description} onChange={(e) => setLine(i, 'description', e.target.value)} placeholder="Optional memo" /></td>
                         <td>{form.lines.length > 2 && <button type="button" onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>}</td>
                       </tr>
                     ))}
                     <tr className="bg-gray-50 font-semibold text-sm">
                       <td className="text-right text-gray-500">Totals</td>
-                      <td className="text-right font-mono">{totalDebit.toFixed(2)}</td>
-                      <td className="text-right font-mono">{totalCredit.toFixed(2)}</td>
+                      <td className="text-right font-mono">{groupThousands(totalDebit.toFixed(2))}</td>
+                      <td className="text-right font-mono">{groupThousands(totalCredit.toFixed(2))}</td>
                       <td colSpan={2}>
                         {balanced
                           ? <span className="text-green-600 text-xs">✓ Balanced</span>
@@ -333,6 +337,11 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
             </div>
           </div>
           <div className="modal-footer">
+            <div className="footer-notes">
+              <label className="label mb-0 whitespace-nowrap text-xs text-gray-500">Notes</label>
+              <input className="input" placeholder="Supporting details, approval remarks…"
+                value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             {entry?.id && (
               <button type="button" onClick={() => printEntry(entry)} className="btn-secondary">
