@@ -2,10 +2,16 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { recordAudit } = require('../utils/audit');
 const glPost = require('../utils/glPost');
+const { nextDocNumber } = require('../utils/docNumber');
 
 const genPONumber = async () => {
-  const count = await prisma.purchaseOrder.count();
-  return `PO-${String(count + 1).padStart(6, '0')}`;
+  // Must come from the last issued number, not a row count — a count reuses
+  // numbers after any delete and then collides with the unique constraint.
+  const last = await prisma.purchaseOrder.findFirst({
+    orderBy: { id: 'desc' },
+    select: { poNumber: true },
+  });
+  return nextDocNumber('PO-', last?.poNumber);
 };
 
 const genBillNo = async () => {

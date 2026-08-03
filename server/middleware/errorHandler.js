@@ -1,9 +1,11 @@
 const logger = require('../utils/logger');
+const { uniqueFieldLabel } = require('../utils/prismaError');
 
 const errorHandler = (err, req, res, next) => {
   // Prisma known errors
   if (err.code === 'P2002') {
-    const field = err.meta?.target?.[0] || 'field';
+    const field = uniqueFieldLabel(err.meta?.target);
+    logger.error(`[${req.method}] ${req.path} — P2002 unique violation on ${JSON.stringify(err.meta?.target)}`);
     return res.status(409).json({ error: `A record with this ${field} already exists.` });
   }
   if (err.code === 'P2025') {
