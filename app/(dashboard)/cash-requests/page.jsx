@@ -4,10 +4,11 @@ import { cashRequests as crApi, accounts as acctApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import {
-  Plus, Search, Check, X, Send, HandCoins, CheckCircle2, Ban,
+  Plus, Search, Eye, Check, X, Send, HandCoins, CheckCircle2, Ban,
 } from 'lucide-react';
 import AccountSelect from '@/components/ui/AccountSelect';
 import NumberInput from '@/components/NumberInput';
+import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 
 const STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'RELEASED', 'LIQUIDATED', 'REJECTED', 'CANCELLED'];
 
@@ -465,6 +466,186 @@ function RejectModal({ request, onClose, onDone }) {
   );
 }
 
+// ─── Detail Modal ─────────────────────────────────────────────
+function DetailModal({ requestId, onClose }) {
+  const [cr, setCr] = useState(null);
+
+  useEffect(() => {
+    crApi.get(requestId)
+      .then((r) => setCr(r.data))
+      .catch(() => toast.error('Failed to load the request'));
+  }, [requestId]);
+
+  if (!cr) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal max-w-3xl">
+          <div className="modal-body text-center py-16 text-gray-400">Loading…</div>
+        </div>
+      </div>
+    );
+  }
+
+  const released = Number(cr.releasedAmount);
+  const spent    = Number(cr.liquidation?.totalAmount || 0);
+  const variance = cr.liquidation ? Number((spent - released).toFixed(2)) : null;
+
+  const TIMELINE = [
+    { label: 'Requested',  who: cr.requestedBy, when: cr.requestDate,           done: true },
+    { label: 'Approved',   who: cr.approvedBy,  when: null,                     done: ['APPROVED', 'RELEASED', 'LIQUIDATED'].includes(cr.status) },
+    { label: 'Released',   who: cr.releasedBy,  when: cr.releasedDate,          done: ['RELEASED', 'LIQUIDATED'].includes(cr.status) },
+    { label: 'Liquidated', who: null,           when: cr.liquidation?.paidDate, done: cr.status === 'LIQUIDATED' },
+  ];
+
+  const handlePrint = () => {
+    const itemsHTML = (cr.items || []).map((i) => `
+      <tr>
+        <td>${i.description}</td>
+        <td class="right">${i.quantity != null ? Number(i.quantity).toLocaleString() : '—'}</td>
+        <td class="right mono">${phpFmt(i.estimatedCost)}</td>
+      </tr>`).join('');
+
+    const liqHTML = cr.liquidation ? `
+      <div class="section-title">Liquidation — ${cr.liquidation.voucherNo}</div>
+      <table>
+        <thead><tr><th>Description</th><th>Receipt #</th><th class="right">Amount</th></tr></thead>
+        <tbody>${(cr.liquidation.items || []).map((l) => `
+          <tr>
+            <td>${l.description}</td>
+            <td class="mono small">${l.receiptNo || '—'}</td>
+            <td class="right mono">${phpFmt(l.amount)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="totals-block" style="max-width:320px;margin-left:auto;margin-top:12px;">
+        <div class="totals-row"><span class="gray">Released</span><span class="mono">${phpFmt(released)}</span></div>
+        <div class="totals-row"><span class="gray">Actual Spent</span><span class="mono">${phpFmt(spent)}</span></div>
+        <div class="totals-divider"></div>
+        <div class="totals-row totals-total">
+          <span>${variance < 0 ? 'Sukli Returned' : variance > 0 ? 'Reimbursed' : 'Exact'}</span>
+          <span class="mono">${phpFmt(Math.abs(variance))}</span>
+        </div>
+      </div>` : '';
+
+    const body = `
+      <div class="info-grid">
+        <div class="info-box"><div class="info-lbl">Request No.</div><div class="info-val mono">${cr.requestNo}</div></div>
+        <div class="info-box"><div class="info-lbl">Requested For</div><div class="info-val">${cr.requestedFor}</div></div>
+        <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(cr.status)}</div></div>
+        <div class="info-box"><div class="info-lbl">Request Date</div><div class="info-val">${dateFmt(cr.requestDate)}</div></div>
+        <div class="info-box"><div class="info-lbl">Needed By</div><div class="info-val">${cr.neededDate ? dateFmt(cr.neededDate) : '—'}</div></div>
+        <div class="info-box"><div class="info-lbl">Cash Source</div><div class="info-val mono">${cr.cashAccountCode || '—'}</div></div>
+      </div>
+      <div class="desc-box">${cr.purpose}</div>
+      <div class="section-title">Requested Items (estimate)</div>
+      <table>
+        <thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Est. Cost</th></tr></thead>
+        <tbody>${itemsHTML}</tbody>
+      </table>
+      ${liqHTML}`;
+
+    printDocument(`Cash Request — ${cr.requestNo}`, `${cr.requestedFor} · ${dateFmt(cr.requestDate)}`, body);
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-3xl">
+        <div className="modal-header">
+          <div>
+            <h3 className="text-lg font-semibold">{cr.requestNo}</h3>
+            <p className="text-sm text-gray-500">{cr.requestedFor}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={STATUS_BADGE[cr.status]}>{cr.status}</span>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none ml-2">&times;</button>
+          </div>
+        </div>
+
+        <div className="modal-body space-y-5">
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-gray-700">{cr.purpose}</div>
+
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Progress</h4>
+            <div className="flex items-center gap-2">
+              {TIMELINE.map((t, i) => (
+                <div key={t.label} className="flex items-center gap-2 flex-1">
+                  <div className={`flex-1 rounded-lg px-3 py-2 text-center text-xs ${
+                    t.done ? 'bg-green-50 text-green-700 border border-green-200'
+                           : 'bg-gray-50 text-gray-400 border border-gray-200'
+                  }`}>
+                    <p className="font-semibold">{t.label}</p>
+                    {t.who && <p className="text-[10px] opacity-70">{t.who}</p>}
+                    {t.when && <p className="text-[10px] opacity-70">{formatDate(t.when)}</p>}
+                  </div>
+                  {i < TIMELINE.length - 1 && <span className="text-gray-300">→</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Requested Items (estimate)</h4>
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr><th>Description</th><th className="text-right">Qty</th><th className="text-right">Est. Cost</th></tr>
+                </thead>
+                <tbody>
+                  {cr.items?.map((i) => (
+                    <tr key={i.id}>
+                      <td>{i.description}</td>
+                      <td className="text-right">{i.quantity != null ? Number(i.quantity).toLocaleString() : '—'}</td>
+                      <td className="text-right">{formatCurrency(i.estimatedCost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-600">Requested</span><span>{formatCurrency(cr.requestedAmount)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-600">Released</span><span>{released > 0 ? formatCurrency(released) : '—'}</span></div>
+            {cr.liquidation && (
+              <>
+                <div className="flex justify-between"><span className="text-gray-600">Actual Spent</span><span>{formatCurrency(spent)}</span></div>
+                <div className={`flex justify-between font-bold text-base border-t border-gray-200 pt-2 ${
+                  variance < 0 ? 'text-green-600' : variance > 0 ? 'text-red-600' : 'text-gray-700'
+                }`}>
+                  <span>{variance < 0 ? 'Sukli returned' : variance > 0 ? 'Reimbursed' : 'Exact'}</span>
+                  <span>{formatCurrency(Math.abs(variance))}</span>
+                </div>
+              </>
+            )}
+            {cr.status === 'RELEASED' && (
+              <div className="flex justify-between font-bold text-base border-t border-gray-200 pt-2 text-red-600">
+                <span>Outstanding in 1104</span><span>{formatCurrency(released)}</span>
+              </div>
+            )}
+          </div>
+
+          {cr.rejectedReason && (
+            <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-sm text-red-700">
+              <strong>Rejected:</strong> {cr.rejectedReason}
+            </div>
+          )}
+
+          {cr.liquidation && (
+            <p className="text-xs text-gray-500">
+              Liquidation voucher: <span className="font-mono text-blue-600">{cr.liquidation.voucherNo}</span>
+            </p>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button onClick={handlePrint} className="btn-secondary">Print</button>
+          <button onClick={onClose} className="btn-primary">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────
 export default function CashRequestsPage() {
   const [rows, setRows]       = useState([]);
@@ -587,6 +768,10 @@ export default function CashRequestsPage() {
                   </td>
                   <td><span className={STATUS_BADGE[r.status]}>{r.status}</span></td>
                   <td className="text-right whitespace-nowrap">
+                    <button onClick={() => setModal({ type: 'detail', id: r.id })}
+                      className="btn-secondary btn-sm mr-1" title="View">
+                      <Eye className="w-3 h-3" />
+                    </button>
                     {r.status === 'DRAFT' && (
                       <button onClick={() => act(() => crApi.submit(r.id), 'Submitted for approval')}
                         className="btn-secondary btn-sm" title="Submit">
@@ -650,6 +835,9 @@ export default function CashRequestsPage() {
         <LiquidateModal request={modal.request} accounts={accounts}
           onClose={() => setModal(null)}
           onDone={() => { setModal(null); load(); }} />
+      )}
+      {modal?.type === 'detail' && (
+        <DetailModal requestId={modal.id} onClose={() => setModal(null)} />
       )}
     </div>
   );
