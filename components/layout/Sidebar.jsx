@@ -6,7 +6,7 @@ import {
   Users, ClipboardList, Building2, ChevronDown, LogOut, Settings,
   Package, Landmark, Wallet,
   ShoppingCart, Banknote, BarChart3, Repeat,
-  PanelLeftClose, PanelLeftOpen, HandCoins,
+  PanelLeftClose, PanelLeftOpen, HandCoins, Scale,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
 import { clearSession, getUser } from '@/lib/auth';
@@ -267,6 +267,7 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
               <>
                 <Link href="/settings" title="Settings" className="flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><Settings className="w-5 h-5" /></Link>
                 <Link href="/settings/businesses" title="Businesses" className="flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><Building2 className="w-5 h-5" /></Link>
+                <Link href="/settings/opening-balances" title="Opening Balances" className="flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><Scale className="w-5 h-5" /></Link>
               </>
             )}
             <button onClick={handleLogout} title={`Logout (${user?.email || ''})`} className="flex items-center justify-center h-10 w-10 rounded-lg text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800"><LogOut className="w-5 h-5" /></button>
@@ -282,6 +283,10 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
                 <Link href="/settings/businesses" className="sidebar-link-inactive">
                   <Building2 className="w-4 h-4" />
                   Businesses
+                </Link>
+                <Link href="/settings/opening-balances" className="sidebar-link-inactive">
+                  <Scale className="w-4 h-4" />
+                  Opening Balances
                 </Link>
               </>
             )}

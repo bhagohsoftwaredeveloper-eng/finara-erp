@@ -6,6 +6,11 @@ const glPost = require('../utils/glPost');
 const OPENING_EQUITY = '3070';
 const OPENING_REFERENCE = 'OPENING-BALANCE';
 
+// The accounts the subledgers actually post to. 2000 is the "Current
+// Liabilities" header, NOT payables — payableController credits 2010.
+const AR_ACCOUNT = '1100'; // Accounts Receivable — Trade
+const AP_ACCOUNT = '2010'; // Accounts Payable — Trade
+
 exports.get = async (req, res, next) => {
   try {
     const biz = await prisma.business.findUnique({
@@ -122,8 +127,8 @@ exports.reconcile = async (req, res, next) => {
     res.json({
       booksStartDate: cutoff,
       posted: !!entry,
-      ar: build(openOf(invoices), openingFor('1100', 'debit')),
-      ap: build(openOf(bills),    openingFor('2000', 'credit')),
+      ar: build(openOf(invoices), openingFor(AR_ACCOUNT, 'debit')),
+      ap: build(openOf(bills),    openingFor(AP_ACCOUNT, 'credit')),
     });
   } catch (err) { next(err); }
 };

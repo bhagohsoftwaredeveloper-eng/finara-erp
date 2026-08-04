@@ -117,7 +117,7 @@ dated on the cutover date:
 DR 1100 Accounts Receivable      500,000   ← only invoices STILL outstanding
 DR 1010 Cash on Hand              25,000   ← actual physical count
 DR 1020 Cash in Bank             310,000   ← actual bank statement balance
-   CR 2000 Accounts Payable                 180,000
+   CR 2010 Accounts Payable — Trade         180,000
    CR 3070 Opening Balance Equity           655,000
 ```
 

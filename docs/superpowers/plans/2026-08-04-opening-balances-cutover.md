@@ -1086,7 +1086,7 @@ With BEULAH I.T's books start date at `2026-08-01`, open the page and enter:
 | 1100 Accounts Receivable | 500000 | |
 | 1010 Cash on Hand | 25000 | |
 | 1020 Cash in Bank | 310000 | |
-| 2000 Accounts Payable | | 180000 |
+| 2010 Accounts Payable — Trade | | 180000 |
 
 The footer must show **3070 Opening Balance Equity ₱655,000.00 CR**. Post it, then verify:
 
