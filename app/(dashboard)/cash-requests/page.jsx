@@ -539,6 +539,115 @@ function RejectModal({ request, onClose, onDone }) {
   );
 }
 
+// ─── Printable Cash Request Form ──────────────────────────────
+// Rows written before the actorName fix hold the literal string
+// "undefined undefined"; treat that as no name rather than printing it
+// onto a document someone signs.
+const signatory = (name) => {
+  const n = String(name || '').trim();
+  return !n || n === 'undefined undefined' ? '' : n;
+};
+
+const sigColumn = (label, name) => `
+  <div style="flex:1;">
+    <p style="font-weight:700;color:#111827;margin:0 0 30px;font-size:10px;">${label}:</p>
+    <p style="margin:0 0 2px;font-size:11px;font-weight:600;color:#111;min-height:13px;">${signatory(name)}</p>
+    <div style="border-top:1px solid #374151;padding-top:3px;color:#6b7280;font-size:8px;">Signature over printed name / Date</div>
+  </div>`;
+
+async function printCashRequestForm(cr) {
+  const released = Number(cr.releasedAmount);
+  const spent    = Number(cr.liquidation?.totalAmount || 0);
+  const variance = cr.liquidation ? Number((spent - released).toFixed(2)) : null;
+  const requestedTotal = (cr.items || []).reduce((s, i) => s + Number(i.estimatedCost || 0), 0);
+
+  const itemsHTML = (cr.items || []).map((i) => `
+    <tr>
+      <td>${i.description}</td>
+      <td class="mono small">${i.account ? `${i.account.accountCode} ${i.account.accountName}` : '—'}</td>
+      <td class="right">${i.quantity != null ? Number(i.quantity).toLocaleString() : '—'}</td>
+      <td class="right mono">${phpFmt(i.estimatedCost)}</td>
+    </tr>`).join('');
+
+  const releasedHTML = released > 0 ? `
+    <div class="info-grid">
+      <div class="info-box"><div class="info-lbl">Amount Released</div><div class="info-val mono">${phpFmt(released)}</div></div>
+      <div class="info-box"><div class="info-lbl">Cash Source</div><div class="info-val mono">${cr.cashAccountCode || '—'}</div></div>
+      <div class="info-box"><div class="info-lbl">Date Released</div><div class="info-val">${cr.releasedDate ? dateFmt(cr.releasedDate) : '—'}</div></div>
+    </div>` : '';
+
+  const liqHTML = cr.liquidation ? `
+    <div class="section-title">Liquidation — ${cr.liquidation.voucherNo}</div>
+    <table>
+      <thead><tr><th>Description</th><th>Account</th><th>Receipt #</th><th class="right">Amount</th></tr></thead>
+      <tbody>${(cr.liquidation.items || []).map((l) => `
+        <tr>
+          <td>${l.description}</td>
+          <td class="mono small">${l.account ? `${l.account.accountCode} ${l.account.accountName}` : '—'}</td>
+          <td class="mono small">${l.receiptNo || '—'}</td>
+          <td class="right mono">${phpFmt(l.amount)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="totals-block" style="max-width:320px;margin-left:auto;margin-top:12px;">
+      <div class="totals-row"><span class="gray">Released</span><span class="mono">${phpFmt(released)}</span></div>
+      <div class="totals-row"><span class="gray">Actual Spent</span><span class="mono">${phpFmt(spent)}</span></div>
+      <div class="totals-divider"></div>
+      <div class="totals-row totals-total">
+        <span>${variance < 0 ? 'Sukli Returned' : variance > 0 ? 'Reimbursed' : 'Exact'}</span>
+        <span class="mono">${phpFmt(Math.abs(variance))}</span>
+      </div>
+    </div>` : '';
+
+  const body = `
+    <div class="info-grid">
+      <div class="info-box"><div class="info-lbl">Request No.</div><div class="info-val mono">${cr.requestNo}</div></div>
+      <div class="info-box"><div class="info-lbl">Requested For</div><div class="info-val">${cr.requestedFor}</div></div>
+      <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(cr.status)}</div></div>
+      <div class="info-box"><div class="info-lbl">Request Date</div><div class="info-val">${dateFmt(cr.requestDate)}</div></div>
+      <div class="info-box"><div class="info-lbl">Needed By</div><div class="info-val">${cr.neededDate ? dateFmt(cr.neededDate) : '—'}</div></div>
+      <div class="info-box"><div class="info-lbl">Prepared By</div><div class="info-val">${signatory(cr.requestedBy) || '—'}</div></div>
+    </div>
+
+    <div class="desc-box"><strong>Purpose:</strong> ${cr.purpose}</div>
+
+    <div class="section-title">Requested Items (estimate)</div>
+    <table>
+      <thead><tr><th>Description</th><th>Account</th><th class="right">Qty</th><th class="right">Est. Cost</th></tr></thead>
+      <tbody>${itemsHTML}</tbody>
+      <tfoot>
+        <tr><td colspan="3" class="right">TOTAL REQUESTED</td><td class="right mono">${phpFmt(requestedTotal)}</td></tr>
+      </tfoot>
+    </table>
+
+    ${releasedHTML}
+    ${liqHTML}
+
+    <div style="margin-top:34px;padding-top:16px;border-top:1px solid #e5e7eb;display:flex;gap:24px;">
+      ${sigColumn('Requested by', cr.requestedBy)}
+      ${sigColumn('Approved by', cr.approvedBy)}
+      ${sigColumn('Released by', cr.releasedBy)}
+    </div>
+
+    <div style="margin-top:22px;padding:10px 14px;border:1px solid #d1daf0;border-radius:6px;background:#f8faff;">
+      <p style="margin:0 0 26px;font-size:10px;color:#374151;">
+        Received the sum of <strong class="mono">${released > 0 ? phpFmt(released) : '₱ ______________'}</strong>
+        as cash advance for the purpose stated above.
+      </p>
+      <div style="max-width:280px;">
+        <div style="border-top:1px solid #374151;padding-top:3px;color:#6b7280;font-size:8px;">
+          Signature over printed name / Date
+        </div>
+      </div>
+    </div>`;
+
+  await printDocument(
+    `Cash Request Form — ${cr.requestNo}`,
+    `${cr.requestedFor} · ${dateFmt(cr.requestDate)}`,
+    body
+  );
+}
+
 // ─── Detail Modal ─────────────────────────────────────────────
 function DetailModal({ requestId, onClose }) {
   const [cr, setCr] = useState(null);
@@ -569,56 +678,6 @@ function DetailModal({ requestId, onClose }) {
     { label: 'Released',   who: cr.releasedBy,  when: cr.releasedDate,          done: ['RELEASED', 'LIQUIDATED'].includes(cr.status) },
     { label: 'Liquidated', who: null,           when: cr.liquidation?.paidDate, done: cr.status === 'LIQUIDATED' },
   ];
-
-  const handlePrint = () => {
-    const itemsHTML = (cr.items || []).map((i) => `
-      <tr>
-        <td>${i.description}</td>
-        <td class="right">${i.quantity != null ? Number(i.quantity).toLocaleString() : '—'}</td>
-        <td class="right mono">${phpFmt(i.estimatedCost)}</td>
-      </tr>`).join('');
-
-    const liqHTML = cr.liquidation ? `
-      <div class="section-title">Liquidation — ${cr.liquidation.voucherNo}</div>
-      <table>
-        <thead><tr><th>Description</th><th>Receipt #</th><th class="right">Amount</th></tr></thead>
-        <tbody>${(cr.liquidation.items || []).map((l) => `
-          <tr>
-            <td>${l.description}</td>
-            <td class="mono small">${l.receiptNo || '—'}</td>
-            <td class="right mono">${phpFmt(l.amount)}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      <div class="totals-block" style="max-width:320px;margin-left:auto;margin-top:12px;">
-        <div class="totals-row"><span class="gray">Released</span><span class="mono">${phpFmt(released)}</span></div>
-        <div class="totals-row"><span class="gray">Actual Spent</span><span class="mono">${phpFmt(spent)}</span></div>
-        <div class="totals-divider"></div>
-        <div class="totals-row totals-total">
-          <span>${variance < 0 ? 'Sukli Returned' : variance > 0 ? 'Reimbursed' : 'Exact'}</span>
-          <span class="mono">${phpFmt(Math.abs(variance))}</span>
-        </div>
-      </div>` : '';
-
-    const body = `
-      <div class="info-grid">
-        <div class="info-box"><div class="info-lbl">Request No.</div><div class="info-val mono">${cr.requestNo}</div></div>
-        <div class="info-box"><div class="info-lbl">Requested For</div><div class="info-val">${cr.requestedFor}</div></div>
-        <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(cr.status)}</div></div>
-        <div class="info-box"><div class="info-lbl">Request Date</div><div class="info-val">${dateFmt(cr.requestDate)}</div></div>
-        <div class="info-box"><div class="info-lbl">Needed By</div><div class="info-val">${cr.neededDate ? dateFmt(cr.neededDate) : '—'}</div></div>
-        <div class="info-box"><div class="info-lbl">Cash Source</div><div class="info-val mono">${cr.cashAccountCode || '—'}</div></div>
-      </div>
-      <div class="desc-box">${cr.purpose}</div>
-      <div class="section-title">Requested Items (estimate)</div>
-      <table>
-        <thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Est. Cost</th></tr></thead>
-        <tbody>${itemsHTML}</tbody>
-      </table>
-      ${liqHTML}`;
-
-    printDocument(`Cash Request — ${cr.requestNo}`, `${cr.requestedFor} · ${dateFmt(cr.requestDate)}`, body);
-  };
 
   return (
     <div className="modal-overlay">
@@ -711,7 +770,7 @@ function DetailModal({ requestId, onClose }) {
         </div>
 
         <div className="modal-footer">
-          <button onClick={handlePrint} className="btn-secondary">Print</button>
+          <button onClick={() => printCashRequestForm(cr)} className="btn-secondary">Print</button>
           <button onClick={onClose} className="btn-primary">Close</button>
         </div>
       </div>
