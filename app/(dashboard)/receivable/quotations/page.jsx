@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { receivable as rApi, accounts as acctApi } from '@/lib/api';
+import { receivable as rApi, accounts as acctApi, inventory as invApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Filter, X, FileText, Send, CheckCircle2,
@@ -34,7 +34,105 @@ const todayStr  = () => new Date().toISOString().split('T')[0];
 const plusDays  = (n) => new Date(Date.now() + n * 86400000).toISOString().split('T')[0];
 
 // ─── Create / Edit Quotation Modal ────────────────────────────
-function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCustomerAdded }) {
+const emptyQtnLine = () => ({ itemName: '', itemId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' });
+
+// ─── Convert to Invoice Modal ─────────────────────────────────
+// A quotation carries no GL account — this is where revenue is classified,
+// so nothing posts until every line has an account the user has seen.
+function ConvertModal({ quotationId, preview, accounts, onClose, onDone }) {
+  const [assign, setAssign] = useState(() =>
+    Object.fromEntries(preview.lines.map((l) => [l.id, l.suggestedAccountId ? String(l.suggestedAccountId) : '']))
+  );
+  const [dueDate, setDueDate] = useState(plusDays(30));
+  const [saving, setSaving]   = useState(false);
+
+  const unassigned = preview.lines.filter((l) => !assign[l.id]).length;
+
+  const submit = async () => {
+    if (unassigned) { toast.error('Every line needs a revenue account'); return; }
+    setSaving(true);
+    try {
+      const { data } = await rApi.quotations.convert(quotationId, {
+        dueDate,
+        accounts: preview.lines.map((l) => ({ lineId: l.id, accountId: Number(assign[l.id]) })),
+      });
+      toast.success(`Converted to invoice ${data.invoice.invoiceNo}`);
+      onDone();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Conversion failed');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-4xl">
+        <div className="modal-header">
+          <div>
+            <h3 className="text-lg font-semibold">Convert {preview.quotationNo} to Invoice</h3>
+            <p className="text-xs text-gray-400">{preview.customer?.name} · {formatCurrency(preview.totalAmount)}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+        </div>
+
+        <div className="modal-body space-y-4">
+          <div className="form-group max-w-xs">
+            <label className="label">Due Date *</label>
+            <input type="date" className="input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          </div>
+
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Assign the revenue account for each line</h4>
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <table className="table table-compact">
+                <thead>
+                  <tr>
+                    <th>Line</th>
+                    <th className="w-36 text-right">Amount</th>
+                    <th className="w-64">Revenue Account</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.lines.map((l) => (
+                    <tr key={l.id}>
+                      <td>
+                        <div className="text-sm">{l.itemName || l.description}</div>
+                        {l.itemName && <div className="text-xs text-gray-400">{l.description}</div>}
+                      </td>
+                      <td className="text-right text-sm">{formatCurrency(l.amount)}</td>
+                      <td>
+                        <AccountSelect
+                          value={assign[l.id]}
+                          onChange={(v) => setAssign((a) => ({ ...a, [l.id]: v }))}
+                          accounts={accounts}
+                          placeholder="— select revenue account —"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-0.5">{l.suggestedFrom}</p>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Creating the invoice posts <strong>DR 1100 Accounts Receivable</strong> against the
+            revenue accounts chosen above.
+          </p>
+        </div>
+
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={submit} disabled={saving || unassigned > 0} className="btn-primary">
+            {saving ? 'Converting…' : 'Create Invoice'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuotationModal({ quotation, customers, items, onClose, onSaved, onCustomerAdded }) {
   const isEdit = !!quotation?.id;
   const [form, setForm] = useState(
     quotation
@@ -46,22 +144,39 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
           notes:         quotation.notes || '',
           lines: quotation.lines?.length
             ? quotation.lines.map((l) => ({
-                accountId: String(l.accountId), description: l.description,
+                itemName: l.itemName || '', itemId: l.itemId ? String(l.itemId) : '',
+                description: l.description,
                 quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
               }))
-            : [{ accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }],
+            : [emptyQtnLine()],
         }
       : {
           customerId: '', quotationDate: todayStr(), validUntil: plusDays(30), description: '', notes: '',
-          lines: [{ accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }],
+          lines: [emptyQtnLine()],
         }
   );
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setLine = (i, k, v) =>
     setForm((f) => ({ ...f, lines: f.lines.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)) }));
+  // Typing is free-form; if the text exactly matches a stocked item we remember
+  // its id so the conversion can inherit that item's revenue account and price.
+  const setItemName = (i, value) => {
+    const match = items.find((it) => it.name === value);
+    setForm((f) => ({
+      ...f,
+      lines: f.lines.map((l, idx) => {
+        if (idx !== i) return l;
+        const next = { ...l, itemName: value, itemId: match ? String(match.id) : '' };
+        if (match && !l.unitPrice) next.unitPrice = String(match.sellingPrice);
+        if (match && !l.description) next.description = match.name;
+        return next;
+      }),
+    }));
+  };
+
   const addLine = () =>
-    setForm((f) => ({ ...f, lines: [...f.lines, { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }] }));
+    setForm((f) => ({ ...f, lines: [...f.lines, emptyQtnLine()] }));
   const removeLine = (i) =>
     setForm((f) => ({ ...f, lines: f.lines.filter((_, idx) => idx !== i) }));
 
@@ -78,7 +193,7 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.customerId) { toast.error('Select or add a customer'); return; }
-    const validLines = form.lines.filter((l) => l.accountId && l.description && l.unitPrice);
+    const validLines = form.lines.filter((l) => l.description && l.unitPrice);
     if (!validLines.length) { toast.error('Add at least one line item'); return; }
     validLines.forEach((l) => rememberDescription(l.description));
     setSaving(true);
@@ -90,7 +205,8 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
         description: form.description,
         notes: form.notes,
         lines: validLines.map((l) => ({
-          accountId:   Number(l.accountId),
+          itemName:    l.itemName || null,
+          itemId:      l.itemId ? Number(l.itemId) : null,
           description: l.description,
           quantity:    Number(l.quantity),
           unitPrice:   Number(l.unitPrice),
@@ -151,11 +267,14 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
                   <Plus className="w-3 h-3" /> Add Line
                 </button>
               </div>
+              <datalist id="qtn-items">
+                {items.map((it) => <option key={it.id} value={it.name}>{it.sku}</option>)}
+              </datalist>
               <div className="border border-gray-200 rounded-xl overflow-hidden">
                 <table className="table table-compact">
                   <thead>
                     <tr>
-                      <th className="w-56">Revenue Account</th>
+                      <th className="w-56">Item</th>
                       <th>Description</th>
                       <th className="w-28">VAT</th>
                       <th className="w-32 text-right">Qty</th>
@@ -171,12 +290,18 @@ function QuotationModal({ quotation, customers, accounts, onClose, onSaved, onCu
                       return (
                         <tr key={i}>
                           <td>
-                            <AccountSelect
-                              value={line.accountId}
-                              onChange={(val) => setLine(i, 'accountId', val)}
-                              accounts={accounts}
-                              placeholder="Select…"
+                            <input
+                              className="input text-xs"
+                              list="qtn-items"
+                              value={line.itemName}
+                              onChange={(e) => setItemName(i, e.target.value)}
+                              placeholder="Item or service…"
                             />
+                            {line.itemId && (
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                {items.find((it) => it.id === Number(line.itemId))?.sku} · revenue account carries to the invoice
+                              </p>
+                            )}
                           </td>
                           <td>
                             <DescriptionInput className="input text-xs" value={line.description}
@@ -270,11 +395,11 @@ function QuotationDetailModal({ quotation, onClose, onAction, onConvert, onEdit,
 
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <table className="table text-sm">
-              <thead><tr><th>Account</th><th>Description</th><th className="text-center">VAT</th><th className="text-right">Qty</th><th className="text-right">Unit</th><th className="text-right">Amount</th></tr></thead>
+              <thead><tr><th>Item</th><th>Description</th><th className="text-center">VAT</th><th className="text-right">Qty</th><th className="text-right">Unit</th><th className="text-right">Amount</th></tr></thead>
               <tbody>
                 {q.lines?.map((l) => (
                   <tr key={l.id}>
-                    <td className="font-mono text-xs">{l.account?.accountCode || '—'}</td>
+                    <td className="text-xs">{l.itemName || '—'}</td>
                     <td>{l.description}</td>
                     <td className="text-center"><span className={`badge text-xs ${l.vatCode === 'VAT' ? 'badge-blue' : 'badge-gray'}`}>{l.vatCode}</span></td>
                     <td className="text-right">{Number(l.quantity).toLocaleString()}</td>
@@ -318,6 +443,7 @@ export default function QuotationsPage() {
   const [rows, setRows]           = useState([]);
   const [customers, setCustomers] = useState([]);
   const [accounts, setAccounts]   = useState([]);
+  const [items, setItems]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
@@ -344,6 +470,9 @@ export default function QuotationsPage() {
   useEffect(() => {
     rApi.customers.list({ active: true }).then((r) => setCustomers(r.data));
     acctApi.list({ active: true }).then((r) => setAccounts(r.data));
+    invApi.items.list({ limit: 500 })
+      .then((r) => setItems(r.data.data || r.data || []))
+      .catch(() => setItems([]));
   }, []);
 
   const openDetail = async (row) => {
@@ -361,13 +490,13 @@ export default function QuotationsPage() {
     } catch (err) { toast.error(err.response?.data?.error || 'Action failed'); }
   };
 
+  // The revenue account is assigned during conversion, so open the dialog
+  // rather than converting straight away.
   const handleConvert = async (q) => {
-    if (!confirm(`Convert ${q.quotationNo} to an AR invoice? This posts to the General Ledger.`)) return;
     try {
-      const { data } = await rApi.quotations.convert(q.id, {});
-      toast.success(`Converted to invoice ${data.invoice.invoiceNo}`);
-      setModal(null); load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Conversion failed'); }
+      const { data } = await rApi.quotations.convertPreview(q.id);
+      setModal({ type: 'convert', quotationId: q.id, preview: data });
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to prepare the conversion'); }
   };
 
   const handleDelete = async (q) => {
@@ -502,14 +631,19 @@ export default function QuotationsPage() {
 
       {/* Modals */}
       {modal?.type === 'new' && (
-        <QuotationModal customers={customers} accounts={accounts}
+        <QuotationModal customers={customers} items={items}
           onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }}
           onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])} />
       )}
       {modal?.type === 'edit' && (
-        <QuotationModal quotation={modal.quotation} customers={customers} accounts={accounts}
+        <QuotationModal quotation={modal.quotation} customers={customers} items={items}
           onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }}
           onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])} />
+      )}
+      {modal?.type === 'convert' && (
+        <ConvertModal quotationId={modal.quotationId} preview={modal.preview} accounts={accounts}
+          onClose={() => setModal(null)}
+          onDone={() => { setModal(null); load(); }} />
       )}
       {modal?.type === 'detail' && (
         <QuotationDetailModal quotation={modal.quotation}

@@ -412,8 +412,15 @@ model QuotationLine {
   id          Int       @id @default(autoincrement())
   quotationId Int
   quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  accountId   Int
-  account     Account   @relation(fields: [accountId], references: [id])
+  // A quotation is a customer-facing document — the GL account is chosen at
+  // convert-to-invoice time, not while quoting, so this stays optional.
+  accountId   Int?
+  account     Account?  @relation(fields: [accountId], references: [id])
+  // What is being quoted. itemId is set only when the name matched a stocked
+  // item; its revenue account then pre-fills the conversion.
+  itemName    String?        @db.VarChar(150)
+  itemId      Int?
+  item        InventoryItem? @relation(fields: [itemId], references: [id])
   description String    @db.VarChar(255)
   quantity    Decimal   @default(1) @db.Decimal(10, 3)
   unitPrice   Decimal   @default(0) @db.Decimal(15, 2)
@@ -421,6 +428,7 @@ model QuotationLine {
   vatCode     VatCode   @default(VAT)
 
   @@index([quotationId])
+  @@index([itemId])
   @@map("quotation_lines")
 }
 
@@ -586,6 +594,7 @@ model InventoryItem {
   revenueAccount      Account?               @relation("InvRevenueAccount", fields: [revenueAccountId],   references: [id])
   isActive            Boolean                @default(true)
   transactions        InventoryTransaction[]
+  quotationLines      QuotationLine[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 

@@ -73,7 +73,10 @@ exports.create = async (req, res, next) => {
         quotationDate: new Date(quotationDate), validUntil: new Date(validUntil),
         description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
         lines: { create: processed.map((l) => ({
-          accountId: Number(l.accountId), description: l.description,
+          // No GL account while quoting — it is assigned at convert-to-invoice.
+          itemName: l.itemName || null,
+          itemId:   l.itemId ? Number(l.itemId) : null,
+          description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
         })) },
       },
@@ -111,7 +114,10 @@ exports.update = async (req, res, next) => {
       if (processed.length) {
         await prisma.quotationLine.createMany({
           data: processed.map((l) => ({
-            quotationId: id, accountId: Number(l.accountId), description: l.description,
+            quotationId: id,
+            itemName: l.itemName || null,
+            itemId:   l.itemId ? Number(l.itemId) : null,
+            description: l.description,
             quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
           })),
         });
@@ -150,6 +156,48 @@ exports.remove = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const DEFAULT_REVENUE_ACCOUNT = '4100'; // Advertising Services Revenue
+
+// What the convert dialog needs: every line with a suggested revenue account.
+// A line quoted from a stocked item inherits that item's revenue account;
+// anything else falls back to the default for the user to confirm or change.
+exports.convertPreview = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const q = await prisma.quotation.findFirst({
+      where: { id, businessId: req.businessId },
+      include: {
+        customer: true,
+        lines: { include: { item: { select: { sku: true, name: true, revenueAccountId: true } } } },
+      },
+    });
+    if (!q) throw createError('Quotation not found', 404);
+    if (q.status === 'CONVERTED') throw createError('Quotation already converted to an invoice', 400);
+
+    const fallback = await prisma.account.findFirst({
+      where: { accountCode: DEFAULT_REVENUE_ACCOUNT, businessId: req.businessId },
+      select: { id: true },
+    });
+
+    res.json({
+      quotationNo: q.quotationNo,
+      customer:    q.customer,
+      totalAmount: q.totalAmount,
+      lines: q.lines.map((l) => ({
+        id:          l.id,
+        itemName:    l.itemName,
+        description: l.description,
+        quantity:    l.quantity,
+        unitPrice:   l.unitPrice,
+        amount:      l.amount,
+        vatCode:     l.vatCode,
+        suggestedAccountId: l.item?.revenueAccountId || fallback?.id || null,
+        suggestedFrom:      l.item?.revenueAccountId ? `from ${l.item.sku}` : 'default — review',
+      })),
+    });
+  } catch (err) { next(err); }
+};
+
 // ─── Convert to AR Invoice ────────────────────────────────────────
 exports.convert = async (req, res, next) => {
   try {
@@ -159,7 +207,20 @@ exports.convert = async (req, res, next) => {
     if (q.status === 'CONVERTED') throw createError('Quotation already converted to an invoice', 400);
     if (!q.lines.length)         throw createError('Quotation has no line items', 400);
 
-    const { dueDate } = req.body;
+    const { dueDate, accounts } = req.body;
+
+    // The revenue account is assigned here, not on the quotation. Every line
+    // needs one before anything posts, so a missing account fails loudly
+    // rather than silently booking revenue to the wrong place.
+    const byLine = new Map((accounts || []).map((a) => [Number(a.lineId), Number(a.accountId)]));
+    const missing = q.lines.filter((l) => !byLine.get(l.id) && !l.accountId);
+    if (missing.length) {
+      throw createError(
+        `Assign a revenue account for every line before converting (${missing.length} missing)`,
+        400
+      );
+    }
+    const accountFor = (line) => byLine.get(line.id) || line.accountId;
     const invoiceNo = await genInvNo();
     const due = dueDate ? new Date(dueDate) : new Date(Date.now() + 30 * 86400000);
 
@@ -171,7 +232,8 @@ exports.convert = async (req, res, next) => {
         description: q.description || `From quotation ${q.quotationNo}`,
         subtotal: q.subtotal, vatAmount: q.vatAmount, totalAmount: q.totalAmount,
         lines: { create: q.lines.map((l) => ({
-          accountId: l.accountId, description: l.description,
+          accountId: accountFor(l),
+          description: l.itemName ? `${l.itemName} — ${l.description}` : l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
         })) },
       },

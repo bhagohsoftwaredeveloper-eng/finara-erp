@@ -11,7 +11,8 @@ const lineValidators = [
   body('quotationDate').isISO8601(),
   body('validUntil').isISO8601(),
   body('lines').isArray({ min: 1 }),
-  body('lines.*.accountId').isInt(),
+  // No accountId here — a quotation carries no GL account. The revenue
+  // account is assigned at convert-to-invoice time.
   body('lines.*.description').notEmpty(),
   body('lines.*.quantity').isFloat({ min: 0.001 }),
   body('lines.*.unitPrice').isFloat({ min: 0 }),
@@ -27,6 +28,7 @@ router.delete('/:id', authorize('ADMIN', 'MANAGER'), param('id').isInt(), valida
 router.post('/:id/send',    param('id').isInt(), validate, ctrl.send);
 router.post('/:id/accept',  param('id').isInt(), validate, ctrl.accept);
 router.post('/:id/reject',  param('id').isInt(), validate, ctrl.reject);
+router.get('/:id/convert-preview', param('id').isInt(), validate, ctrl.convertPreview);
 router.post('/:id/convert', authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'), param('id').isInt(), validate, ctrl.convert);
 
 module.exports = router;
