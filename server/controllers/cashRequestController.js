@@ -65,7 +65,11 @@ exports.getOne = async (req, res, next) => {
       where: { id: Number(req.params.id), businessId: req.businessId },
       include: {
         items: { include: { account: { select: { accountCode: true, accountName: true } } } },
-        liquidation: { include: { items: true } },
+        liquidation: {
+          include: {
+            items: { include: { account: { select: { accountCode: true, accountName: true } } } },
+          },
+        },
       },
     });
     if (!cr) throw createError('Cash request not found', 404);
