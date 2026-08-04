@@ -13,6 +13,9 @@ const genRequestNo = async () => {
   return nextDocNumber('CR-', last?.requestNo);
 };
 
+// req.user is the decoded JWT payload — it carries `name`, not firstName/lastName.
+const actorName = (req) => req.user?.name?.trim() || null;
+
 const sumItems = (items = []) =>
   items.reduce((s, i) => s + Number(i.estimatedCost || 0), 0);
 
@@ -89,7 +92,7 @@ exports.create = async (req, res, next) => {
         purpose:         purpose.trim(),
         requestedAmount: sumItems(rows),
         notes:           notes || null,
-        requestedBy:     req.user ? `${req.user.firstName} ${req.user.lastName}`.trim() : null,
+        requestedBy:     actorName(req),
         items:           { create: rows },
       },
       include: { items: true },
@@ -168,8 +171,7 @@ const transition = (from, to, verb, extraData = () => ({})) => async (req, res, 
 exports.submit = transition(['DRAFT'], 'SUBMITTED', 'submitted');
 
 exports.approve = transition(['SUBMITTED'], 'APPROVED', 'approved', (req) => ({
-  approvedBy: req.body.approvedBy
-    || (req.user ? `${req.user.firstName} ${req.user.lastName}`.trim() : null),
+  approvedBy: req.body.approvedBy || actorName(req),
 }));
 
 exports.reject = async (req, res, next) => {
@@ -215,8 +217,7 @@ exports.release = async (req, res, next) => {
         status:          'RELEASED',
         releasedAmount:  amount,
         cashAccountCode: String(cashAccountCode),
-        releasedBy:      releasedBy
-          || (req.user ? `${req.user.firstName} ${req.user.lastName}`.trim() : null),
+        releasedBy:      releasedBy || actorName(req),
         releasedDate:    releasedDate ? new Date(releasedDate) : new Date(),
       },
       include: { items: true },
