@@ -17,6 +17,10 @@ model Business {
   phone       String?   @db.VarChar(30)
   email       String?   @db.VarChar(150)
   industry    String?   @db.VarChar(80)
+  // First day this business keeps its books in Finara. Documents dated before
+  // it are history only and never post to the GL — see server/utils/glPost.js.
+  // Null means no cutover is configured and the guard stays inert.
+  booksStartDate DateTime? @db.Date
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

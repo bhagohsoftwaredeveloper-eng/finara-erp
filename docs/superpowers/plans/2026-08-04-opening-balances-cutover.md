@@ -65,13 +65,29 @@ Expected: `✔ Generated Prisma Client`. An `EPERM` failure means the dev server
 
 - [ ] **Step 4: Generate the migration SQL**
 
+**Do not use `Out-File -Encoding utf8`** — PowerShell 5.1 writes a UTF-8 BOM and
+MySQL rejects the file with `error 1064 ... near '﻿-- AlterTable'`. Write the
+file with .NET instead, which emits no BOM:
+
 ```powershell
 $stamp = Get-Date -Format 'yyyyMMddHHmmss'
 $dir = "prisma/migrations/${stamp}_add_books_start_date"
 New-Item -ItemType Directory -Force $dir | Out-Null
-npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script | Out-File -FilePath "$dir/migration.sql" -Encoding utf8
+$sql = npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script | Out-String
+[System.IO.File]::WriteAllText("$PWD/$dir/migration.sql", $sql, (New-Object System.Text.UTF8Encoding($false)))
 Get-Content "$dir/migration.sql"
 ```
+
+Verify no BOM before deploying:
+
+```powershell
+$b = [System.IO.File]::ReadAllBytes("$PWD/$dir/migration.sql")
+if ($b[0] -eq 0xEF) { "BOM PRESENT — rewrite the file" } else { "no BOM" }
+```
+
+If a migration does fail this way, Prisma records it and blocks further deploys
+with `P3009`. Confirm the change did not partially apply, then
+`npx prisma migrate resolve --rolled-back <migration_name>` and deploy again.
 
 Expected: `ALTER TABLE \`businesses\` ADD COLUMN \`booksStartDate\` DATE NULL;`
 If the SQL contains DROP statements for unrelated tables, STOP — the local DB has drifted; resolve that first.
