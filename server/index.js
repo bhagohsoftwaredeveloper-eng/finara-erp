@@ -141,6 +141,7 @@ app.use('/api/po-scanner',    routes.poScanner);
 app.use('/api/po-form',       routes.poForm);
 app.use('/api/leads',         routes.leads);
 app.use('/api/cash-requests', routes.cashRequests);
+app.use('/api/opening-balances', routes.openingBalances);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {
