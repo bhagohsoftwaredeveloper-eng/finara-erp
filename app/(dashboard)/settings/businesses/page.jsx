@@ -32,7 +32,7 @@ export default function BusinessesPage() {
   const [editBiz,    setEditBiz]    = useState(null);   // business object or 'new'
   const [manageId,   setManageId]   = useState(null);   // businessId for user mgmt
   const [bizUsers,   setBizUsers]   = useState([]);     // users in manageId business
-  const [form,       setForm]       = useState({ code:'', name:'', tin:'', address:'', phone:'', email:'' });
+  const [form,       setForm]       = useState({ code:'', name:'', tin:'', address:'', phone:'', email:'', booksStartDate:'' });
 
   const me = getUser();
   const isAdmin = me?.role === 'ADMIN';
@@ -53,12 +53,12 @@ export default function BusinessesPage() {
 
   // ── Business create/update ──────────────────────────────────
   function openCreate() {
-    setForm({ code:'', name:'', tin:'', address:'', phone:'', email:'' });
+    setForm({ code:'', name:'', tin:'', address:'', phone:'', email:'', booksStartDate:'' });
     setEditBiz('new');
   }
 
   function openEdit(biz) {
-    setForm({ code: biz.code, name: biz.name, tin: biz.tin||'', address: biz.address||'', phone: biz.phone||'', email: biz.email||'' });
+    setForm({ code: biz.code, name: biz.name, tin: biz.tin||'', address: biz.address||'', phone: biz.phone||'', email: biz.email||'', booksStartDate: biz.booksStartDate?.split('T')[0] || '' });
     setEditBiz(biz);
   }
 
@@ -202,6 +202,16 @@ export default function BusinessesPage() {
               <div>
                 <label className="label">Address</label>
                 <input className="input" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Books Start Date</label>
+                <input className="input" type="date" value={form.booksStartDate}
+                  onChange={e => setForm(f => ({ ...f, booksStartDate: e.target.value }))} />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  The first day this business keeps its books in Finara. Documents dated before
+                  it are recorded for history only and never post to the general ledger —
+                  leave blank if you have no cutover.
+                </p>
               </div>
             </div>
             {editBiz === 'new' && (

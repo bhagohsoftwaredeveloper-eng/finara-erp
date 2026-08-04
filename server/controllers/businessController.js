@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
+const { clearBusinessCache } = require('../utils/glPost');
 
 // ─── List all businesses the current user can access ─────────────
 exports.list = async (req, res, next) => {
@@ -33,11 +34,14 @@ exports.get = async (req, res, next) => {
 // ─── Create ──────────────────────────────────────────────────────
 exports.create = async (req, res, next) => {
   try {
-    const { code, name, tin, address, phone, email, industry } = req.body;
+    const { code, name, tin, address, phone, email, industry, booksStartDate } = req.body;
     if (!code || !name) throw createError('code and name are required', 400);
 
     const biz = await prisma.business.create({
-      data: { code: code.toUpperCase(), name, tin, address, phone, email, industry },
+      data: {
+        code: code.toUpperCase(), name, tin, address, phone, email, industry,
+        booksStartDate: booksStartDate ? new Date(booksStartDate) : null,
+      },
     });
 
     // Auto-clone the default COA from business 1 into the new business
@@ -99,11 +103,19 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { name, tin, address, phone, email, industry, isActive } = req.body;
+    const { name, tin, address, phone, email, industry, isActive, booksStartDate } = req.body;
     const biz = await prisma.business.update({
       where: { id },
-      data: { name, tin, address, phone, email, industry, isActive },
+      data: {
+        name, tin, address, phone, email, industry, isActive,
+        booksStartDate: booksStartDate ? new Date(booksStartDate) : null,
+      },
     });
+
+    // Posting caches the cutover date — without this it honours the old one
+    // until the process restarts.
+    clearBusinessCache(id);
+
     res.json(biz);
   } catch (err) { next(err); }
 };
