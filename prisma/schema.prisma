@@ -17,6 +17,10 @@ model Business {
   phone       String?   @db.VarChar(30)
   email       String?   @db.VarChar(150)
   industry    String?   @db.VarChar(80)
+  // First day this business keeps its books in Finara. Documents dated before
+  // it are history only and never post to the GL — see server/utils/glPost.js.
+  // Null means no cutover is configured and the guard stays inert.
+  booksStartDate DateTime? @db.Date
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -123,6 +127,7 @@ model Account {
   cogsItems        InventoryItem[]     @relation("InvCogsAccount")
   revenueItems     InventoryItem[]     @relation("InvRevenueAccount")
   expenseItems     ExpenseVoucherItem[]
+  cashRequestItems CashRequestItem[]
 
   @@unique([businessId, accountCode])
   @@index([businessId])
@@ -407,8 +412,15 @@ model QuotationLine {
   id          Int       @id @default(autoincrement())
   quotationId Int
   quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  accountId   Int
-  account     Account   @relation(fields: [accountId], references: [id])
+  // A quotation is a customer-facing document — the GL account is chosen at
+  // convert-to-invoice time, not while quoting, so this stays optional.
+  accountId   Int?
+  account     Account?  @relation(fields: [accountId], references: [id])
+  // What is being quoted. itemId is set only when the name matched a stocked
+  // item; its revenue account then pre-fills the conversion.
+  itemName    String?        @db.VarChar(150)
+  itemId      Int?
+  item        InventoryItem? @relation(fields: [itemId], references: [id])
   description String    @db.VarChar(255)
   quantity    Decimal   @default(1) @db.Decimal(10, 3)
   unitPrice   Decimal   @default(0) @db.Decimal(15, 2)
@@ -416,6 +428,7 @@ model QuotationLine {
   vatCode     VatCode   @default(VAT)
 
   @@index([quotationId])
+  @@index([itemId])
   @@map("quotation_lines")
 }
 
@@ -581,6 +594,7 @@ model InventoryItem {
   revenueAccount      Account?               @relation("InvRevenueAccount", fields: [revenueAccountId],   references: [id])
   isActive            Boolean                @default(true)
   transactions        InventoryTransaction[]
+  quotationLines      QuotationLine[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -717,6 +731,8 @@ model ExpenseVoucher {
   rejectedReason String?              @db.Text
   notes          String?              @db.Text
   items          ExpenseVoucherItem[]
+  cashRequestId  Int?                 @unique
+  cashRequest    CashRequest?         @relation(fields: [cashRequestId], references: [id])
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -1068,4 +1084,58 @@ enum LeadStatus {
   NEW
   CONTACTED
   CLOSED
+}
+
+// ─── Cash Requests (advance & liquidation) ─────────────────
+enum CashRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RELEASED
+  LIQUIDATED
+  REJECTED
+  CANCELLED
+}
+
+model CashRequest {
+  id              Int       @id @default(autoincrement())
+  businessId      Int       @default(1)
+  requestNo       String    @unique @db.VarChar(30)
+  requestDate     DateTime  @db.Date
+  neededDate      DateTime? @db.Date
+  requestedFor    String    @db.VarChar(100)
+  purpose         String    @db.Text
+  requestedAmount Decimal   @default(0) @db.Decimal(15, 2)
+  releasedAmount  Decimal   @default(0) @db.Decimal(15, 2)
+  cashAccountCode String?   @db.VarChar(10)
+  status          CashRequestStatus @default(DRAFT)
+  requestedBy     String?   @db.VarChar(100)
+  approvedBy      String?   @db.VarChar(100)
+  releasedBy      String?   @db.VarChar(100)
+  releasedDate    DateTime? @db.Date
+  rejectedReason  String?   @db.Text
+  notes           String?   @db.Text
+  items           CashRequestItem[]
+  liquidation     ExpenseVoucher?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([businessId])
+  @@index([status])
+  @@index([requestDate])
+  @@map("cash_requests")
+}
+
+model CashRequestItem {
+  id            Int         @id @default(autoincrement())
+  requestId     Int
+  request       CashRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  description   String      @db.VarChar(255)
+  quantity      Decimal?    @db.Decimal(15, 3)
+  estimatedCost Decimal     @db.Decimal(15, 2)
+  accountId     Int?
+  account       Account?    @relation(fields: [accountId], references: [id])
+
+  @@index([requestId])
+  @@map("cash_request_items")
 }

@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const glPost = require('../utils/glPost');
+const { buildLiquidationEntry } = require('../utils/cashAdvance');
 
 // Category → GL account code mapping
 const CATEGORY_ACCOUNT = {
@@ -281,17 +282,45 @@ exports.pay = async (req, res, next) => {
       drLines.push({ accountCode: code, debit: totalAmt, description: `${voucher.payee} — ${voucher.purpose.slice(0, 80)}` });
     }
 
-    await glPost.safePost({
-      entryDate:   paidDate || new Date().toISOString().slice(0, 10),
-      description: `Expense Voucher — ${voucher.voucherNo} (${voucher.payee})`,
-      reference:   voucher.voucherNo,
-      lines: [
-        ...drLines,
-        { accountCode: cashCode, credit: totalAmt, description: `Cash paid — ${voucher.voucherNo}` },
-      ],
-      userId:     req.user?.id || 1,
-      businessId: req.businessId,
-    });
+    if (voucher.type === 'LIQUIDATION' && voucher.cashRequestId) {
+      const request = await prisma.cashRequest.findFirst({
+        where: { id: voucher.cashRequestId, businessId: voucher.businessId },
+        select: { requestNo: true, releasedAmount: true, cashAccountCode: true },
+      });
+      if (!request) throw createError('Linked cash request not found', 404);
+
+      const { lines } = buildLiquidationEntry({
+        requestNo:       request.requestNo,
+        releasedAmount:  Number(request.releasedAmount),
+        lines:           voucher.items.map((i) => ({
+          description: i.description,
+          amount:      Number(i.amount),
+          accountId:   i.accountId,
+        })),
+        cashAccountCode: request.cashAccountCode,
+      });
+
+      await glPost.safePost({
+        entryDate:   paidDate || new Date().toISOString().slice(0, 10),
+        description: `Liquidation — ${request.requestNo} (${voucher.payee})`,
+        reference:   request.requestNo,
+        lines,
+        userId:      req.user?.id || 1,
+        businessId:  req.businessId,
+      });
+    } else {
+      await glPost.safePost({
+        entryDate:   paidDate || new Date().toISOString().slice(0, 10),
+        description: `Expense Voucher — ${voucher.voucherNo} (${voucher.payee})`,
+        reference:   voucher.voucherNo,
+        lines: [
+          ...drLines,
+          { accountCode: cashCode, credit: totalAmt, description: `Cash paid — ${voucher.voucherNo}` },
+        ],
+        userId:     req.user?.id || 1,
+        businessId: req.businessId,
+      });
+    }
 
     res.json(updated);
   } catch (err) { next(err); }

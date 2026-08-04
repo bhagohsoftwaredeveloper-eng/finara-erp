@@ -16,6 +16,46 @@ const { recordAudit } = require('./audit');
 // ── In-memory account cache — key: `${businessId}:${accountCode}` ─────────────
 const _cache = {};
 
+// ── Business cutover cache — key: businessId ─────────────────────────────────
+const _bizCache = {};
+
+/**
+ * Normalise any accepted date form to a 'YYYY-MM-DD' key.
+ *
+ * booksStartDate is @db.Date and comes back as a Date at UTC midnight, while
+ * entryDate arrives as either 'YYYY-MM-DD' or a Date. Comparing normalised
+ * strings sidesteps every timezone trap that comparing Date objects invites.
+ */
+function dateKey(d) {
+  if (!d) return null;
+  if (typeof d === 'string') return d.slice(0, 10);
+  const dt = d instanceof Date ? d : new Date(d);
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${dt.getUTCFullYear()}-${mm}-${dd}`;
+}
+
+async function getBusinessCutover(businessId) {
+  if (Object.prototype.hasOwnProperty.call(_bizCache, businessId)) return _bizCache[businessId];
+  const biz = await prisma.business.findUnique({
+    where:  { id: Number(businessId) },
+    select: { booksStartDate: true },
+  });
+  _bizCache[businessId] = biz?.booksStartDate || null;
+  return _bizCache[businessId];
+}
+
+// Call whenever a business's booksStartDate changes, or posting keeps
+// honouring the stale date until the process restarts.
+function clearBusinessCache(businessId) {
+  if (businessId == null) {
+    for (const k of Object.keys(_bizCache)) delete _bizCache[k];
+  } else {
+    delete _bizCache[businessId];
+    delete _bizCache[Number(businessId)];
+  }
+}
+
 async function getAccountByCode(code, businessId = 1) {
   const key = `${businessId}:${code}`;
   if (_cache[key]) return _cache[key];
@@ -49,7 +89,21 @@ async function nextEntryNo(businessId = 1) {
  * @param {number}      [opts.businessId=1]
  * @param {Array}       opts.lines  — [{accountCode|accountId, debit, credit, description}]
  */
-async function post({ entryDate, description, reference, notes, lines, userId = 1, businessId = 1 }) {
+async function post({ entryDate, description, reference, notes, lines, userId = 1, businessId = 1, isOpeningEntry = false }) {
+  // Anything dated before the books start is already inside the opening
+  // balances — posting it again double-counts revenue, VAT and cash.
+  // The opening entry itself is dated on/before the cutover, so it must
+  // be able to bypass this or it would skip itself.
+  if (!isOpeningEntry) {
+    const cutover = await getBusinessCutover(businessId);
+    const cutoverKey = dateKey(cutover);
+    const entryKey   = dateKey(entryDate);
+    if (cutoverKey && entryKey && entryKey < cutoverKey) {
+      logger.info(`[GL SKIP PRE-CUTOVER] biz=${businessId} entry=${entryKey} cutover=${cutoverKey} ref=${reference || '—'}`);
+      return { skipped: 'PRE_CUTOVER', entryDate, businessId };
+    }
+  }
+
   const resolved = await Promise.all(
     lines.map(async (l, i) => {
       let accountId;
@@ -121,4 +175,4 @@ async function safePost(opts) {
   }
 }
 
-module.exports = { post, safePost, getAccountByCode };
+module.exports = { post, safePost, getAccountByCode, clearBusinessCache, dateKey };

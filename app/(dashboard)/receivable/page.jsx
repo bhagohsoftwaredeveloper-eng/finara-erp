@@ -14,6 +14,7 @@ import DescriptionInput, { rememberDescription } from '@/components/DescriptionI
 import NumberInput from '@/components/NumberInput';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { useBusiness, isPreCutover } from '@/lib/businessContext';
 
 // ─── Constants ────────────────────────────────────────────────
 const VAT_CODES   = ['VAT', 'ZERO', 'EXEMPT'];
@@ -676,6 +677,8 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
 
 // ─── Main Invoices Page ───────────────────────────────────────
 export default function InvoicesPage() {
+  const { activeBusiness } = useBusiness();
+  const booksStartDate = activeBusiness?.booksStartDate || null;
   const [invoices, setInvoices]   = useState([]);
   const [customers, setCustomers] = useState([]);
   const [accounts, setAccounts]   = useState([]);
@@ -925,6 +928,14 @@ export default function InvoicesPage() {
                   >
                     <td>
                       <span className="font-mono font-medium text-green-700 text-sm">{inv.invoiceNo}</span>
+                      {isPreCutover(inv.invoiceDate, booksStartDate) && (
+                        <span
+                          className="badge badge-gray ml-2"
+                          title="Dated before this business's books start date — recorded for history only, not posted to the general ledger"
+                        >
+                          Opening entry
+                        </span>
+                      )}
                     </td>
                     <td>
                       <div className="font-medium text-gray-900">{inv.customer?.name}</div>

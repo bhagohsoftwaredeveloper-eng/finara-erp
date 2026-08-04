@@ -22,10 +22,39 @@ const parseRange = (req) => {
   };
 };
 
+/**
+ * BIR reports read the source `invoice` / `bill` tables, not the GL, so the
+ * cutover guard in glPost does NOT protect them. A historical invoice entered
+ * for history would otherwise reappear in a return covering its old date and
+ * re-declare VAT already filed under the previous books.
+ *
+ * Clamps the requested period to start no earlier than the books start date,
+ * and reports when that clamping actually happened.
+ */
+const rangeWithCutover = async (req) => {
+  const range = parseRange(req);
+  const biz = await prisma.business.findUnique({
+    where:  { id: req.businessId },
+    select: { booksStartDate: true },
+  });
+  const start = biz?.booksStartDate;
+  if (!start) return { range, cutoverWarning: null };
+
+  if (new Date(range.gte) >= new Date(start)) return { range, cutoverWarning: null };
+
+  const startKey = new Date(start).toISOString().slice(0, 10);
+  return {
+    range: { ...range, gte: new Date(start) },
+    cutoverWarning:
+      `This period begins before the books start date (${startKey}). Documents dated earlier are ` +
+      `excluded — they were declared under your previous books.`,
+  };
+};
+
 // ─── VAT Summary (Form 2550M / 2550Q) ─────────────────────
 exports.vatSummary = async (req, res, next) => {
   try {
-    const dateRange = parseRange(req);
+    const { range: dateRange, cutoverWarning } = await rangeWithCutover(req);
     const biz = req.businessId;
 
     const [salesLines, purchaseLines] = await Promise.all([
@@ -87,6 +116,7 @@ exports.vatSummary = async (req, res, next) => {
 
     res.json({
       period: dateRange,
+      cutoverWarning,
       outputVat, inputVat,
       vatableSales, zeroRatedSales, exemptSales, totalSalesNet,
       vatablePurchases, priorExcessInput: 0,
@@ -98,7 +128,7 @@ exports.vatSummary = async (req, res, next) => {
 // ─── EWT Summary (Form 1601-EQ) ────────────────────────────
 exports.ewtSummary = async (req, res, next) => {
   try {
-    const dateRange = parseRange(req);
+    const { range: dateRange, cutoverWarning } = await rangeWithCutover(req);
     const biz = req.businessId;
 
     const bills = await prisma.bill.findMany({
@@ -142,7 +172,7 @@ exports.ewtSummary = async (req, res, next) => {
     const totalVatComponent = vendors.reduce((s, v) => s + v.vatComponent, 0);
     const totalEwt          = vendors.reduce((s, v) => s + v.ewtAmount, 0);
 
-    res.json({ period: dateRange, vendorCount: ewtVendors.length, totalVendors, totalPayments, vatableAmount, totalVatComponent, totalEwt, vendors });
+    res.json({ period: dateRange, cutoverWarning, vendorCount: ewtVendors.length, totalVendors, totalPayments, vatableAmount, totalVatComponent, totalEwt, vendors });
   } catch (err) { next(err); }
 };
 
@@ -206,7 +236,7 @@ exports.withholdingSummary = async (req, res, next) => {
 // ─── RELIEF Export ─────────────────────────────────────────
 exports.reliefExport = async (req, res, next) => {
   try {
-    const dateRange = parseRange(req);
+    const { range: dateRange, cutoverWarning } = await rangeWithCutover(req);
     const biz = req.businessId;
 
     const [bills, invoices] = await Promise.all([
@@ -240,6 +270,7 @@ exports.reliefExport = async (req, res, next) => {
 
     res.json({
       period: dateRange,
+      cutoverWarning,
       purchases,
       sales,
       summary: {

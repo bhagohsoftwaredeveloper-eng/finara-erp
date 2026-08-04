@@ -107,6 +107,21 @@ exports.runNow = async (req, res, next) => {
     const t = await prisma.recurringTemplate.findFirst({ where: { id, businessId: req.businessId } });
     if (!t) throw createError('Template not found', 404);
     const entry = await runTemplate(t, req.user?.id);
+
+    // The template's next run date can fall before the books start date, in
+    // which case glPost skips it. Say so plainly instead of reporting a
+    // journal entry number that does not exist.
+    if (entry?.skipped === 'PRE_CUTOVER') {
+      await recordAudit({
+        req, action: 'RUN', entity: 'RecurringTemplate', entityId: id,
+        summary: `Ran recurring "${t.name}" — skipped, dated before the books start date`,
+      });
+      return res.json({
+        entry: null, skipped: 'PRE_CUTOVER',
+        message: `"${t.name}" was not posted — its run date falls before this business's books start date`,
+      });
+    }
+
     await recordAudit({ req, action: 'RUN', entity: 'RecurringTemplate', entityId: id, summary: `Ran recurring "${t.name}" → ${entry.entryNo}` });
     res.json({ entry, message: `Posted ${entry.entryNo}` });
   } catch (err) { next(err); }
@@ -124,7 +139,9 @@ exports.runDue = async (req, res, next) => {
     for (const t of due) {
       try {
         const entry = await runTemplate(t, req.user?.id);
-        results.push({ id: t.id, name: t.name, entryNo: entry.entryNo, status: 'posted' });
+        results.push(entry?.skipped === 'PRE_CUTOVER'
+          ? { id: t.id, name: t.name, status: 'skipped', reason: 'dated before the books start date' }
+          : { id: t.id, name: t.name, entryNo: entry.entryNo, status: 'posted' });
       } catch (e) {
         results.push({ id: t.id, name: t.name, status: 'error', error: e.message });
       }

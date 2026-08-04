@@ -29,4 +29,6 @@ module.exports = {
   poScanner:     require('./poScanner'),
   poForm:        require('./poForm'),
   leads:         require('./leads'),
+  cashRequests:  require('./cashRequests'),
+  openingBalances: require('./openingBalances'),
 };
