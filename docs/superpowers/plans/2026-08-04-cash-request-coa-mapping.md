@@ -156,10 +156,15 @@ Create `server/utils/accountMap.js`:
  * work (printing) is declared before the raw materials it is made from, so
  * "tarpaulin printing" books as printing rather than as materials.
  *
- * Accounting note: build materials and printing map to Cost of Sales (50xx)
- * on the assumption this is billable client production. Materials for the
- * company's own marketing belong in 6530 — that is what the per-line
- * override in the UI is for.
+ * Accounting policy (confirmed with the business owner, 2026-08-04): build
+ * materials and printing map to Cost of Sales (50xx) because the spend is
+ * consumed producing work billed to clients, so the cost matches that job's
+ * revenue. The COA reinforces this — 6530 is named "Marketing & Promotions
+ * (Internal)" precisely to hold the company's own promo spend instead.
+ *
+ * Spend on the company's own booths still belongs in 6530; that is what the
+ * per-line override in the UI is for. Do not flip these defaults without
+ * revisiting the decision.
  */
 
 const FALLBACK_ACCOUNT = '6390'; // Miscellaneous Expense

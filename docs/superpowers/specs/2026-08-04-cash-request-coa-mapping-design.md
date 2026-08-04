@@ -78,12 +78,18 @@ Drawn from the live COA, which is identical across all three businesses
 | 6360 | Bank Charges & Service Fees | bank charge, transfer fee, service fee, remittance fee |
 | — | *no match* | → `6390 Miscellaneous Expense`, flagged in UI |
 
-**Accounting judgement, recorded deliberately:** build materials and printing map
-to Cost of Sales (50xx) on the assumption this work is billable client
-production. Materials bought for the company's own marketing belong in
-`6530 Marketing & Promotions` instead. The per-line override is the escape
-hatch; if the majority case turns out to be internal marketing, flip the 5021
-and 5029 defaults rather than teaching users to override every time.
+**Accounting policy — confirmed by the business owner on 2026-08-04:** build
+materials and printing map to Cost of Sales (50xx) because this spend is
+consumed producing work billed to clients. The cost therefore matches the
+revenue for that job and gross margin stays meaningful.
+
+This is a settled decision, not an open assumption. Supporting evidence: the
+COA names `6530` "Marketing & Promotions **(Internal)**", deliberately
+separating the company's own promo spend from client production in 5020–5029.
+
+Spend on the company's own booths or signage still belongs in 6530 — that is
+what the per-line override is for. Do not flip the 5021/5029 defaults without
+revisiting this decision with the owner.
 
 ### Safety constraint
 
