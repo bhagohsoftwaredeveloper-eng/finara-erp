@@ -4,6 +4,7 @@ const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
 const glPost = require('../utils/glPost');
 const { buildReleaseEntry, buildLiquidationEntry } = require('../utils/cashAdvance');
+const { matchAccountCode, KEYWORD_RULES, FALLBACK_ACCOUNT } = require('../utils/accountMap');
 
 const genRequestNo = async () => {
   const last = await prisma.cashRequest.findFirst({
@@ -240,6 +241,34 @@ exports.release = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Serves the keyword rules to the browser so the UI can match as the user
+// types without a round-trip per keystroke. The server re-applies the same
+// rules at liquidation, so this is a convenience, not the authority.
+exports.accountMap = (_req, res) => {
+  res.json({ rules: KEYWORD_RULES, fallback: FALLBACK_ACCOUNT });
+};
+
+// Fill in accountId for any line that arrived without one, using the same
+// keyword rules the browser used. Batched: one query for all needed codes.
+const resolveLineAccounts = async (lines, businessId) => {
+  const needing = lines.filter((l) => !l.accountId);
+  if (!needing.length) return lines;
+
+  const wanted = new Map(); // description -> code
+  for (const l of needing) wanted.set(l.description, matchAccountCode(l.description));
+
+  const codes = [...new Set(wanted.values())];
+  const accts = await prisma.account.findMany({
+    where: { accountCode: { in: codes }, businessId },
+    select: { id: true, accountCode: true },
+  });
+  const byCode = new Map(accts.map((a) => [a.accountCode, a.id]));
+
+  return lines.map((l) =>
+    l.accountId ? l : { ...l, accountId: byCode.get(wanted.get(l.description)) ?? null }
+  );
+};
+
 // Settle the advance against receipts. Clears 1104 and books the real expense.
 exports.liquidate = async (req, res, next) => {
   try {
@@ -254,7 +283,7 @@ exports.liquidate = async (req, res, next) => {
     if (cr.status !== 'RELEASED') throw createError('Only RELEASED requests can be liquidated', 400);
     if (cr.liquidation) throw createError('This request has already been liquidated', 400);
 
-    const spent = (lines || [])
+    const rawSpent = (lines || [])
       .filter((l) => l.description && Number(l.amount) > 0)
       .map((l) => ({
         description: l.description,
@@ -262,7 +291,11 @@ exports.liquidate = async (req, res, next) => {
         accountId:   l.accountId ? Number(l.accountId) : null,
         receiptNo:   l.receiptNo || null,
       }));
-    if (!spent.length) throw createError('Add at least one liquidation line', 400);
+    if (!rawSpent.length) throw createError('Add at least one liquidation line', 400);
+
+    // Any line without an account gets one from the keyword rules, so nothing
+    // silently lands in Miscellaneous just because the UI did not match it.
+    const spent = await resolveLineAccounts(rawSpent, req.businessId);
 
     // Throws on bad input before anything is written
     const { lines: glLines, variance, mode } = buildLiquidationEntry({
