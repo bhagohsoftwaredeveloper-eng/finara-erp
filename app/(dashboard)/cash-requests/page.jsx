@@ -30,10 +30,30 @@ const CASH_ACCOUNTS = [
 ];
 
 const todayStr = () => new Date().toISOString().split('T')[0];
-const emptyItem = () => ({ description: '', quantity: '1', estimatedCost: '', accountId: '' });
+const emptyItem = () => ({ description: '', quantity: '1', estimatedCost: '', accountId: '', accountTouched: false });
+
+// Mirrors server/utils/accountMap.js — word-boundary, case-insensitive,
+// first rule wins. The rules themselves come from the server so the two
+// never drift apart.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function matchCodeFor(description, rules = [], fallback = '6390') {
+  const text = String(description || '').trim();
+  if (!text) return { accountCode: fallback, matched: false };
+  for (const rule of rules) {
+    if (rule.keywords.some((kw) => new RegExp(`\\b${escapeRe(kw)}\\b`, 'i').test(text))) {
+      return { accountCode: rule.accountCode, matched: true };
+    }
+  }
+  return { accountCode: fallback, matched: false };
+}
+
+// Resolve a matched code to an account id within the loaded COA.
+const accountIdForCode = (accounts, code) =>
+  accounts.find((a) => a.accountCode === code)?.id || '';
 
 // ─── New / Edit Request Modal ─────────────────────────────────
-function RequestModal({ request, accounts, names, onClose, onSaved }) {
+function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }) {
   const isEdit = !!request?.id;
   const [form, setForm] = useState(
     isEdit
@@ -49,6 +69,7 @@ function RequestModal({ request, accounts, names, onClose, onSaved }) {
                 quantity: i.quantity != null ? String(i.quantity) : '',
                 estimatedCost: String(i.estimatedCost),
                 accountId: i.accountId ? String(i.accountId) : '',
+                accountTouched: !!i.accountId,
               }))
             : [emptyItem()],
         }
@@ -57,7 +78,21 @@ function RequestModal({ request, accounts, names, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
 
   const setItem = (i, k, v) =>
-    setForm((f) => ({ ...f, items: f.items.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)) }));
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((it, idx) => {
+        if (idx !== i) return it;
+        const next = { ...it, [k]: v };
+        // A manual account choice is sticky.
+        if (k === 'accountId') next.accountTouched = true;
+        // Typing a description re-runs the match until the user overrides it.
+        if (k === 'description' && !next.accountTouched) {
+          const { accountCode } = matchCodeFor(v, accountMap.rules, accountMap.fallback);
+          next.accountId = accountIdForCode(accounts, accountCode);
+        }
+        return next;
+      }),
+    }));
   const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
   const rmItem  = (i) => setForm((f) => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
 
@@ -72,7 +107,10 @@ function RequestModal({ request, accounts, names, onClose, onSaved }) {
 
     setSaving(true);
     try {
-      const payload = { ...form, items };
+      const payload = {
+        ...form,
+        items: items.map(({ accountTouched, ...rest }) => rest),
+      };
       if (isEdit) await crApi.update(request.id, payload);
       else        await crApi.create(payload);
       toast.success(isEdit ? 'Cash request updated' : 'Cash request created');
@@ -161,6 +199,16 @@ function RequestModal({ request, accounts, names, onClose, onSaved }) {
                             accounts={accounts}
                             placeholder="— optional —"
                           />
+                          {it.description && !it.accountTouched && (
+                            <p className={`text-[10px] mt-0.5 ${
+                              matchCodeFor(it.description, accountMap.rules, accountMap.fallback).matched
+                                ? 'text-gray-400' : 'text-amber-600'
+                            }`}>
+                              {matchCodeFor(it.description, accountMap.rules, accountMap.fallback).matched
+                                ? 'auto · click to change'
+                                : 'no match — review this account'}
+                            </p>
+                          )}
                         </td>
                         <td>
                           <NumberInput className="input text-xs text-right" placeholder="0.00"
@@ -655,6 +703,7 @@ export default function CashRequestsPage() {
   const [status, setStatus]   = useState('');
   const [search, setSearch]   = useState('');
   const [modal, setModal]     = useState(null);
+  const [accountMap, setAccountMap] = useState({ rules: [], fallback: '6390' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -675,6 +724,11 @@ export default function CashRequestsPage() {
     acctApi.list({ limit: 500 })
       .then((r) => setAccounts(r.data.data || r.data))
       .catch(() => setAccounts([]));
+  }, []);
+  useEffect(() => {
+    crApi.accountMap()
+      .then((r) => setAccountMap(r.data))
+      .catch(() => setAccountMap({ rules: [], fallback: '6390' }));
   }, []);
 
   const names = [...new Set(rows.map((r) => r.requestedFor))];
@@ -817,7 +871,7 @@ export default function CashRequestsPage() {
       </div>
 
       {modal?.type === 'new' && (
-        <RequestModal accounts={accounts} names={names}
+        <RequestModal accounts={accounts} names={names} accountMap={accountMap}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }} />
       )}
