@@ -339,8 +339,21 @@ function ReleaseModal({ request, onClose, onDone }) {
 }
 
 // ─── Liquidate Modal ──────────────────────────────────────────
-function LiquidateModal({ request, accounts, onClose, onDone }) {
-  const [lines, setLines] = useState([{ description: '', amount: '', accountId: '', receiptNo: '' }]);
+function LiquidateModal({ request, accounts, accountMap, onClose, onDone }) {
+  // Start from what was requested — description, account and estimated amount.
+  // The user corrects the amounts against the receipts and adds anything extra.
+  const [lines, setLines] = useState(() => {
+    const fromRequest = (request.items || []).map((i) => ({
+      description:    i.description,
+      amount:         String(i.estimatedCost),
+      accountId:      i.accountId ? String(i.accountId) : '',
+      receiptNo:      '',
+      accountTouched: !!i.accountId,
+    }));
+    return fromRequest.length
+      ? fromRequest
+      : [{ description: '', amount: '', accountId: '', receiptNo: '', accountTouched: false }];
+  });
   const [receiptNo, setReceiptNo] = useState('');
   const [date, setDate] = useState(todayStr());
   const [saving, setSaving] = useState(false);
@@ -350,8 +363,19 @@ function LiquidateModal({ request, accounts, onClose, onDone }) {
   const variance = Number((spent - released).toFixed(2));
 
   const setLine = (i, k, v) =>
-    setLines((p) => p.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
-  const addLine = () => setLines((p) => [...p, { description: '', amount: '', accountId: '', receiptNo: '' }]);
+    setLines((p) => p.map((l, idx) => {
+      if (idx !== i) return l;
+      const next = { ...l, [k]: v };
+      if (k === 'accountId') next.accountTouched = true;
+      if (k === 'description' && !next.accountTouched) {
+        const { accountCode } = matchCodeFor(v, accountMap.rules, accountMap.fallback);
+        next.accountId = accountIdForCode(accounts, accountCode);
+      }
+      return next;
+    }));
+
+  const addLine = () =>
+    setLines((p) => [...p, { description: '', amount: '', accountId: '', receiptNo: '', accountTouched: false }]);
   const rmLine  = (i) => setLines((p) => p.filter((_, idx) => idx !== i));
 
   const submit = async (e) => {
@@ -360,7 +384,8 @@ function LiquidateModal({ request, accounts, onClose, onDone }) {
     if (!valid.length) { toast.error('Add at least one line with an amount'); return; }
     setSaving(true);
     try {
-      await crApi.liquidate(request.id, { lines: valid, receiptNo, liquidationDate: date });
+      const payload = valid.map(({ accountTouched, ...rest }) => rest);
+      await crApi.liquidate(request.id, { lines: payload, receiptNo, liquidationDate: date });
       toast.success('Liquidation recorded');
       onDone();
     } catch (err) {
@@ -886,7 +911,7 @@ export default function CashRequestsPage() {
           onDone={() => { setModal(null); load(); }} />
       )}
       {modal?.type === 'liquidate' && (
-        <LiquidateModal request={modal.request} accounts={accounts}
+        <LiquidateModal request={modal.request} accounts={accounts} accountMap={accountMap}
           onClose={() => setModal(null)}
           onDone={() => { setModal(null); load(); }} />
       )}
