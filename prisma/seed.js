@@ -150,6 +150,9 @@ async function main() {
     { accountCode:'3040', accountName:'Current Year Earnings',               accountType:'EQUITY',    normalBalance:'CREDIT', parentCode:'3000' },
     { accountCode:'3050', accountName:"Owner's Drawings",                    accountType:'EQUITY',    normalBalance:'DEBIT',  parentCode:'3000' },
     { accountCode:'3060', accountName:'Treasury Stock',                      accountType:'EQUITY',    normalBalance:'DEBIT',  parentCode:'3000' },
+    // Offsets the day-one migration entry. A non-zero balance left here after
+    // migration is itself a signal that the opening figures did not reconcile.
+    { accountCode:'3070', accountName:'Opening Balance Equity',              accountType:'EQUITY',    normalBalance:'CREDIT', parentCode:'3000' },
 
     // ══════════════════════════════════════════════════════════
     // REVENUE  (4000 – 4999)
