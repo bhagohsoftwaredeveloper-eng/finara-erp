@@ -164,6 +164,11 @@ export default function DailyRemittancePage() {
           cashDisbursed: Number(full.data.cashDisbursed),
           netCash:       Number(full.data.netCash),
           items:         full.data.items || [],
+          // counts.pettyCash isn't persisted — derive it from the saved items
+          // so the voucher count on the Petty Cash card survives a reload.
+          counts: {
+            pettyCash: (full.data.items || []).filter(it => it.category === 'PETTY_CASH').length,
+          },
         });
       } else {
         setSaved(null);
