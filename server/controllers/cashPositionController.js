@@ -9,12 +9,17 @@ const startOf = (d) => new Date(`${d}T00:00:00.000Z`);
 const endOf   = (d) => new Date(`${d}T23:59:59.999Z`);
 const dateKey = (d) => new Date(d).toISOString().slice(0, 10);
 
+// DATE_RE only checks shape ('YYYY-MM-DD'); it happily accepts '2026-13-40'.
+// A calendar-invalid string still parses to shape but produces an Invalid Date,
+// which would otherwise reach Prisma and surface as an uncaught 500. Reject it here.
+const isValidDateStr = (s) => DATE_RE.test(s) && !Number.isNaN(startOf(s).getTime());
+
 // Validate and normalise the ?from & ?to range shared by both endpoints.
 function parseRange(query) {
   const { from, to } = query;
-  if (!from || !to)                       throw createError('from and to query params are required (YYYY-MM-DD)', 400);
-  if (!DATE_RE.test(from) || !DATE_RE.test(to)) throw createError('from and to must be YYYY-MM-DD', 400);
-  if (from > to)                          throw createError('from must not be later than to', 400);
+  if (!from || !to)                             throw createError('from and to query params are required (YYYY-MM-DD)', 400);
+  if (!isValidDateStr(from) || !isValidDateStr(to)) throw createError('from and to must be YYYY-MM-DD', 400);
+  if (from > to)                                throw createError('from must not be later than to', 400);
 
   const days = Math.round((startOf(to) - startOf(from)) / 86400000) + 1;
   if (days > MAX_RANGE_DAYS) throw createError(`Range must be ${MAX_RANGE_DAYS} days or fewer`, 400);
@@ -112,8 +117,8 @@ exports.report = async (req, res, next) => {
 exports.day = async (req, res, next) => {
   try {
     const { date, accountCode } = req.query;
-    if (!date || !DATE_RE.test(date)) throw createError('date query param required (YYYY-MM-DD)', 400);
-    if (!accountCode)                 throw createError('accountCode query param required', 400);
+    if (!date || !isValidDateStr(date)) throw createError('date query param required (YYYY-MM-DD)', 400);
+    if (!accountCode)                   throw createError('accountCode query param required', 400);
 
     const [account] = await resolveCashAccounts(req.businessId, accountCode);
     if (!account) throw createError(`${accountCode} is not a postable cash account`, 400);
