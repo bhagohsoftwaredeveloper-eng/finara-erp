@@ -251,19 +251,34 @@ exports.pay = async (req, res, next) => {
     if (!voucher) throw createError('Expense voucher not found', 404);
     if (voucher.status !== 'APPROVED') throw createError('Voucher must be APPROVED before marking paid', 400);
 
+    // A liquidation settles against the cash account its cash request was
+    // released from — fetched up front so the stored code matches the GL.
+    let linkedRequest = null;
+    if (voucher.type === 'LIQUIDATION' && voucher.cashRequestId) {
+      linkedRequest = await prisma.cashRequest.findFirst({
+        where: { id: voucher.cashRequestId, businessId: voucher.businessId },
+        select: { requestNo: true, releasedAmount: true, cashAccountCode: true },
+      });
+      if (!linkedRequest) throw createError('Linked cash request not found', 404);
+    }
+
+    // Use explicitly chosen payment account; fall back to type-based default.
+    // Resolved before the update so it can be persisted — reports split
+    // petty-cash vs collections on this, not on the voucher `type`.
+    const cashCode = linkedRequest?.cashAccountCode
+                  || paymentAccountCode
+                  || (voucher.type === 'PETTY_CASH' ? '1011' : '1020');
+    const totalAmt = Number(voucher.totalAmount);
+
     const updated = await prisma.expenseVoucher.update({
       where: { id },
       data: {
         status:   'PAID',
         paidBy:   paidBy  || undefined,
         paidDate: paidDate ? new Date(paidDate + 'T00:00:00.000Z') : new Date(),
+        paymentAccountCode: cashCode,
       },
     });
-
-    // ── Auto-post to GL ──────────────────────────────────────────────────────
-    // Use explicitly chosen payment account; fall back to type-based default
-    const cashCode = paymentAccountCode || (voucher.type === 'PETTY_CASH' ? '1011' : '1020');
-    const totalAmt = Number(voucher.totalAmount);
 
     // Build DR lines: use item accountId if set, else fall back to category mapping
     const drLines = [];
@@ -282,13 +297,8 @@ exports.pay = async (req, res, next) => {
       drLines.push({ accountCode: code, debit: totalAmt, description: `${voucher.payee} — ${voucher.purpose.slice(0, 80)}` });
     }
 
-    if (voucher.type === 'LIQUIDATION' && voucher.cashRequestId) {
-      const request = await prisma.cashRequest.findFirst({
-        where: { id: voucher.cashRequestId, businessId: voucher.businessId },
-        select: { requestNo: true, releasedAmount: true, cashAccountCode: true },
-      });
-      if (!request) throw createError('Linked cash request not found', 404);
-
+    if (linkedRequest) {
+      const request = linkedRequest;
       const { lines } = buildLiquidationEntry({
         requestNo:       request.requestNo,
         releasedAmount:  Number(request.releasedAmount),

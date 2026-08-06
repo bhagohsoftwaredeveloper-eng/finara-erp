@@ -17,6 +17,17 @@ function asOfEndOf(dateStr) {
   return { lte: new Date(`${dateStr}T23:59:59.999Z`) };
 }
 
+// Split expense vouchers on the account the cash actually left from, NOT on
+// voucher `type`. A reimbursement or direct payment settled out of the petty
+// cash fund is a petty cash outflow; counting it against collections
+// double-counts the peso. Rows created before `paymentAccountCode` existed fall
+// back to the type-based default the GL posting used at the time.
+const PETTY_CASH_ACCOUNTS = ['1011', '1012'];
+const paidFromPettyCash = (v) =>
+  PETTY_CASH_ACCOUNTS.includes(v.paymentAccountCode || (v.type === 'PETTY_CASH' ? '1011' : '1020'));
+
+exports.paidFromPettyCash = paidFromPettyCash;
+
 // ─── Auto-Calculate from existing transactions ────────────────────
 exports.calculate = async (req, res, next) => {
   try {
@@ -86,9 +97,9 @@ exports.calculate = async (req, res, next) => {
     // ── Expense voucher split ────────────────────────────────────
     const paidVouchers    = expVouchers.filter(v => v.status === 'PAID');
     // Petty cash comes from a separate fund — does NOT affect daily collections net cash
-    const paidPettyCash   = paidVouchers.filter(v => v.type === 'PETTY_CASH');
-    // Direct payments, reimbursements, etc. ARE actual cash outflows from collections
-    const paidCashOutflow = paidVouchers.filter(v => v.type !== 'PETTY_CASH');
+    const paidPettyCash   = paidVouchers.filter(paidFromPettyCash);
+    // Everything else IS an actual cash outflow from collections / bank
+    const paidCashOutflow = paidVouchers.filter(v => !paidFromPettyCash(v));
 
     // ── Totals ──────────────────────────────────────────────────
     const totalSales     = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
@@ -108,10 +119,13 @@ exports.calculate = async (req, res, next) => {
     const pcDebits         = Number(pettyCashGL._sum.debit  || 0);
     const pcCredits        = Number(pettyCashGL._sum.credit || 0);
     const pettyCashBalance = pcDebits - pcCredits;
-    // Petty Cash Fund – GCash (1012) balance as of end of the selected date
+    // Petty Cash Fund – GCash (1012) balance as of end of the selected date.
+    // 1012 is optional — businesses that never set it up have no rows at all, so
+    // report null (card hidden) rather than a phantom zero balance.
     const pcGcashDebits   = Number(pettyCashGcashGL._sum.debit  || 0);
     const pcGcashCredits  = Number(pettyCashGcashGL._sum.credit || 0);
-    const pettyCashGcashBalance = pcGcashDebits - pcGcashCredits;
+    const hasGcashFund    = pcGcashDebits > 0 || pcGcashCredits > 0;
+    const pettyCashGcashBalance = hasGcashFund ? pcGcashDebits - pcGcashCredits : null;
     // Cash on Hand (1010) balance as of end of the selected date
     const cohDebits         = Number(cashOnHandGL._sum.debit  || 0);
     const cohCredits        = Number(cashOnHandGL._sum.credit || 0);
@@ -190,7 +204,9 @@ exports.calculate = async (req, res, next) => {
       totalSales, vatCollected, cashReceived,
       totalExpenses, pettyCashTotal,
       pettyCashBalance, pettyCashFunded: pcDebits, pettyCashUsed: pcCredits,
-      pettyCashGcashBalance, pettyCashGcashFunded: pcGcashDebits, pettyCashGcashUsed: pcGcashCredits,
+      pettyCashGcashBalance,
+      pettyCashGcashFunded: hasGcashFund ? pcGcashDebits  : null,
+      pettyCashGcashUsed:   hasGcashFund ? pcGcashCredits : null,
       cashOnHandBalance, cashDisbursed, netCash,
       counts: {
         invoices:      invoices.length,

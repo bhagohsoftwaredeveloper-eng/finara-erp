@@ -535,7 +535,7 @@ export default function DailyRemittancePage() {
               )}
             </div>
             {/* Petty Cash Fund – GCash (1012) — only show if account exists */}
-            {(Number(calcData.pettyCashGcashBalance) !== 0 || calcData.pettyCashGcashBalance != null) && (
+            {calcData.pettyCashGcashBalance != null && (
               <div className="card p-4 border-blue-200 bg-blue-50">
                 <div className="flex items-center gap-2 mb-1">
                   <Wallet className="w-4 h-4 text-blue-600" />

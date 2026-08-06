@@ -119,7 +119,7 @@ Run:
 "C:/Program Files/MySQL/MySQL Server 9.4/bin/mysql.exe" -uroot -p123700 ph_erp_db -e \
   "SELECT date, cashOnHandOut, pettyCashOut, pettyCashGcashOut FROM daily_remittances WHERE businessId=1 ORDER BY date;"
 ```
-Expected: a row for any saved 2026-08-05 report showing `cashOnHandOut = 7830.00` and `pettyCashOut = 7890.00`. Reports for dates with no cash movement show `0.00`.
+Expected: exactly one row exists — the DRAFT report for **2026-08-03** — and it must read `cashOnHandOut = 264.00`, `pettyCashOut = 30.00`, `pettyCashGcashOut = 0.00`. (No report has been saved for Aug 5, so the 7,830 / 7,890 figures will not appear here.)
 
 - [ ] **Step 7: Persist the fields on create**
 
