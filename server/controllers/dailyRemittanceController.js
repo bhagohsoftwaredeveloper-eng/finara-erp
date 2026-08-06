@@ -264,7 +264,9 @@ exports.create = async (req, res, next) => {
         netCash:      Number(netCash      || 0),
         cashOnHandOut:     Number(cashOnHandOut     || 0),
         pettyCashOut:      Number(pettyCashOut      || 0),
-        pettyCashGcashOut: Number(pettyCashGcashOut || 0),
+        // Optional 1012 fund: `null` means "no GCash fund activity that day"
+        // and must survive as `null`, not collapse to 0 like the other funds.
+        pettyCashGcashOut: pettyCashGcashOut != null ? Number(pettyCashGcashOut) : null,
         preparedBy,
         notes,
         items: {
@@ -310,7 +312,14 @@ exports.update = async (req, res, next) => {
         netCash:       netCash       != null ? Number(netCash)       : undefined,
         cashOnHandOut:     cashOnHandOut     != null ? Number(cashOnHandOut)     : undefined,
         pettyCashOut:      pettyCashOut      != null ? Number(pettyCashOut)      : undefined,
-        pettyCashGcashOut: pettyCashGcashOut != null ? Number(pettyCashGcashOut) : undefined,
+        // Field omitted from the request → undefined (Prisma leaves it
+        // untouched). Field explicitly sent as null → store null, don't
+        // collapse it to "skip"; that's the whole point of this being
+        // nullable — a caller must be able to explicitly clear it back to
+        // "no GCash fund activity."
+        pettyCashGcashOut: pettyCashGcashOut === undefined
+          ? undefined
+          : (pettyCashGcashOut != null ? Number(pettyCashGcashOut) : null),
         preparedBy, notes,
       },
     });

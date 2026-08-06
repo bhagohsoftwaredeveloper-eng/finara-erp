@@ -156,11 +156,10 @@ export default function DailyRemittancePage() {
           pettyCashTotal:    Number(full.data.pettyCashTotal    || 0),
           cashOnHandOut:     Number(full.data.cashOnHandOut     || 0),
           pettyCashOut:      Number(full.data.pettyCashOut      || 0),
-          // null (not 0) keeps the GCash card hidden for businesses with no
-          // 1012 fund, matching what `calculate` returns for a live report.
-          pettyCashGcashOut: Number(full.data.pettyCashGcashOut || 0) > 0
-            ? Number(full.data.pettyCashGcashOut)
-            : null,
+          // Read straight through — the column is nullable now, so `null`
+          // survives the database round trip as `null` and a genuine 0
+          // (fund had activity but nothing was spent) survives as 0.
+          pettyCashGcashOut: full.data.pettyCashGcashOut,
           cashDisbursed: Number(full.data.cashDisbursed),
           netCash:       Number(full.data.netCash),
           items:         full.data.items || [],
@@ -207,7 +206,10 @@ export default function DailyRemittancePage() {
         netCash:       calcData.netCash,
         cashOnHandOut:     calcData.cashOnHandOut     || 0,
         pettyCashOut:      calcData.pettyCashOut      || 0,
-        pettyCashGcashOut: calcData.pettyCashGcashOut || 0,
+        // Pass through as-is — calcData.pettyCashGcashOut is already either
+        // null (no GCash fund activity) or a number, matching what
+        // /calculate returns. Do not collapse null to 0.
+        pettyCashGcashOut: calcData.pettyCashGcashOut,
         preparedBy:    user ? `${user.firstName} ${user.lastName}` : undefined,
         notes,
         items:         calcData.items,

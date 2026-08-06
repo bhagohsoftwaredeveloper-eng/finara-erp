@@ -782,7 +782,7 @@ model DailyRemittance {
   // entry is later backdated or voided.
   cashOnHandOut     Decimal           @default(0) @db.Decimal(15, 2)
   pettyCashOut      Decimal           @default(0) @db.Decimal(15, 2)
-  pettyCashGcashOut Decimal           @default(0) @db.Decimal(15, 2)
+  pettyCashGcashOut Decimal?          @db.Decimal(15, 2)
   status        DailyRemitStatus      @default(DRAFT)
   preparedBy    String?               @db.VarChar(100)
   approvedBy    String?               @db.VarChar(100)
