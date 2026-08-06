@@ -10,9 +10,12 @@ const endOf   = (d) => new Date(`${d}T23:59:59.999Z`);
 const dateKey = (d) => new Date(d).toISOString().slice(0, 10);
 
 // DATE_RE only checks shape ('YYYY-MM-DD'); it happily accepts '2026-13-40'.
-// A calendar-invalid string still parses to shape but produces an Invalid Date,
-// which would otherwise reach Prisma and surface as an uncaught 500. Reject it here.
-const isValidDateStr = (s) => DATE_RE.test(s) && !Number.isNaN(startOf(s).getTime());
+// A calendar-invalid string still parses to shape but JavaScript silently rolls over
+// (e.g. '2026-02-30' becomes March 2), which is worse than a crash — the user gets
+// a wrong report window with no error. Use round-trip validation: format the parsed
+// Date back to YYYY-MM-DD and check it matches the input exactly. First reject
+// grammar-invalid dates (month/day out of range) via NaN check, then catch rollover.
+const isValidDateStr = (s) => DATE_RE.test(s) && !Number.isNaN(startOf(s).getTime()) && dateKey(startOf(s)) === s;
 
 // Validate and normalise the ?from & ?to range shared by both endpoints.
 function parseRange(query) {

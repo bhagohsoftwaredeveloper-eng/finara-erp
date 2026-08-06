@@ -53,6 +53,26 @@ describe('GET /reports/cash-position', () => {
     expect(prisma.account.findMany).not.toHaveBeenCalled();
   });
 
+  test('rejects a silently rolled-over date such as 2026-02-30 (which silently becomes March 2)', async () => {
+    await expect(call({ from: '2026-02-30', to: '2026-08-06' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.account.findMany).not.toHaveBeenCalled();
+  });
+
+  test('rejects 2026-04-31 (April has only 30 days)', async () => {
+    await expect(call({ from: '2026-04-31', to: '2026-08-06' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.account.findMany).not.toHaveBeenCalled();
+  });
+
+  test('rejects 2026-02-29 (2026 is not a leap year)', async () => {
+    await expect(call({ from: '2026-02-29', to: '2026-08-06' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.account.findMany).not.toHaveBeenCalled();
+  });
+
+  test('accepts 2024-02-29 (2024 is a leap year)', async () => {
+    await call({ from: '2024-02-29', to: '2024-02-29' });
+    expect(prisma.account.findMany).toHaveBeenCalled();
+  });
+
   test('excludes header accounts such as 1000 Current Assets', async () => {
     await call({ from: '2026-08-01', to: '2026-08-06' });
     const where = prisma.account.findMany.mock.calls[0][0].where;
@@ -158,6 +178,16 @@ describe('GET /reports/cash-position/day', () => {
   test('rejects a calendar-invalid date such as 2026-13-40 instead of reaching Prisma', async () => {
     await expect(callDay({ date: '2026-13-40', accountCode: '1011' })).rejects.toMatchObject({ statusCode: 400 });
     expect(prisma.account.findMany).not.toHaveBeenCalled();
+  });
+
+  test('rejects a silently rolled-over date such as 2026-02-30 on the date param', async () => {
+    await expect(callDay({ date: '2026-02-30', accountCode: '1011' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.account.findMany).not.toHaveBeenCalled();
+  });
+
+  test('accepts 2024-02-29 (a valid leap day)', async () => {
+    await callDay({ date: '2024-02-29', accountCode: '1011' });
+    expect(prisma.account.findMany).toHaveBeenCalled();
   });
 
   test('rejects a missing accountCode', async () => {
