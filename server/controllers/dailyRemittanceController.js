@@ -1,14 +1,6 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
-
-// ─── Helper: build date range for a single calendar day ──────────
-function dayRange(dateStr) {
-  // dateStr = 'YYYY-MM-DD'
-  // Use ISO midnight so Prisma / MySQL interprets correctly regardless of server TZ
-  const start = new Date(`${dateStr}T00:00:00.000Z`);
-  const end   = new Date(`${dateStr}T23:59:59.999Z`);
-  return { gte: start, lte: end };
-}
+const { dayRange, isValidDateStr } = require('../utils/dates');
 
 // Split expense vouchers on the account the cash actually left from, NOT on
 // voucher `type`. A reimbursement or direct payment settled out of the petty
@@ -26,6 +18,7 @@ exports.calculate = async (req, res, next) => {
   try {
     const { date } = req.query;
     if (!date) throw createError('date query param required (YYYY-MM-DD)', 400);
+    if (!isValidDateStr(date)) throw createError('date must be a valid YYYY-MM-DD date', 400);
 
     const range = dayRange(date);
 
@@ -249,6 +242,9 @@ exports.create = async (req, res, next) => {
       cashOnHandOut, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items = [],
     } = req.body;
+
+    if (!date) throw createError('date is required (YYYY-MM-DD)', 400);
+    if (!isValidDateStr(date)) throw createError('date must be a valid YYYY-MM-DD date', 400);
 
     // Check uniqueness
     const existing = await prisma.dailyRemittance.findFirst({

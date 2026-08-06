@@ -82,3 +82,26 @@ describe('daily cash movement', () => {
     expect(where.entry.status).toBe('POSTED');
   });
 });
+
+describe('date validation', () => {
+  // '2026-02-30' has valid YYYY-MM-DD shape but JS silently rolls it over to
+  // March 2 — without a round-trip check this would return HTTP 200 built
+  // from the wrong day's GL data instead of rejecting the request.
+  // No mockCash() here: validation must reject before any Prisma call is
+  // made, so queuing aggregate results would only leak unconsumed
+  // mockResolvedValueOnce values into a later test.
+  test('rejects a silently rolled-over date such as 2026-02-30', async () => {
+    await expect(run('2026-02-30')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('rejects a malformed date such as not-a-date with a 400, not a 500', async () => {
+    await expect(run('not-a-date')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('a valid date still succeeds', async () => {
+    mockCash({ pc: [7830, 7890], coh: [0, 7830] });
+    const r = await run('2026-08-05');
+    expect(r.pettyCashOut).toBe(7890);
+    expect(r.cashOnHandOut).toBe(7830);
+  });
+});
