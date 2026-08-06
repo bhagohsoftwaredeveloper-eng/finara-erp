@@ -261,6 +261,7 @@ exports.create = async (req, res, next) => {
     const {
       date, totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
+      cashOnHandOut, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items = [],
     } = req.body;
 
@@ -280,6 +281,9 @@ exports.create = async (req, res, next) => {
         totalExpenses:Number(totalExpenses|| 0),
         cashDisbursed:Number(cashDisbursed|| 0),
         netCash:      Number(netCash      || 0),
+        cashOnHandOut:     Number(cashOnHandOut     || 0),
+        pettyCashOut:      Number(pettyCashOut      || 0),
+        pettyCashGcashOut: Number(pettyCashGcashOut || 0),
         preparedBy,
         notes,
         items: {
@@ -310,6 +314,7 @@ exports.update = async (req, res, next) => {
     const {
       totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
+      cashOnHandOut, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items,
     } = req.body;
 
@@ -322,6 +327,9 @@ exports.update = async (req, res, next) => {
         totalExpenses: totalExpenses != null ? Number(totalExpenses) : undefined,
         cashDisbursed: cashDisbursed != null ? Number(cashDisbursed) : undefined,
         netCash:       netCash       != null ? Number(netCash)       : undefined,
+        cashOnHandOut:     cashOnHandOut     != null ? Number(cashOnHandOut)     : undefined,
+        pettyCashOut:      pettyCashOut      != null ? Number(pettyCashOut)      : undefined,
+        pettyCashGcashOut: pettyCashGcashOut != null ? Number(pettyCashGcashOut) : undefined,
         preparedBy, notes,
       },
     });

@@ -777,6 +777,12 @@ model DailyRemittance {
   cashDisbursed Decimal               @default(0) @db.Decimal(15, 2)
   netCash       Decimal               @default(0) @db.Decimal(15, 2)
   vatCollected  Decimal               @default(0) @db.Decimal(15, 2)
+  // Cash that left each fund on this date. Persisted rather than recomputed:
+  // an approved remittance is a signed document and must not change when an
+  // entry is later backdated or voided.
+  cashOnHandOut     Decimal           @default(0) @db.Decimal(15, 2)
+  pettyCashOut      Decimal           @default(0) @db.Decimal(15, 2)
+  pettyCashGcashOut Decimal           @default(0) @db.Decimal(15, 2)
   status        DailyRemitStatus      @default(DRAFT)
   preparedBy    String?               @db.VarChar(100)
   approvedBy    String?               @db.VarChar(100)
