@@ -728,6 +728,9 @@ model ExpenseVoucher {
   approvedBy     String?              @db.VarChar(100)
   paidDate       DateTime?            @db.Date
   paidBy         String?              @db.VarChar(100)
+  // Account the cash actually came out of (1011 petty cash, 1020 bank, …).
+  // Reports split petty-cash vs collections on this, not on `type`.
+  paymentAccountCode String?          @db.VarChar(10)
   rejectedReason String?              @db.Text
   notes          String?              @db.Text
   items          ExpenseVoucherItem[]
@@ -774,6 +777,12 @@ model DailyRemittance {
   cashDisbursed Decimal               @default(0) @db.Decimal(15, 2)
   netCash       Decimal               @default(0) @db.Decimal(15, 2)
   vatCollected  Decimal               @default(0) @db.Decimal(15, 2)
+  // Cash that left each fund on this date. Persisted rather than recomputed:
+  // an approved remittance is a signed document and must not change when an
+  // entry is later backdated or voided.
+  cashOnHandOut     Decimal           @default(0) @db.Decimal(15, 2)
+  pettyCashOut      Decimal           @default(0) @db.Decimal(15, 2)
+  pettyCashGcashOut Decimal?          @db.Decimal(15, 2)
   status        DailyRemitStatus      @default(DRAFT)
   preparedBy    String?               @db.VarChar(100)
   approvedBy    String?               @db.VarChar(100)

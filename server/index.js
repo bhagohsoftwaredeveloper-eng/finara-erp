@@ -142,6 +142,7 @@ app.use('/api/po-form',       routes.poForm);
 app.use('/api/leads',         routes.leads);
 app.use('/api/cash-requests', routes.cashRequests);
 app.use('/api/opening-balances', routes.openingBalances);
+app.use('/api/reports',          routes.cashPosition);
 
 // ─── 404 ───────────────────────────────────────────────────
 app.use((req, res) => {

@@ -1,30 +1,26 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
+const { dayRange, isValidDateStr } = require('../utils/dates');
 
-// ─── Helper: build date range for a single calendar day ──────────
-function dayRange(dateStr) {
-  // dateStr = 'YYYY-MM-DD'
-  // Use ISO midnight so Prisma / MySQL interprets correctly regardless of server TZ
-  const start = new Date(`${dateStr}T00:00:00.000Z`);
-  const end   = new Date(`${dateStr}T23:59:59.999Z`);
-  return { gte: start, lte: end };
-}
+// Split expense vouchers on the account the cash actually left from, NOT on
+// voucher `type`. A reimbursement or direct payment settled out of the petty
+// cash fund is a petty cash outflow; counting it against collections
+// double-counts the peso. Rows created before `paymentAccountCode` existed fall
+// back to the type-based default the GL posting used at the time.
+const PETTY_CASH_ACCOUNTS = ['1011', '1012'];
+const paidFromPettyCash = (v) =>
+  PETTY_CASH_ACCOUNTS.includes(v.paymentAccountCode || (v.type === 'PETTY_CASH' ? '1011' : '1020'));
 
-// Cutoff for an "as of end of this date" running balance. Cash balances are
-// cumulative — every POSTED entry up to and including the chosen day — so they
-// answer "how much should be in the drawer at close of business that day?"
-function asOfEndOf(dateStr) {
-  return { lte: new Date(`${dateStr}T23:59:59.999Z`) };
-}
+exports.paidFromPettyCash = paidFromPettyCash;
 
 // ─── Auto-Calculate from existing transactions ────────────────────
 exports.calculate = async (req, res, next) => {
   try {
     const { date } = req.query;
     if (!date) throw createError('date query param required (YYYY-MM-DD)', 400);
+    if (!isValidDateStr(date)) throw createError('date must be a valid YYYY-MM-DD date', 400);
 
-    const range   = dayRange(date);
-    const asOfEnd = asOfEndOf(date);   // cash balances are cumulative to end of day
+    const range = dayRange(date);
 
     const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL, pettyCashGcashGL, cashOnHandGL] = await Promise.all([
       prisma.invoice.findMany({
@@ -57,26 +53,26 @@ exports.calculate = async (req, res, next) => {
         where: { businessId: req.businessId, date: range, status: { in: ['APPROVED', 'PAID'] } },
         orderBy: { voucherNo: 'asc' },
       }),
-      // Petty Cash Fund – Cash (1011) balance as of end of the selected date
+      // Petty Cash Fund – Cash (1011) movement on the selected date
       prisma.journalLine.aggregate({
         where: {
-          entry: { businessId: req.businessId, status: 'POSTED', entryDate: asOfEnd },
+          entry: { businessId: req.businessId, status: 'POSTED', entryDate: range },
           account: { accountCode: '1011', businessId: req.businessId },
         },
         _sum: { debit: true, credit: true },
       }),
-      // Petty Cash Fund – GCash (1012) balance as of end of the selected date
+      // Petty Cash Fund – GCash (1012) movement on the selected date
       prisma.journalLine.aggregate({
         where: {
-          entry: { businessId: req.businessId, status: 'POSTED', entryDate: asOfEnd },
+          entry: { businessId: req.businessId, status: 'POSTED', entryDate: range },
           account: { accountCode: '1012', businessId: req.businessId },
         },
         _sum: { debit: true, credit: true },
       }),
-      // Cash on Hand (1010) balance as of end of the selected date
+      // Cash on Hand (1010) movement on the selected date
       prisma.journalLine.aggregate({
         where: {
-          entry: { businessId: req.businessId, status: 'POSTED', entryDate: asOfEnd },
+          entry: { businessId: req.businessId, status: 'POSTED', entryDate: range },
           account: { accountCode: '1010', businessId: req.businessId },
         },
         _sum: { debit: true, credit: true },
@@ -86,9 +82,9 @@ exports.calculate = async (req, res, next) => {
     // ── Expense voucher split ────────────────────────────────────
     const paidVouchers    = expVouchers.filter(v => v.status === 'PAID');
     // Petty cash comes from a separate fund — does NOT affect daily collections net cash
-    const paidPettyCash   = paidVouchers.filter(v => v.type === 'PETTY_CASH');
-    // Direct payments, reimbursements, etc. ARE actual cash outflows from collections
-    const paidCashOutflow = paidVouchers.filter(v => v.type !== 'PETTY_CASH');
+    const paidPettyCash   = paidVouchers.filter(paidFromPettyCash);
+    // Everything else IS an actual cash outflow from collections / bank
+    const paidCashOutflow = paidVouchers.filter(v => !paidFromPettyCash(v));
 
     // ── Totals ──────────────────────────────────────────────────
     const totalSales     = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
@@ -104,18 +100,16 @@ exports.calculate = async (req, res, next) => {
                          + paidCashOutflow.reduce((s, v) => s + Number(v.totalAmount), 0);
     // netCash = what should be physically remitted from daily collections
     const netCash        = cashReceived - cashDisbursed;
-    // Petty Cash Fund – Cash (1011) balance as of end of the selected date
-    const pcDebits         = Number(pettyCashGL._sum.debit  || 0);
-    const pcCredits        = Number(pettyCashGL._sum.credit || 0);
-    const pettyCashBalance = pcDebits - pcCredits;
-    // Petty Cash Fund – GCash (1012) balance as of end of the selected date
-    const pcGcashDebits   = Number(pettyCashGcashGL._sum.debit  || 0);
-    const pcGcashCredits  = Number(pettyCashGcashGL._sum.credit || 0);
-    const pettyCashGcashBalance = pcGcashDebits - pcGcashCredits;
-    // Cash on Hand (1010) balance as of end of the selected date
-    const cohDebits         = Number(cashOnHandGL._sum.debit  || 0);
-    const cohCredits        = Number(cashOnHandGL._sum.credit || 0);
-    const cashOnHandBalance = cohDebits - cohCredits;
+    // Cash that LEFT each fund on the selected date. This report is a one-day
+    // operational document — it never shows a balance, so nothing from an
+    // adjacent day can appear on it. Running balances live in the Cash Position
+    // report instead.
+    const pettyCashOut      = Number(pettyCashGL._sum.credit      || 0);
+    const pettyCashGcashOut = Number(pettyCashGcashGL._sum.credit || 0);
+    const cashOnHandOut     = Number(cashOnHandGL._sum.credit     || 0);
+    // 1012 is optional — hide the GCash card entirely for businesses that never
+    // set the fund up rather than showing a phantom zero.
+    const hasGcashFund = Number(pettyCashGcashGL._sum.debit || 0) > 0 || pettyCashGcashOut > 0;
 
     // ── Detail line items ────────────────────────────────────────
     const items = [
@@ -189,9 +183,9 @@ exports.calculate = async (req, res, next) => {
       date,
       totalSales, vatCollected, cashReceived,
       totalExpenses, pettyCashTotal,
-      pettyCashBalance, pettyCashFunded: pcDebits, pettyCashUsed: pcCredits,
-      pettyCashGcashBalance, pettyCashGcashFunded: pcGcashDebits, pettyCashGcashUsed: pcGcashCredits,
-      cashOnHandBalance, cashDisbursed, netCash,
+      pettyCashOut,
+      pettyCashGcashOut: hasGcashFund ? pettyCashGcashOut : null,
+      cashOnHandOut, cashDisbursed, netCash,
       counts: {
         invoices:      invoices.length,
         collections:   arPayments.length,
@@ -245,8 +239,12 @@ exports.create = async (req, res, next) => {
     const {
       date, totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
+      cashOnHandOut, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items = [],
     } = req.body;
+
+    if (!date) throw createError('date is required (YYYY-MM-DD)', 400);
+    if (!isValidDateStr(date)) throw createError('date must be a valid YYYY-MM-DD date', 400);
 
     // Check uniqueness
     const existing = await prisma.dailyRemittance.findFirst({
@@ -264,6 +262,11 @@ exports.create = async (req, res, next) => {
         totalExpenses:Number(totalExpenses|| 0),
         cashDisbursed:Number(cashDisbursed|| 0),
         netCash:      Number(netCash      || 0),
+        cashOnHandOut:     Number(cashOnHandOut     || 0),
+        pettyCashOut:      Number(pettyCashOut      || 0),
+        // Optional 1012 fund: `null` means "no GCash fund activity that day"
+        // and must survive as `null`, not collapse to 0 like the other funds.
+        pettyCashGcashOut: pettyCashGcashOut != null ? Number(pettyCashGcashOut) : null,
         preparedBy,
         notes,
         items: {
@@ -294,6 +297,7 @@ exports.update = async (req, res, next) => {
     const {
       totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
+      cashOnHandOut, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items,
     } = req.body;
 
@@ -306,6 +310,16 @@ exports.update = async (req, res, next) => {
         totalExpenses: totalExpenses != null ? Number(totalExpenses) : undefined,
         cashDisbursed: cashDisbursed != null ? Number(cashDisbursed) : undefined,
         netCash:       netCash       != null ? Number(netCash)       : undefined,
+        cashOnHandOut:     cashOnHandOut     != null ? Number(cashOnHandOut)     : undefined,
+        pettyCashOut:      pettyCashOut      != null ? Number(pettyCashOut)      : undefined,
+        // Field omitted from the request → undefined (Prisma leaves it
+        // untouched). Field explicitly sent as null → store null, don't
+        // collapse it to "skip"; that's the whole point of this being
+        // nullable — a caller must be able to explicitly clear it back to
+        // "no GCash fund activity."
+        pettyCashGcashOut: pettyCashGcashOut === undefined
+          ? undefined
+          : (pettyCashGcashOut != null ? Number(pettyCashGcashOut) : null),
         preparedBy, notes,
       },
     });

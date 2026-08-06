@@ -124,6 +124,7 @@ const NAV = [
           { label: 'Trial Balance',    href: '/reports/trial-balance' },
           { label: 'Income Statement', href: '/reports/income-statement' },
           { label: 'Balance Sheet',    href: '/reports/balance-sheet' },
+          { label: 'Cash Position',    href: '/reports/cash-position' },
           { label: 'Custom Reports',   href: '/reports/custom' },
         ],
       },

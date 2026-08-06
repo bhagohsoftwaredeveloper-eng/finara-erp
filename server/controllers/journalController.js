@@ -16,6 +16,42 @@ const genEntryNo = async (businessId = 1) => {
   return `JE-${businessId}-${String(n + 1).padStart(6, '0')}`;
 };
 
+// Validate a set of journal lines before they are written.
+// Balanced is not enough: an entry that debits and credits the SAME account
+// nets to zero economically but still inflates that account's debit and credit
+// totals, which breaks every "funded vs used" style report built on those sums.
+const validateLines = (lines) => {
+  if (!Array.isArray(lines) || lines.length < 2) {
+    throw createError('Entry must have at least 2 lines', 400);
+  }
+
+  const totalDebit  = lines.reduce((s, l) => s + Number(l.debit  || 0), 0);
+  const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+  if (Math.abs(totalDebit - totalCredit) > 0.01) {
+    throw createError(`Entry is not balanced. Debits: ${totalDebit}, Credits: ${totalCredit}`, 400);
+  }
+  if (totalDebit < 0.01) {
+    throw createError('Entry has no amounts. Enter a debit and a credit.', 400);
+  }
+
+  // Net each account. At least two accounts must actually move.
+  const net = new Map();
+  for (const l of lines) {
+    const key = Number(l.accountId);
+    if (!key) throw createError('Every line must have an account', 400);
+    net.set(key, (net.get(key) || 0) + Number(l.debit || 0) - Number(l.credit || 0));
+  }
+  const moved = [...net.values()].filter(v => Math.abs(v) > 0.01);
+  if (moved.length < 2) {
+    throw createError(
+      'Entry does not move money between accounts — it debits and credits the same account. Pick the account the funds came from (or went to) on the other line.',
+      400,
+    );
+  }
+};
+
+exports.validateLines = validateLines;
+
 exports.list = async (req, res, next) => {
   try {
     const { status, from, to, search, page = 1, limit = 20 } = req.query;
@@ -54,12 +90,7 @@ exports.create = async (req, res, next) => {
   try {
     const { entryDate, reference, description, notes, lines } = req.body;
 
-    // Validate balanced entry
-    const totalDebit  = lines.reduce((s, l) => s + Number(l.debit  || 0), 0);
-    const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      throw createError(`Entry is not balanced. Debits: ${totalDebit}, Credits: ${totalCredit}`, 400);
-    }
+    validateLines(lines);
 
     const entryNo = await genEntryNo(req.businessId);
     const entry = await prisma.journalEntry.create({
@@ -96,11 +127,7 @@ exports.update = async (req, res, next) => {
     if (entry.status !== 'DRAFT') throw createError('Only DRAFT entries can be edited', 400);
 
     const { description, reference, notes, lines } = req.body;
-    if (lines) {
-      const totalDebit  = lines.reduce((s, l) => s + Number(l.debit  || 0), 0);
-      const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
-      if (Math.abs(totalDebit - totalCredit) > 0.01) throw createError('Entry is not balanced', 400);
-    }
+    if (lines) validateLines(lines);
 
     const updated = await prisma.$transaction(async (tx) => {
       if (lines) {

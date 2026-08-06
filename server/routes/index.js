@@ -31,4 +31,5 @@ module.exports = {
   leads:         require('./leads'),
   cashRequests:  require('./cashRequests'),
   openingBalances: require('./openingBalances'),
+  cashPosition:  require('./cashPosition'),
 };
