@@ -126,18 +126,25 @@ function AccountCashbook({ account }) {
 export default function CashPositionPage() {
   const [from, setFrom]   = useState(monthStart());
   const [to,   setTo]     = useState(today());
+  const [accountCode, setAccountCode] = useState('');
+  const [accountOptions, setAccountOptions] = useState([]);
   const [data, setData]   = useState(null);
   const [busy, setBusy]   = useState(false);
 
   const generate = useCallback(async () => {
     setBusy(true);
     try {
-      const res = await reports.cashPosition.report({ from, to });
+      const res = await reports.cashPosition.report({ from, to, ...(accountCode ? { accountCode } : {}) });
       setData(res.data);
+      // Only an unfiltered fetch carries the full account list — a narrower,
+      // single-account response must not collapse the selector's options.
+      if (!accountCode) {
+        setAccountOptions(res.data.accounts.map((a) => ({ code: a.accountCode, name: a.accountName })));
+      }
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Could not generate the report');
     } finally { setBusy(false); }
-  }, [from, to]);
+  }, [from, to, accountCode]);
 
   const print = () => {
     if (!data) return;
@@ -184,6 +191,15 @@ export default function CashPositionPage() {
           <div>
             <label className="label">To</label>
             <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Account</label>
+            <select className="input" value={accountCode} onChange={(e) => setAccountCode(e.target.value)}>
+              <option value="">All cash accounts</option>
+              {accountOptions.map((a) => (
+                <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+              ))}
+            </select>
           </div>
           <button className="btn-primary" onClick={generate} disabled={busy}>
             <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} />
