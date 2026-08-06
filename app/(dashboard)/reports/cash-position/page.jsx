@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, Fragment } from 'react';
 import { reports } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Wallet, RefreshCw, Printer, ChevronRight, ChevronDown } from 'lucide-react';
@@ -13,7 +13,7 @@ const fmt = (n) => formatCurrency(Number(n || 0));
 const signed = (n) => (Number(n) < 0 ? 'text-red-600' : 'text-gray-900');
 
 // One account's cashbook table, with lazily-loaded per-day drill-down.
-function AccountCashbook({ account, from, to }) {
+function AccountCashbook({ account }) {
   const [openDate, setOpenDate] = useState(null);
   const [detail,   setDetail]   = useState({});   // date → lines[]
   const [loading,  setLoading]  = useState(null);
@@ -29,7 +29,11 @@ function AccountCashbook({ account, from, to }) {
     } catch {
       toast.error('Could not load that day');
       setOpenDate(null);
-    } finally { setLoading(null); }
+    } finally {
+      // Only clear the indicator if it's still ours — a slower, earlier
+      // request resolving after a newer one started must not clear it.
+      setLoading((current) => (current === date ? null : current));
+    }
   };
 
   return (
@@ -66,8 +70,8 @@ function AccountCashbook({ account, from, to }) {
               )}
 
               {account.rows.map((r) => (
-                <>
-                  <tr key={r.date} onClick={() => toggle(r.date)} className="hover:bg-gray-50/50 cursor-pointer text-sm">
+                <Fragment key={r.date}>
+                  <tr onClick={() => toggle(r.date)} className="hover:bg-gray-50/50 cursor-pointer text-sm">
                     <td className="flex items-center gap-1">
                       {openDate === r.date ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
                       {dateFmt(r.date)}
@@ -79,7 +83,7 @@ function AccountCashbook({ account, from, to }) {
                   </tr>
 
                   {openDate === r.date && (
-                    <tr key={`${r.date}-detail`}>
+                    <tr>
                       <td colSpan={5} className="bg-gray-50 p-0">
                         {loading === r.date ? (
                           <div className="p-4 text-center text-gray-400 text-sm">Loading…</div>
@@ -101,7 +105,7 @@ function AccountCashbook({ account, from, to }) {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
 
               <tr className="font-semibold border-t text-sm">
@@ -202,7 +206,7 @@ export default function CashPositionPage() {
       )}
 
       {data?.accounts.map((a) => (
-        <AccountCashbook key={a.accountCode} account={a} from={data.from} to={data.to} />
+        <AccountCashbook key={a.accountCode} account={a} />
       ))}
     </div>
   );
