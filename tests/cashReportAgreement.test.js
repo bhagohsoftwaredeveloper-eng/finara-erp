@@ -5,12 +5,14 @@ jest.mock('../server/config/database', () => ({
   paymentAP:            { findMany: jest.fn() },
   inventoryTransaction: { findMany: jest.fn() },
   expenseVoucher:       { findMany: jest.fn() },
-  journalLine:          { aggregate: jest.fn() },
+  journalLine:          { aggregate: jest.fn(), findMany: jest.fn() },
+  account:              { findMany: jest.fn() },
 }));
 jest.mock('../server/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
-const prisma = require('../server/config/database');
-const daily  = require('../server/controllers/dailyRemittanceController');
+const prisma       = require('../server/config/database');
+const daily        = require('../server/controllers/dailyRemittanceController');
+const cashPosition = require('../server/controllers/cashPositionController');
 const { buildCashbook, round2 } = require('../server/utils/cashbook');
 
 // One shared GL fixture for account 1011, keyed by date. BOTH reports are
@@ -45,6 +47,41 @@ const cashbook = buildCashbook(0, Object.entries(GL_1011)
   .map(([date, m]) => ({ date, ...m })));
 const byDate = Object.fromEntries(cashbook.rows.map((r) => [r.date, r]));
 
+// A GL line as cashPositionController selects it (see tests/cashPosition.test.js).
+const line = (date, debit, credit) => ({
+  debit, credit, entry: { entryDate: new Date(`${date}T00:00:00.000Z`) },
+});
+
+// Run the real Cash Position controller against the SAME GL_1011 fixture, over
+// a range covering every date in it. This is the piece the rest of this file
+// was missing: buildCashbook is the pure engine, but cashPositionController is
+// the one place that actually performs the GL → movement mapping (debit → in,
+// credit → out, day-bucketing by dateKey) on the way to an HTTP response.
+const runReport = () => {
+  jest.clearAllMocks();
+  for (const m of ['invoice', 'paymentAR', 'bill', 'paymentAP', 'inventoryTransaction', 'expenseVoucher']) {
+    prisma[m].findMany.mockResolvedValue([]);
+  }
+  prisma.account.findMany.mockResolvedValue([
+    { id: 3, accountCode: '1011', accountName: 'Petty Cash Fund', children: [] },
+  ]);
+  // Opening balance for a range starting 2026-08-01: GL_1011's earliest entry
+  // is 2026-08-03, so there is nothing POSTED strictly before the range.
+  prisma.journalLine.aggregate.mockResolvedValue({ _sum: { debit: 0, credit: 0 } });
+  prisma.journalLine.findMany.mockResolvedValue(
+    Object.entries(GL_1011)
+      .filter(([, m]) => m.in || m.out)
+      .map(([date, m]) => line(date, m.in, m.out)),
+  );
+  return new Promise((resolve, reject) => {
+    cashPosition.report(
+      { query: { from: '2026-08-01', to: '2026-08-06' }, businessId: 1 },
+      { json: resolve },
+      reject,
+    );
+  });
+};
+
 describe('the two cash reports agree', () => {
   test.each(Object.keys(GL_1011))(
     'the daily report and the cashbook report the same outflow for %s',
@@ -70,5 +107,33 @@ describe('the two cash reports agree', () => {
   test('a day the daily report calls zero produces no cashbook row', async () => {
     expect((await runDaily('2026-08-04')).pettyCashOut).toBe(0);
     expect(byDate['2026-08-04']).toBeUndefined();
+  });
+});
+
+// The block above only ever drives buildCashbook — the pure engine — never
+// cashPositionController.report, the actual HTTP-facing endpoint where the
+// GL → movement mapping happens. If that mapping were reversed or broken,
+// every test above would stay green. Close that gap here by driving the real
+// controller from the same fixture and asserting it agrees with the daily
+// controller too.
+describe('the daily report and the real cash position controller agree', () => {
+  test.each(Object.keys(GL_1011))(
+    'cashPositionController.report and the daily report agree on the outflow for %s',
+    async (date) => {
+      const report = await runReport();
+      const byReportDate = Object.fromEntries(report.accounts[0].rows.map((r) => [r.date, r]));
+      const daily = await runDaily(date);
+      expect(byReportDate[date]?.out ?? 0).toBe(daily.pettyCashOut);
+    },
+  );
+
+  // Mirrors the "day the daily report calls zero produces no cashbook row"
+  // test above, but through the real controller rather than buildCashbook
+  // directly.
+  test('a day the daily report calls zero produces no row from the real controller', async () => {
+    const report = await runReport();
+    const byReportDate = Object.fromEntries(report.accounts[0].rows.map((r) => [r.date, r]));
+    expect((await runDaily('2026-08-04')).pettyCashOut).toBe(0);
+    expect(byReportDate['2026-08-04']).toBeUndefined();
   });
 });
