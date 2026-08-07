@@ -155,6 +155,7 @@ export default function DailyRemittancePage() {
           totalExpenses: Number(full.data.totalExpenses),
           pettyCashTotal:    Number(full.data.pettyCashTotal    || 0),
           cashOnHandOut:     Number(full.data.cashOnHandOut     || 0),
+          pettyCashIn:       Number(full.data.pettyCashIn       || 0),
           pettyCashOut:      Number(full.data.pettyCashOut      || 0),
           // Read straight through — the column is nullable now, so `null`
           // survives the database round trip as `null` and a genuine 0
@@ -205,6 +206,7 @@ export default function DailyRemittancePage() {
         cashDisbursed: calcData.cashDisbursed,
         netCash:       calcData.netCash,
         cashOnHandOut:     calcData.cashOnHandOut     || 0,
+        pettyCashIn:       calcData.pettyCashIn       || 0,
         pettyCashOut:      calcData.pettyCashOut      || 0,
         // Pass through as-is — calcData.pettyCashGcashOut is already either
         // null (no GCash fund activity) or a number, matching what
@@ -322,6 +324,7 @@ export default function DailyRemittancePage() {
             ${summaryRow('Cash Disbursed (Payments)', d.cashDisbursed)}
             ${summaryRow('Net Cash Flow', d.netCash, true)}
             ${summaryRow('Cash on Hand — cash out (1010)', d.cashOnHandOut || 0)}
+            ${summaryRow('Petty Cash — put in (1011)', d.pettyCashIn || 0)}
             ${summaryRow('Petty Cash — spent (1011)', d.pettyCashOut || 0)}
             ${d.pettyCashGcashOut != null ? summaryRow('Petty Cash — spent (GCash 1012)', d.pettyCashGcashOut) : ''}
           </tbody>
@@ -525,17 +528,17 @@ export default function DailyRemittancePage() {
               </div>
               <div className="text-xs text-gray-400 mt-0.5">Cash out today · Account 1010</div>
             </div>
-            {/* Petty Cash – Cash (1011) — spent today */}
+            {/* Petty Cash – Cash (1011) — put in vs. spent today */}
             <div className="card p-4 border-yellow-200 bg-yellow-50">
               <div className="flex items-center gap-2 mb-2">
                 <Wallet className="w-4 h-4 text-yellow-600" />
                 <span className="text-xs text-gray-500 font-medium">Petty Cash – Cash</span>
               </div>
               <div className="text-xl font-bold text-yellow-700">
-                {fmt(calcData.pettyCashOut || 0)}
+                {fmt(calcData.pettyCashIn || 0)}
               </div>
               <div className="text-xs text-gray-400 mt-0.5">
-                Spent today · {calcData.counts?.pettyCash ?? 0} voucher{(calcData.counts?.pettyCash ?? 0) === 1 ? '' : 's'}
+                {fmt(calcData.pettyCashOut || 0)} Spent today · {calcData.counts?.pettyCash ?? 0} voucher{(calcData.counts?.pettyCash ?? 0) === 1 ? '' : 's'}
               </div>
             </div>
             {calcData.pettyCashGcashOut != null && (

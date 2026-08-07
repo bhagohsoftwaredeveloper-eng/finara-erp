@@ -781,6 +781,7 @@ model DailyRemittance {
   // an approved remittance is a signed document and must not change when an
   // entry is later backdated or voided.
   cashOnHandOut     Decimal           @default(0) @db.Decimal(15, 2)
+  pettyCashIn       Decimal           @default(0) @db.Decimal(15, 2)
   pettyCashOut      Decimal           @default(0) @db.Decimal(15, 2)
   pettyCashGcashOut Decimal?          @db.Decimal(15, 2)
   status        DailyRemitStatus      @default(DRAFT)

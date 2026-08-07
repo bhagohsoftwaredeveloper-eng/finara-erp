@@ -13,6 +13,16 @@ const paidFromPettyCash = (v) =>
 
 exports.paidFromPettyCash = paidFromPettyCash;
 
+// `paymentAccountCode` is a point-in-time snapshot and can drift from the
+// ledger (e.g. a voucher edited/reposted outside the normal pay flow). The
+// GL credit line of the voucher's own posting is what actually moved the
+// cash, and it's the same source `pettyCashOut`/`cashOnHandOut` below are
+// built from — so classify each voucher against it when it's available, and
+// fall back to the stored field only when no matching GL line is found
+// (e.g. liquidations, which post under the cash request's reference).
+const cashAccountForVoucher = (v, glAccountByVoucherNo) =>
+  glAccountByVoucherNo.get(v.voucherNo) || v.paymentAccountCode || (v.type === 'PETTY_CASH' ? '1011' : '1020');
+
 // ─── Auto-Calculate from existing transactions ────────────────────
 exports.calculate = async (req, res, next) => {
   try {
@@ -80,11 +90,32 @@ exports.calculate = async (req, res, next) => {
     ]);
 
     // ── Expense voucher split ────────────────────────────────────
-    const paidVouchers    = expVouchers.filter(v => v.status === 'PAID');
+    const paidVouchers = expVouchers.filter(v => v.status === 'PAID');
+
+    // Ground-truth cash account per voucher: the credit line of its own
+    // posted journal entry (reference = voucherNo). Looked up in one batch
+    // rather than trusting the (possibly stale) `paymentAccountCode` column.
+    const paidVoucherNos = paidVouchers.map(v => v.voucherNo);
+    const voucherCashLines = paidVoucherNos.length
+      ? await prisma.journalLine.findMany({
+          where: {
+            entry: { businessId: req.businessId, status: 'POSTED', entryDate: range, reference: { in: paidVoucherNos } },
+            credit: { gt: 0 },
+          },
+          include: { entry: { select: { reference: true } }, account: { select: { accountCode: true } } },
+        })
+      : [];
+    const glAccountByVoucherNo = new Map();
+    for (const line of voucherCashLines) {
+      const ref = line.entry.reference;
+      if (ref && !glAccountByVoucherNo.has(ref)) glAccountByVoucherNo.set(ref, line.account.accountCode);
+    }
+    const paidFromPettyCashV = (v) => paidFromPettyCash({ paymentAccountCode: cashAccountForVoucher(v, glAccountByVoucherNo) });
+
     // Petty cash comes from a separate fund — does NOT affect daily collections net cash
-    const paidPettyCash   = paidVouchers.filter(paidFromPettyCash);
+    const paidPettyCash   = paidVouchers.filter(paidFromPettyCashV);
     // Everything else IS an actual cash outflow from collections / bank
-    const paidCashOutflow = paidVouchers.filter(v => !paidFromPettyCash(v));
+    const paidCashOutflow = paidVouchers.filter(v => !paidFromPettyCashV(v));
 
     // ── Totals ──────────────────────────────────────────────────
     const totalSales     = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
@@ -107,6 +138,10 @@ exports.calculate = async (req, res, next) => {
     const pettyCashOut      = Number(pettyCashGL._sum.credit      || 0);
     const pettyCashGcashOut = Number(pettyCashGcashGL._sum.credit || 0);
     const cashOnHandOut     = Number(cashOnHandGL._sum.credit     || 0);
+    // Cash that went INTO the petty cash fund on this date (replenishments/top-ups) —
+    // the debit side of 1011, shown alongside pettyCashOut so the card reads
+    // "how much was put in" vs "how much was spent" rather than just one figure.
+    const pettyCashIn       = Number(pettyCashGL._sum.debit       || 0);
     // 1012 is optional — hide the GCash card entirely for businesses that never
     // set the fund up rather than showing a phantom zero.
     const hasGcashFund = Number(pettyCashGcashGL._sum.debit || 0) > 0 || pettyCashGcashOut > 0;
@@ -183,7 +218,7 @@ exports.calculate = async (req, res, next) => {
       date,
       totalSales, vatCollected, cashReceived,
       totalExpenses, pettyCashTotal,
-      pettyCashOut,
+      pettyCashIn, pettyCashOut,
       pettyCashGcashOut: hasGcashFund ? pettyCashGcashOut : null,
       cashOnHandOut, cashDisbursed, netCash,
       counts: {
@@ -239,7 +274,7 @@ exports.create = async (req, res, next) => {
     const {
       date, totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
-      cashOnHandOut, pettyCashOut, pettyCashGcashOut,
+      cashOnHandOut, pettyCashIn, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items = [],
     } = req.body;
 
@@ -263,6 +298,7 @@ exports.create = async (req, res, next) => {
         cashDisbursed:Number(cashDisbursed|| 0),
         netCash:      Number(netCash      || 0),
         cashOnHandOut:     Number(cashOnHandOut     || 0),
+        pettyCashIn:       Number(pettyCashIn       || 0),
         pettyCashOut:      Number(pettyCashOut      || 0),
         // Optional 1012 fund: `null` means "no GCash fund activity that day"
         // and must survive as `null`, not collapse to 0 like the other funds.
@@ -297,7 +333,7 @@ exports.update = async (req, res, next) => {
     const {
       totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
-      cashOnHandOut, pettyCashOut, pettyCashGcashOut,
+      cashOnHandOut, pettyCashIn, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items,
     } = req.body;
 
@@ -311,6 +347,7 @@ exports.update = async (req, res, next) => {
         cashDisbursed: cashDisbursed != null ? Number(cashDisbursed) : undefined,
         netCash:       netCash       != null ? Number(netCash)       : undefined,
         cashOnHandOut:     cashOnHandOut     != null ? Number(cashOnHandOut)     : undefined,
+        pettyCashIn:       pettyCashIn       != null ? Number(pettyCashIn)       : undefined,
         pettyCashOut:      pettyCashOut      != null ? Number(pettyCashOut)      : undefined,
         // Field omitted from the request → undefined (Prisma leaves it
         // untouched). Field explicitly sent as null → store null, don't
