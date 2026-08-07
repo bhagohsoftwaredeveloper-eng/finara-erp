@@ -15,6 +15,14 @@ import PesoReceipt from '@/components/icons/PesoReceipt';
 const fmt = n => formatCurrency(Number(n || 0));
 const today = () => new Date().toISOString().slice(0, 10);
 
+// "Cash ₱750.00 · Bank Transfer ₱500.00", largest first — falls back to the
+// caller's default text when there's nothing to break down.
+const methodBreakdown = (byMethod, fallback) => {
+  const entries = Object.entries(byMethod || {}).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return fallback;
+  return entries.map(([method, amt]) => `${method} ${fmt(amt)}`).join(' · ');
+};
+
 const CATEGORIES = {
   SALES:        { label: 'Sales Invoices',           icon: ShoppingCart, color: 'blue',   sign: +1 },
   COLLECTION:   { label: 'Collections',              icon: Banknote,     color: 'green',  sign: +1 },
@@ -146,14 +154,37 @@ export default function DailyRemittancePage() {
         const full = await remittanceApi.daily.get(res.data[0].id);
         setSaved(full.data);
         setNotes(full.data.notes || '');
+        // collectionsByMethod isn't persisted — derive it from the saved items
+        // so the Cash Received breakdown survives a reload, same treatment as
+        // counts.pettyCash below.
+        const collectionsByMethod = {};
+        for (const it of full.data.items || []) {
+          if (it.category !== 'COLLECTION') continue;
+          let meta = {};
+          try { meta = JSON.parse(it.meta || '{}'); } catch {}
+          const method = meta.method || 'Unspecified';
+          collectionsByMethod[method] = (collectionsByMethod[method] || 0) + Number(it.amount);
+        }
+        // counts.cashOnHand isn't persisted either — derive it from saved
+        // DISBURSEMENT items whose stamped accountCode is 1010, mirroring
+        // counts.pettyCash below.
+        let cashOnHandVoucherCount = 0;
+        for (const it of full.data.items || []) {
+          if (it.category !== 'DISBURSEMENT') continue;
+          let meta = {};
+          try { meta = JSON.parse(it.meta || '{}'); } catch {}
+          if (meta.accountCode === '1010') cashOnHandVoucherCount++;
+        }
         // Rebuild calcData shape from saved items
         setCalcData({
           date: d,
           totalSales:    Number(full.data.totalSales),
           vatCollected:  Number(full.data.vatCollected),
           cashReceived:  Number(full.data.cashReceived),
+          collectionsByMethod,
           totalExpenses: Number(full.data.totalExpenses),
           pettyCashTotal:    Number(full.data.pettyCashTotal    || 0),
+          cashOnHandIn:      Number(full.data.cashOnHandIn      || 0),
           cashOnHandOut:     Number(full.data.cashOnHandOut     || 0),
           pettyCashIn:       Number(full.data.pettyCashIn       || 0),
           pettyCashOut:      Number(full.data.pettyCashOut      || 0),
@@ -168,6 +199,7 @@ export default function DailyRemittancePage() {
           // so the voucher count on the Petty Cash card survives a reload.
           counts: {
             pettyCash: (full.data.items || []).filter(it => it.category === 'PETTY_CASH').length,
+            cashOnHand: cashOnHandVoucherCount,
           },
         });
       } else {
@@ -205,6 +237,7 @@ export default function DailyRemittancePage() {
         totalExpenses: calcData.totalExpenses,
         cashDisbursed: calcData.cashDisbursed,
         netCash:       calcData.netCash,
+        cashOnHandIn:      calcData.cashOnHandIn      || 0,
         cashOnHandOut:     calcData.cashOnHandOut     || 0,
         pettyCashIn:       calcData.pettyCashIn       || 0,
         pettyCashOut:      calcData.pettyCashOut      || 0,
@@ -309,6 +342,16 @@ export default function DailyRemittancePage() {
         <td style="padding:8px 12px;border:1px solid #e5e7eb;text-align:right">${fmt(value)}</td>
       </tr>`;
 
+    // Indented breakdown rows nested under a parent summaryRow, e.g. Cash
+    // Received split by how each collection was actually paid.
+    const summarySubRows = (byMethod) =>
+      Object.entries(byMethod || {})
+        .sort((a, b) => b[1] - a[1])
+        .map(([method, amt]) => `<tr>
+          <td style="padding:4px 12px 4px 28px;border:1px solid #e5e7eb;color:#6b7280;font-size:11px">— ${method}</td>
+          <td style="padding:4px 12px;border:1px solid #e5e7eb;text-align:right;color:#6b7280;font-size:11px">${fmt(amt)}</td>
+        </tr>`).join('');
+
     printDocument(
       'Daily Remittance Report',
       `Date: ${new Date(date + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
@@ -320,10 +363,12 @@ export default function DailyRemittancePage() {
             ${summaryRow('Total Sales Invoiced', d.totalSales)}
             ${summaryRow('VAT Collected', d.vatCollected)}
             ${summaryRow('Cash Received (Collections)', d.cashReceived)}
+            ${summarySubRows(d.collectionsByMethod)}
             ${summaryRow('Total Expenses Incurred', d.totalExpenses)}
             ${summaryRow('Cash Disbursed (Payments)', d.cashDisbursed)}
             ${summaryRow('Net Cash Flow', d.netCash, true)}
-            ${summaryRow('Cash on Hand — cash out (1010)', d.cashOnHandOut || 0)}
+            ${summaryRow('Cash on Hand — put in (1010)', d.cashOnHandIn || 0)}
+            ${summaryRow('Cash on Hand — spent (1010)', d.cashOnHandOut || 0)}
             ${summaryRow('Petty Cash — put in (1011)', d.pettyCashIn || 0)}
             ${summaryRow('Petty Cash — spent (1011)', d.pettyCashOut || 0)}
             ${d.pettyCashGcashOut != null ? summaryRow('Petty Cash — spent (GCash 1012)', d.pettyCashGcashOut) : ''}
@@ -497,7 +542,9 @@ export default function DailyRemittancePage() {
                 <span className="text-xs text-gray-500 font-medium">Cash Received</span>
               </div>
               <div className="text-xl font-bold text-green-700">{fmt(calcData.cashReceived)}</div>
-              <div className="text-xs text-gray-400 mt-0.5">AR Collections</div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {methodBreakdown(calcData.collectionsByMethod, 'AR Collections')}
+              </div>
             </div>
             {/* Expenses */}
             <div className="card p-4">
@@ -517,16 +564,18 @@ export default function DailyRemittancePage() {
               <div className="text-xl font-bold text-red-700">{fmt(calcData.cashDisbursed)}</div>
               <div className="text-xs text-gray-400 mt-0.5">AP payments + vouchers</div>
             </div>
-            {/* Cash on Hand — money that left account 1010 today */}
+            {/* Cash on Hand (1010) — put in vs. spent today */}
             <div className="card p-4 border-blue-200 bg-blue-50">
               <div className="flex items-center gap-2 mb-2">
                 <Banknote className="w-4 h-4 text-blue-600" />
                 <span className="text-xs text-gray-500 font-medium">Cash on Hand</span>
               </div>
               <div className="text-xl font-bold text-blue-700">
-                {fmt(calcData.cashOnHandOut || 0)}
+                {fmt(calcData.cashOnHandIn || 0)}
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">Cash out today · Account 1010</div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {fmt(calcData.cashOnHandOut || 0)} Spent today · {calcData.counts?.cashOnHand ?? 0} voucher{(calcData.counts?.cashOnHand ?? 0) === 1 ? '' : 's'}
+              </div>
             </div>
             {/* Petty Cash – Cash (1011) — put in vs. spent today */}
             <div className="card p-4 border-yellow-200 bg-yellow-50">

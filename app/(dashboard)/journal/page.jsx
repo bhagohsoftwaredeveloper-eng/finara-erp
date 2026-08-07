@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { journal as jApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock, Printer } from 'lucide-react';
+import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock, Printer, Search } from 'lucide-react';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import AccountSelect from '@/components/ui/AccountSelect';
 import NumberInput, { groupThousands } from '@/components/NumberInput';
@@ -361,7 +361,7 @@ export default function JournalPage() {
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState([]);
   const [modal, setModal] = useState(null);
-  const [filter, setFilter] = useState({ status: '', from: '', to: '' });
+  const [filter, setFilter] = useState({ status: '', from: '', to: '', search: '' });
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [voidEntry, setVoidEntry] = useState(null);
@@ -425,6 +425,11 @@ export default function JournalPage() {
       {/* Filters */}
       <div className="card mb-4">
         <div className="card-body py-3 flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+            <input className="input pl-9 w-full" placeholder="Search entry no., description, reference…"
+              value={filter.search} onChange={(e) => setFilter(f => ({...f, search: e.target.value}))} />
+          </div>
           <select className="select w-40" value={filter.status} onChange={(e) => setFilter(f => ({...f, status: e.target.value}))}>
             <option value="">All Status</option>
             <option>DRAFT</option><option>POSTED</option><option>VOIDED</option>
@@ -438,7 +443,7 @@ export default function JournalPage() {
             <input type="date" className="input w-40" value={filter.to} onChange={(e) => setFilter(f => ({...f, to: e.target.value}))} />
           </div>
           <button className="btn-secondary" onClick={load}><Filter className="w-4 h-4" /> Filter</button>
-          <button className="btn-secondary" onClick={() => setFilter({ status: '', from: '', to: '' })}>Reset</button>
+          <button className="btn-secondary" onClick={() => setFilter({ status: '', from: '', to: '', search: '' })}>Reset</button>
         </div>
       </div>
 

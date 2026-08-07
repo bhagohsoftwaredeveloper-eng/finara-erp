@@ -58,7 +58,11 @@ exports.list = async (req, res, next) => {
     const where = { businessId: req.businessId };
     if (status) where.status = status;
     if (from || to) where.entryDate = { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) };
-    if (search) where.OR = [{ entryNo: { contains: search } }, { description: { contains: search } }];
+    if (search) where.OR = [
+      { entryNo:     { contains: search } },
+      { description: { contains: search } },
+      { reference:   { contains: search } },
+    ];
 
     const [entries, total] = await Promise.all([
       prisma.journalEntry.findMany({

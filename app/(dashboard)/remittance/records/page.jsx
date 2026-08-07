@@ -123,6 +123,7 @@ export default function RemittanceRecords() {
   const [tab,       setTab]       = useState('All');
   const [filterYear,  setFilterYear]  = useState(String(today.getFullYear()));
   const [filterMonth, setFilterMonth] = useState('');
+  const [search,      setSearch]      = useState('');
 
   // New/Edit drawer state
   const [drawerOpen,  setDrawerOpen]  = useState(false);
@@ -271,7 +272,7 @@ export default function RemittanceRecords() {
   }
 
   function handlePrint() {
-    const rows = records.map(r => `
+    const rows = filteredRecords.map(r => `
       <tr>
         <td>${TYPE_OPTIONS.find(t => t.value === r.type)?.label}</td>
         <td>${MONTHS_SHORT[r.periodMonth - 1]} ${r.periodYear}</td>
@@ -285,7 +286,7 @@ export default function RemittanceRecords() {
           color:${r.status==='PAID'?'#15803d':r.status==='FILED'?'#1d4ed8':r.status==='OVERDUE'?'#b91c1c':'#374151'}">
           ${r.status}</span></td>
       </tr>`).join('');
-    printDocument('Remittance Records', `${tab !== 'All' ? tab : 'All Types'} · ${filterYear}`, `
+    printDocument('Remittance Records', `${tab !== 'All' ? tab : 'All Types'} · ${filterYear}${search ? ` · Search: "${search}"` : ''}`, `
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead>
           <tr style="background:#f8fafc">
@@ -303,6 +304,15 @@ export default function RemittanceRecords() {
   // Year options for filter
   const yearOptions = [];
   for (let y = today.getFullYear() + 1; y >= 2020; y--) yearOptions.push(y);
+
+  // Client-side search — the page already loads a full year/type at once (no
+  // pagination), so filtering the fetched set is simpler than a server round-trip.
+  const q = search.trim().toLowerCase();
+  const filteredRecords = !q ? records : records.filter(r => {
+    const tOpt = TYPE_OPTIONS.find(t => t.value === r.type);
+    return [tOpt?.label, r.referenceNo, r.notes, r.status, `${MONTHS_LONG[r.periodMonth - 1]} ${r.periodYear}`]
+      .filter(Boolean).some(v => String(v).toLowerCase().includes(q));
+  });
 
   return (
     <div className="space-y-5">
@@ -331,6 +341,11 @@ export default function RemittanceRecords() {
                   {t}
                 </button>
               ))}
+            </div>
+            <div className="relative flex-1 min-w-48">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+              <input className="input pl-9 w-full" placeholder="Search reference no., notes, status…"
+                value={search} onChange={e => setSearch(e.target.value)} />
             </div>
             <div className="flex gap-2 ml-auto">
               <select className="input w-36" value={filterYear} onChange={e => setFilterYear(e.target.value)}>
@@ -368,7 +383,9 @@ export default function RemittanceRecords() {
                     <p>No remittance records. Click <strong>New Remittance</strong> to start.</p>
                   </td>
                 </tr>
-              ) : records.map(r => {
+              ) : filteredRecords.length === 0 ? (
+                <tr><td colSpan={10} className="text-center py-10 text-gray-400">No records match "{search}"</td></tr>
+              ) : filteredRecords.map(r => {
                 const tOpt   = TYPE_OPTIONS.find(t => t.value === r.type);
                 const canEdit = r.status !== 'PAID';
                 return (

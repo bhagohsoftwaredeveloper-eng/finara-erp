@@ -116,11 +116,22 @@ exports.calculate = async (req, res, next) => {
     const paidPettyCash   = paidVouchers.filter(paidFromPettyCashV);
     // Everything else IS an actual cash outflow from collections / bank
     const paidCashOutflow = paidVouchers.filter(v => !paidFromPettyCashV(v));
+    // Vouchers specifically paid out of Cash on Hand (1010) — a subset of
+    // paidCashOutflow, same GL-verified classification used for petty cash,
+    // so the Cash on Hand card's voucher count agrees with its GL-based total.
+    const paidCashOnHand  = paidVouchers.filter(v => cashAccountForVoucher(v, glAccountByVoucherNo) === '1010');
 
     // ── Totals ──────────────────────────────────────────────────
     const totalSales     = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
     const vatCollected   = invoices.reduce((s, i) => s + Number(i.vatAmount),   0);
     const cashReceived   = arPayments.reduce((s, p) => s + Number(p.amount),    0);
+    // Collections split by how the customer actually paid — informational, not
+    // persisted, same treatment as pettyCashTotal/counts below.
+    const collectionsByMethod = arPayments.reduce((acc, p) => {
+      const method = p.paymentMethod || 'Unspecified';
+      acc[method] = (acc[method] || 0) + Number(p.amount);
+      return acc;
+    }, {});
     // totalExpenses = AP Bills + ALL approved/paid vouchers (informational card)
     const totalExpenses  = bills.reduce((s, b) => s + Number(b.totalAmount),    0)
                          + expVouchers.reduce((s, v) => s + Number(v.totalAmount), 0);
@@ -142,6 +153,10 @@ exports.calculate = async (req, res, next) => {
     // the debit side of 1011, shown alongside pettyCashOut so the card reads
     // "how much was put in" vs "how much was spent" rather than just one figure.
     const pettyCashIn       = Number(pettyCashGL._sum.debit       || 0);
+    // Cash that went INTO Cash on Hand on this date (cash sales collected,
+    // change/sukli returned from a liquidated cash advance, etc.) — the debit
+    // side of 1010, same "put in vs. spent" treatment as the petty cash fund.
+    const cashOnHandIn      = Number(cashOnHandGL._sum.debit       || 0);
     // 1012 is optional — hide the GCash card entirely for businesses that never
     // set the fund up rather than showing a phantom zero.
     const hasGcashFund = Number(pettyCashGcashGL._sum.debit || 0) > 0 || pettyCashGcashOut > 0;
@@ -196,13 +211,15 @@ exports.calculate = async (req, res, next) => {
         amount:      Number(v.totalAmount),
         meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, status: v.status, requestedBy: v.requestedBy }),
       })),
-      // Non-petty-cash PAID vouchers appear as DISBURSEMENT (cash from collections)
+      // Non-petty-cash PAID vouchers appear as DISBURSEMENT (cash from collections).
+      // accountCode is stamped in so the Cash on Hand voucher count can be
+      // re-derived from saved items on reload, same as counts.pettyCash.
       ...paidCashOutflow.map(v => ({
         category:    'DISBURSEMENT',
         reference:   v.voucherNo,
         description: `Paid — ${v.payee} (${v.voucherNo})`,
         amount:      Number(v.totalAmount),
-        meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, paidBy: v.paidBy }),
+        meta:        JSON.stringify({ type: v.type, payee: v.payee, category: v.category, paidBy: v.paidBy, accountCode: cashAccountForVoucher(v, glAccountByVoucherNo) }),
       })),
       // Petty cash PAID vouchers shown separately — from petty fund, not from collections
       ...paidPettyCash.map(v => ({
@@ -216,17 +233,18 @@ exports.calculate = async (req, res, next) => {
 
     res.json({
       date,
-      totalSales, vatCollected, cashReceived,
+      totalSales, vatCollected, cashReceived, collectionsByMethod,
       totalExpenses, pettyCashTotal,
       pettyCashIn, pettyCashOut,
       pettyCashGcashOut: hasGcashFund ? pettyCashGcashOut : null,
-      cashOnHandOut, cashDisbursed, netCash,
+      cashOnHandIn, cashOnHandOut, cashDisbursed, netCash,
       counts: {
         invoices:      invoices.length,
         collections:   arPayments.length,
         expenses:      bills.length + expVouchers.length,
         disbursements: apPayments.length + paidCashOutflow.length,
         pettyCash:     paidPettyCash.length,
+        cashOnHand:    paidCashOnHand.length,
         inventory:     invTxns.length,
         vouchers:      expVouchers.length,
       },
@@ -274,7 +292,7 @@ exports.create = async (req, res, next) => {
     const {
       date, totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
-      cashOnHandOut, pettyCashIn, pettyCashOut, pettyCashGcashOut,
+      cashOnHandIn, cashOnHandOut, pettyCashIn, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items = [],
     } = req.body;
 
@@ -297,6 +315,7 @@ exports.create = async (req, res, next) => {
         totalExpenses:Number(totalExpenses|| 0),
         cashDisbursed:Number(cashDisbursed|| 0),
         netCash:      Number(netCash      || 0),
+        cashOnHandIn:      Number(cashOnHandIn      || 0),
         cashOnHandOut:     Number(cashOnHandOut     || 0),
         pettyCashIn:       Number(pettyCashIn       || 0),
         pettyCashOut:      Number(pettyCashOut      || 0),
@@ -333,7 +352,7 @@ exports.update = async (req, res, next) => {
     const {
       totalSales, vatCollected, cashReceived,
       totalExpenses, cashDisbursed, netCash,
-      cashOnHandOut, pettyCashIn, pettyCashOut, pettyCashGcashOut,
+      cashOnHandIn, cashOnHandOut, pettyCashIn, pettyCashOut, pettyCashGcashOut,
       preparedBy, notes, items,
     } = req.body;
 
@@ -346,6 +365,7 @@ exports.update = async (req, res, next) => {
         totalExpenses: totalExpenses != null ? Number(totalExpenses) : undefined,
         cashDisbursed: cashDisbursed != null ? Number(cashDisbursed) : undefined,
         netCash:       netCash       != null ? Number(netCash)       : undefined,
+        cashOnHandIn:      cashOnHandIn      != null ? Number(cashOnHandIn)      : undefined,
         cashOnHandOut:     cashOnHandOut     != null ? Number(cashOnHandOut)     : undefined,
         pettyCashIn:       pettyCashIn       != null ? Number(pettyCashIn)       : undefined,
         pettyCashOut:      pettyCashOut      != null ? Number(pettyCashOut)      : undefined,
