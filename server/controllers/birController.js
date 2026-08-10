@@ -57,7 +57,7 @@ exports.vatSummary = async (req, res, next) => {
     const { range: dateRange, cutoverWarning } = await rangeWithCutover(req);
     const biz = req.businessId;
 
-    const [salesLines, purchaseLines] = await Promise.all([
+    const [salesLines, purchaseLines, cashSales] = await Promise.all([
       prisma.invoiceLine.findMany({
         where: {
           invoice: {
@@ -78,7 +78,25 @@ exports.vatSummary = async (req, res, next) => {
         },
         include: { bill: { select: { billNo: true, billDate: true, vendor: { select: { name: true, tin: true } } } } },
       }),
+      prisma.cashSale.findMany({
+        where: { businessId: biz, saleDate: dateRange, status: 'ACTIVE' },
+      }),
     ]);
+
+    // Cash sales have no line-items table and no customer relation — synthesize
+    // the same shape an invoiceLine+invoice+customer produces, so every
+    // downstream filter/reduce/transactions-building step below treats a cash
+    // sale exactly like an invoice line with no code changes needed there.
+    const cashSaleLines = cashSales.map((c) => ({
+      amount: Number(c.subtotal),
+      vatCode: c.vatCode,
+      invoice: {
+        invoiceNo: c.saleNo,
+        invoiceDate: c.saleDate,
+        customer: { name: c.buyerName || 'Walk-in', tin: null },
+      },
+    }));
+    salesLines.push(...cashSaleLines);
 
     const vatableSalesLines  = salesLines.filter((l) => l.vatCode === 'VAT');
     const zeroRatedLines     = salesLines.filter((l) => l.vatCode === 'ZERO');
@@ -239,7 +257,7 @@ exports.reliefExport = async (req, res, next) => {
     const { range: dateRange, cutoverWarning } = await rangeWithCutover(req);
     const biz = req.businessId;
 
-    const [bills, invoices] = await Promise.all([
+    const [bills, invoices, cashSales] = await Promise.all([
       prisma.bill.findMany({
         where: { businessId: biz, billDate: dateRange, status: { not: 'VOID' } }, // ← fixed
         include: { vendor: true },
@@ -247,6 +265,9 @@ exports.reliefExport = async (req, res, next) => {
       prisma.invoice.findMany({
         where: { businessId: biz, invoiceDate: dateRange, status: { not: 'VOID' } }, // ← fixed
         include: { customer: true },
+      }),
+      prisma.cashSale.findMany({
+        where: { businessId: biz, saleDate: dateRange, status: 'ACTIVE' },
       }),
     ]);
 
@@ -267,6 +288,19 @@ exports.reliefExport = async (req, res, next) => {
       vatableSales: Number(i.subtotal),
       outputTax: Number(i.vatAmount),
     }));
+
+    // Cash sales have no customer/TIN — tin: '' is correct (matches this
+    // export's own "Missing TIN" convention for any transaction where the buyer
+    // TIN is genuinely unknown, same as a real walk-in sale).
+    const cashSaleRows = cashSales.map((c) => ({
+      tin: '',
+      name: c.buyerName || 'Walk-in',
+      invoiceDate: c.saleDate,
+      invoiceNo: c.saleNo,
+      vatableSales: Number(c.subtotal),
+      outputTax: Number(c.vatAmount),
+    }));
+    sales.push(...cashSaleRows);
 
     res.json({
       period: dateRange,
