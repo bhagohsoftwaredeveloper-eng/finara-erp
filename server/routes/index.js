@@ -30,6 +30,7 @@ module.exports = {
   poForm:        require('./poForm'),
   leads:         require('./leads'),
   cashRequests:  require('./cashRequests'),
+  cashSales:     require('./cashSales'),
   openingBalances: require('./openingBalances'),
   cashPosition:  require('./cashPosition'),
 };
