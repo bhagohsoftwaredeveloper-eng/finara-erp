@@ -128,6 +128,7 @@ model Account {
   revenueItems     InventoryItem[]     @relation("InvRevenueAccount")
   expenseItems     ExpenseVoucherItem[]
   cashRequestItems CashRequestItem[]
+  cashSales        CashSale[]
 
   @@unique([businessId, accountCode])
   @@index([businessId])
@@ -164,6 +165,7 @@ model JournalEntry {
   updatedAt   DateTime        @updatedAt
 
   lines       JournalLine[]
+  cashSale    CashSale?
 
   @@index([businessId])
   @@index([entryDate])
@@ -1149,4 +1151,40 @@ model CashRequestItem {
 
   @@index([requestId])
   @@map("cash_request_items")
+}
+
+// ─── Cash Sales (non-invoiced) ──────────────────────────────
+enum CashSaleStatus {
+  ACTIVE
+  VOID
+}
+
+model CashSale {
+  id             Int            @id @default(autoincrement())
+  businessId     Int            @default(1)
+  saleNo         String         @unique @db.VarChar(30)
+  saleDate       DateTime       @db.Date
+  buyerName      String?        @db.VarChar(150)
+  description    String         @db.Text
+  accountId      Int
+  account        Account        @relation(fields: [accountId], references: [id])
+  vatCode        VatCode        @default(VAT)
+  subtotal       Decimal        @default(0) @db.Decimal(15, 2)
+  vatAmount      Decimal        @default(0) @db.Decimal(15, 2)
+  totalAmount    Decimal        @default(0) @db.Decimal(15, 2)
+  paymentMethod  String         @db.VarChar(30)
+  status         CashSaleStatus @default(ACTIVE)
+  voidedReason   String?        @db.Text
+  voidedAt       DateTime?
+  notes          String?        @db.Text
+  journalEntryId Int?           @unique
+  journalEntry   JournalEntry?  @relation(fields: [journalEntryId], references: [id])
+  createdBy      Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([businessId])
+  @@index([saleDate])
+  @@index([status])
+  @@map("cash_sales")
 }
