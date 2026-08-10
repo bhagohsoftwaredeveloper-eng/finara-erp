@@ -5,6 +5,7 @@ jest.mock('../server/config/database', () => ({
   paymentAP:            { findMany: jest.fn() },
   inventoryTransaction: { findMany: jest.fn() },
   expenseVoucher:       { findMany: jest.fn() },
+  cashSale:             { findMany: jest.fn() },
   journalLine:          { aggregate: jest.fn(), findMany: jest.fn() },
 }));
 jest.mock('../server/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
@@ -24,7 +25,7 @@ const voucher = (voucherNo, amount, paymentAccountCode) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  for (const m of ['invoice', 'paymentAR', 'bill', 'paymentAP', 'inventoryTransaction']) {
+  for (const m of ['invoice', 'paymentAR', 'bill', 'paymentAP', 'inventoryTransaction', 'cashSale']) {
     prisma[m].findMany.mockResolvedValue([]);
   }
 });

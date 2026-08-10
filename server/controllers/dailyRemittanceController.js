@@ -32,7 +32,7 @@ exports.calculate = async (req, res, next) => {
 
     const range = dayRange(date);
 
-    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, pettyCashGL, pettyCashGcashGL, cashOnHandGL] = await Promise.all([
+    const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, cashSales, pettyCashGL, pettyCashGcashGL, cashOnHandGL] = await Promise.all([
       prisma.invoice.findMany({
         where: { businessId: req.businessId, invoiceDate: range },
         include: { customer: { select: { name: true, customerCode: true } } },
@@ -62,6 +62,11 @@ exports.calculate = async (req, res, next) => {
       prisma.expenseVoucher.findMany({
         where: { businessId: req.businessId, date: range, status: { in: ['APPROVED', 'PAID'] } },
         orderBy: { voucherNo: 'asc' },
+      }),
+      // Cash sales recorded today (non-invoiced), excluding voided ones
+      prisma.cashSale.findMany({
+        where: { businessId: req.businessId, saleDate: range, status: 'ACTIVE' },
+        orderBy: { saleNo: 'asc' },
       }),
       // Petty Cash Fund – Cash (1011) movement on the selected date
       prisma.journalLine.aggregate({
@@ -122,14 +127,18 @@ exports.calculate = async (req, res, next) => {
     const paidCashOnHand  = paidVouchers.filter(v => cashAccountForVoucher(v, glAccountByVoucherNo) === '1010');
 
     // ── Totals ──────────────────────────────────────────────────
-    const totalSales     = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
-    const vatCollected   = invoices.reduce((s, i) => s + Number(i.vatAmount),   0);
-    const cashReceived   = arPayments.reduce((s, p) => s + Number(p.amount),    0);
+    const totalSales     = invoices.reduce((s, i) => s + Number(i.totalAmount), 0)
+                          + cashSales.reduce((s, c) => s + Number(c.totalAmount), 0);
+    const vatCollected   = invoices.reduce((s, i) => s + Number(i.vatAmount),   0)
+                          + cashSales.reduce((s, c) => s + Number(c.vatAmount),   0);
+    const cashReceived   = arPayments.reduce((s, p) => s + Number(p.amount),    0)
+                          + cashSales.reduce((s, c) => s + Number(c.totalAmount), 0);
     // Collections split by how the customer actually paid — informational, not
     // persisted, same treatment as pettyCashTotal/counts below.
-    const collectionsByMethod = arPayments.reduce((acc, p) => {
+    const collectionsByMethod = [...arPayments, ...cashSales].reduce((acc, p) => {
       const method = p.paymentMethod || 'Unspecified';
-      acc[method] = (acc[method] || 0) + Number(p.amount);
+      const amt = p.amount != null ? Number(p.amount) : Number(p.totalAmount);
+      acc[method] = (acc[method] || 0) + amt;
       return acc;
     }, {});
     // totalExpenses = AP Bills + ALL approved/paid vouchers (informational card)
@@ -170,6 +179,14 @@ exports.calculate = async (req, res, next) => {
         description: `Invoice — ${i.customer.name}`,
         amount:      Number(i.totalAmount),
         meta:        JSON.stringify({ customer: i.customer.name, subtotal: Number(i.subtotal), vat: Number(i.vatAmount), status: i.status }),
+      })),
+      // Non-invoiced cash sales recorded today
+      ...cashSales.map(c => ({
+        category:    'SALES',
+        reference:   c.saleNo,
+        description: `Cash Sale — ${c.buyerName || 'Walk-in'}`,
+        amount:      Number(c.totalAmount),
+        meta:        JSON.stringify({ buyer: c.buyerName || 'Walk-in', subtotal: Number(c.subtotal), vat: Number(c.vatAmount), method: c.paymentMethod }),
       })),
       // AR collections received today
       ...arPayments.map(p => ({
@@ -240,6 +257,7 @@ exports.calculate = async (req, res, next) => {
       cashOnHandIn, cashOnHandOut, cashDisbursed, netCash,
       counts: {
         invoices:      invoices.length,
+        cashSales:     cashSales.length,
         collections:   arPayments.length,
         expenses:      bills.length + expVouchers.length,
         disbursements: apPayments.length + paidCashOutflow.length,

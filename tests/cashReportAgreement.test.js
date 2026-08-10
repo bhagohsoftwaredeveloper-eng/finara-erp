@@ -5,6 +5,7 @@ jest.mock('../server/config/database', () => ({
   paymentAP:            { findMany: jest.fn() },
   inventoryTransaction: { findMany: jest.fn() },
   expenseVoucher:       { findMany: jest.fn() },
+  cashSale:             { findMany: jest.fn() },
   journalLine:          { aggregate: jest.fn(), findMany: jest.fn() },
   account:              { findMany: jest.fn() },
 }));
@@ -28,7 +29,7 @@ const GL_1011 = {
 // Run the real daily remittance controller for one date against the fixture.
 const runDaily = (date) => {
   jest.clearAllMocks();
-  for (const m of ['invoice', 'paymentAR', 'bill', 'paymentAP', 'inventoryTransaction', 'expenseVoucher']) {
+  for (const m of ['invoice', 'paymentAR', 'bill', 'paymentAP', 'inventoryTransaction', 'expenseVoucher', 'cashSale']) {
     prisma[m].findMany.mockResolvedValue([]);
   }
   const day = GL_1011[date];
@@ -59,7 +60,7 @@ const line = (date, debit, credit) => ({
 // credit → out, day-bucketing by dateKey) on the way to an HTTP response.
 const runReport = () => {
   jest.clearAllMocks();
-  for (const m of ['invoice', 'paymentAR', 'bill', 'paymentAP', 'inventoryTransaction', 'expenseVoucher']) {
+  for (const m of ['invoice', 'paymentAR', 'bill', 'paymentAP', 'inventoryTransaction', 'expenseVoucher', 'cashSale']) {
     prisma[m].findMany.mockResolvedValue([]);
   }
   prisma.account.findMany.mockResolvedValue([
