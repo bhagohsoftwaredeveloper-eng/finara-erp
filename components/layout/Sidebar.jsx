@@ -44,6 +44,7 @@ const NAV = [
           { label: 'AR Aging',   href: '/receivable/aging' },
         ],
       },
+      { label: 'Cash Sales', icon: Banknote, href: '/receivable/cash-sales' },
     ],
   },
   {
