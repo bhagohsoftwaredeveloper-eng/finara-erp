@@ -43,8 +43,8 @@ exports.list = async (req, res, next) => {
 // ─── Get one ─────────────────────────────────────────────────────
 exports.getOne = async (req, res, next) => {
   try {
-    const sale = await prisma.cashSale.findUnique({
-      where: { id: Number(req.params.id) },
+    const sale = await prisma.cashSale.findFirst({
+      where: { id: Number(req.params.id), businessId: req.businessId },
       include: { account: true, journalEntry: { include: { lines: true } } },
     });
     if (!sale) throw createError('Cash sale not found', 404);
@@ -115,7 +115,7 @@ exports.voidSale = async (req, res, next) => {
     const { reason } = req.body;
     if (!reason || !reason.trim()) throw createError('A void reason is required', 400);
 
-    const sale = await prisma.cashSale.findUnique({ where: { id } });
+    const sale = await prisma.cashSale.findFirst({ where: { id, businessId: req.businessId } });
     if (!sale) throw createError('Cash sale not found', 404);
     if (sale.status === 'VOID') throw createError('Cash sale is already voided', 400);
 
