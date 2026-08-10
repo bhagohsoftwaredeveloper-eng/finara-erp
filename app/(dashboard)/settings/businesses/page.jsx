@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Users, Check, X, Building2, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Users, Check, X, Building2, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { businesses as bizApi, settings as settingsApi } from '@/lib/api';
 import { getUser } from '@/lib/auth';
@@ -33,6 +33,9 @@ export default function BusinessesPage() {
   const [manageId,   setManageId]   = useState(null);   // businessId for user mgmt
   const [bizUsers,   setBizUsers]   = useState([]);     // users in manageId business
   const [form,       setForm]       = useState({ code:'', name:'', tin:'', address:'', phone:'', email:'', booksStartDate:'' });
+  const [resetBiz,    setResetBiz]    = useState(null);   // business object mid-confirm
+  const [resetPhrase, setResetPhrase] = useState('');
+  const [resetting,   setResetting]   = useState(false);
 
   const me = getUser();
   const isAdmin = me?.role === 'ADMIN';
@@ -76,6 +79,23 @@ export default function BusinessesPage() {
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Save failed');
+    }
+  }
+
+  // ── Demo data reset ────────────────────────────────────────────
+  async function confirmResetDemo() {
+    if (resetPhrase !== 'RESET DEMO') return;
+    setResetting(true);
+    try {
+      const { data } = await bizApi.resetDemo();
+      toast.success(data.message || 'Demo account reset');
+      setResetBiz(null);
+      setResetPhrase('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Reset failed');
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -160,6 +180,15 @@ export default function BusinessesPage() {
                       <button onClick={() => openManage(biz.id)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
                         <Users className="w-3 h-3" /> Users
                       </button>
+                      {biz.code === 'DEMO' && (
+                        <button
+                          onClick={() => setResetBiz(biz)}
+                          className="py-1 px-2 text-xs flex items-center gap-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-900/20"
+                          title="Wipe demo transactions and reseed a clean baseline"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Reset Demo Data
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -255,6 +284,40 @@ export default function BusinessesPage() {
           </div>
           <div className="flex justify-end pt-4">
             <button className="btn-secondary" onClick={() => setManageId(null)}>Done</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reset demo data modal */}
+      {resetBiz !== null && (
+        <Modal title={`Reset Demo Data — ${resetBiz.name}`} onClose={() => { setResetBiz(null); setResetPhrase(''); }}>
+          <div className="flex items-start gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-3 mb-4">
+            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-700 dark:text-red-300">
+              This permanently deletes every invoice, bill, journal entry, expense voucher, and
+              daily remittance in <b>{resetBiz.name}</b>, then rebuilds it with a fresh Chart of
+              Accounts and sample customers/vendors/employees — <b>AR and AP will be empty</b>,
+              ready for a live demo. This only ever affects the demo business — no other business
+              is touched.
+            </p>
+          </div>
+          <label className="label">Type <span className="font-mono font-semibold">RESET DEMO</span> to confirm</label>
+          <input
+            className="input font-mono"
+            value={resetPhrase}
+            onChange={(e) => setResetPhrase(e.target.value)}
+            placeholder="RESET DEMO"
+            autoFocus
+          />
+          <div className="flex justify-end gap-3 pt-4">
+            <button className="btn-secondary" onClick={() => { setResetBiz(null); setResetPhrase(''); }}>Cancel</button>
+            <button
+              className="btn-danger"
+              disabled={resetPhrase !== 'RESET DEMO' || resetting}
+              onClick={confirmResetDemo}
+            >
+              {resetting ? 'Resetting…' : 'Reset Demo Data'}
+            </button>
           </div>
         </Modal>
       )}

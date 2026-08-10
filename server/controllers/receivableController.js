@@ -219,7 +219,7 @@ exports.agingReport = async (req, res, next) => {
   try {
     const today = new Date();
     const invoices = await prisma.invoice.findMany({
-      where: { status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
+      where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
       include: { customer: { select: { name: true } } },
     });
     const report = invoices.map((inv) => {
@@ -227,8 +227,8 @@ exports.agingReport = async (req, res, next) => {
       const daysOverdue = Math.max(0, Math.floor((today - due) / 86400000));
       const outstanding = Number(inv.totalAmount) - Number(inv.paidAmount);
       return {
-        invoiceNo: inv.invoiceNo, customer: inv.customer.name,
-        dueDate: inv.dueDate, outstanding, daysOverdue,
+        invoiceNo: inv.invoiceNo, customer: inv.customer.name, customerId: inv.customerId,
+        dueDate: inv.dueDate, outstanding, daysOverdue, notes: inv.notes,
         bucket: daysOverdue === 0 ? 'Current'
           : daysOverdue <= 30 ? '1-30 days'
           : daysOverdue <= 60 ? '31-60 days'

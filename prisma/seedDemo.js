@@ -13,13 +13,16 @@
  * are ever touched — the real businesses are never queried for writes.
  */
 
-const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const readline = require('readline');
 const { subDays, addDays } = require('date-fns');
 const { cloneChartOfAccounts } = require('../server/utils/cloneChartOfAccounts');
 
-const prisma = new PrismaClient();
+// Reuse the app's shared Prisma singleton rather than opening a second
+// connection pool — this file is also required from the running server
+// (server/controllers/businessController.js's resetDemo endpoint), where a
+// second `new PrismaClient()` per call would leak connections.
+const prisma = require('../server/config/database');
 
 const DEMO_CODE  = 'DEMO';
 const DEMO_EMAIL = 'demo@finara.local';
@@ -69,16 +72,10 @@ async function wipeDemoBusiness(businessId) {
   ]);
 }
 
-// ─── Sample data — enough for every module to render non-empty ──
-async function seedSampleData(businessId, demoUserId) {
+// ─── Master data only — customers/vendors/employees to pick from live, ──
+// ─── no transactions. This is what the in-app "Reset Demo Data" uses. ──
+async function seedMasterData(businessId) {
   const today = new Date();
-
-  const accounts   = await prisma.account.findMany({ where: { businessId } });
-  const acct       = Object.fromEntries(accounts.map((a) => [a.accountCode, a.id]));
-  const need = (code) => {
-    if (!acct[code]) throw new Error(`Demo seed: expected account ${code} to exist after cloning the COA`);
-    return acct[code];
-  };
 
   // ── Customers ──
   const customers = await Promise.all([
@@ -97,6 +94,22 @@ async function seedSampleData(businessId, demoUserId) {
   // ── Employees ──
   await prisma.employee.create({ data: { businessId, employeeNo: 'DEMO-EMP-001', firstName: 'Juan', lastName: 'Dela Cruz', middleName: 'B.', position: 'Sales Associate', department: 'Sales', tin: '007-777-777-000', sssNo: '00-0000000-0', philhealthNo: '00-000000000-0', pagibigNo: '0000-0000-0000', hireDate: subDays(today, 400), employmentType: 'REGULAR', payFrequency: 'SEMI_MONTHLY', basicSalary: 22000 } });
   await prisma.employee.create({ data: { businessId, employeeNo: 'DEMO-EMP-002', firstName: 'Maria', lastName: 'Santos', middleName: 'R.', position: 'Bookkeeper', department: 'Finance', tin: '008-888-888-000', sssNo: '00-0000001-1', philhealthNo: '00-000000001-1', pagibigNo: '0000-0000-0001', hireDate: subDays(today, 700), employmentType: 'REGULAR', payFrequency: 'SEMI_MONTHLY', basicSalary: 28000 } });
+
+  return { customers, vendors };
+}
+
+// ─── Sample transactions (invoices, bills, journal entries, vouchers, ──
+// ─── remittance) — layered on top of seedMasterData for a fully-populated ──
+// ─── demo. Requires the Chart of Accounts to already be cloned. ──
+async function seedTransactions(businessId, demoUserId, { customers, vendors }) {
+  const today = new Date();
+
+  const accounts   = await prisma.account.findMany({ where: { businessId } });
+  const acct       = Object.fromEntries(accounts.map((a) => [a.accountCode, a.id]));
+  const need = (code) => {
+    if (!acct[code]) throw new Error(`Demo seed: expected account ${code} to exist after cloning the COA`);
+    return acct[code];
+  };
 
   // ── Invoices (spanning OPEN / PARTIAL / PAID / OVERDUE) ──
   const invLine = (amount) => {
@@ -252,6 +265,62 @@ async function seedSampleData(businessId, demoUserId) {
   });
 }
 
+// ─── Master data + full sample transactions — the original "fully-populated ──
+// ─── demo" behaviour, still used by the CLI script's default run. ──
+async function seedSampleData(businessId, demoUserId) {
+  const { customers, vendors } = await seedMasterData(businessId);
+  await seedTransactions(businessId, demoUserId, { customers, vendors });
+}
+
+// ─── One-call reset: wipe (if it already exists) then rebuild the demo ──
+// ─── business from scratch. Shared by the CLI script and the in-app ──
+// ─── "Reset Demo Data" endpoint — this is the single source of truth for ──
+// ─── what "reset" means, so the two never drift apart.
+//
+// withTransactions:false (the app's default) leaves AR/AP empty — customers,
+// vendors and employees exist to pick from, but no sample invoices/bills —
+// so a live demo starts from a clean slate instead of stale fake history.
+async function resetDemoBusiness({ withTransactions = false } = {}) {
+  let biz = await prisma.business.findUnique({ where: { code: DEMO_CODE } });
+
+  if (biz) {
+    assertSafeToWipe(biz);
+    await wipeDemoBusiness(biz.id);
+  }
+
+  biz = await prisma.business.upsert({
+    where: { code: DEMO_CODE },
+    update: {},
+    create: {
+      code: DEMO_CODE, name: 'Demo Trading Co.',
+      tin: '000-000-000-000', address: '123 Sample Street, Demo City, Philippines',
+      phone: '000-000-0000', email: 'demo@example.com', industry: 'Retail / Trading (Demo)',
+    },
+  });
+
+  await cloneChartOfAccounts(1, biz.id);
+
+  const hashedPw = await bcrypt.hash(DEMO_PASS, 12);
+  const demoUser = await prisma.user.upsert({
+    where: { email: DEMO_EMAIL },
+    update: {},
+    create: { email: DEMO_EMAIL, password: hashedPw, firstName: 'Demo', lastName: 'User', role: 'MANAGER' },
+  });
+
+  await prisma.userBusiness.upsert({
+    where: { userId_businessId: { userId: demoUser.id, businessId: biz.id } },
+    update: {},
+    create: { userId: demoUser.id, businessId: biz.id },
+  });
+
+  const { customers, vendors } = await seedMasterData(biz.id);
+  if (withTransactions) {
+    await seedTransactions(biz.id, demoUser.id, { customers, vendors });
+  }
+
+  return { business: biz, demoUser };
+}
+
 async function main() {
   const autoYes = process.argv.includes('--yes');
 
@@ -287,40 +356,13 @@ async function main() {
         process.exit(1);
       }
     }
-
-    await wipeDemoBusiness(biz.id);
-    console.log('✅ Wiped.');
   }
 
-  biz = await prisma.business.upsert({
-    where: { code: DEMO_CODE },
-    update: {},
-    create: {
-      code: DEMO_CODE, name: 'Demo Trading Co.',
-      tin: '000-000-000-000', address: '123 Sample Street, Demo City, Philippines',
-      phone: '000-000-0000', email: 'demo@example.com', industry: 'Retail / Trading (Demo)',
-    },
-  });
-
-  await cloneChartOfAccounts(1, biz.id);
-  console.log('✅ Chart of Accounts cloned.');
-
-  const hashedPw = await bcrypt.hash(DEMO_PASS, 12);
-  const demoUser = await prisma.user.upsert({
-    where: { email: DEMO_EMAIL },
-    update: {},
-    create: { email: DEMO_EMAIL, password: hashedPw, firstName: 'Demo', lastName: 'User', role: 'MANAGER' },
-  });
-
-  await prisma.userBusiness.upsert({
-    where: { userId_businessId: { userId: demoUser.id, businessId: biz.id } },
-    update: {},
-    create: { userId: demoUser.id, businessId: biz.id },
-  });
-  console.log('✅ Demo user provisioned and granted access to the demo business only.');
-
-  await seedSampleData(biz.id, demoUser.id);
-  console.log('✅ Sample data seeded.');
+  // CLI default is the fully-populated demo (withTransactions: true) — unlike
+  // the in-app reset button, which deliberately leaves AR/AP empty.
+  const { business, demoUser } = await resetDemoBusiness({ withTransactions: true });
+  biz = business;
+  console.log('✅ Wiped, Chart of Accounts cloned, demo user provisioned, sample data seeded.');
 
   console.log('\n🎉 Demo account ready.');
   console.log(`📋 Login:    ${DEMO_EMAIL} / ${DEMO_PASS}`);
@@ -333,4 +375,8 @@ if (require.main === module) {
     .finally(() => prisma.$disconnect());
 }
 
-module.exports = { assertSafeToWipe, DEMO_CODE };
+module.exports = {
+  assertSafeToWipe, DEMO_CODE, DEMO_EMAIL,
+  wipeDemoBusiness, seedMasterData, seedTransactions, seedSampleData,
+  resetDemoBusiness,
+};

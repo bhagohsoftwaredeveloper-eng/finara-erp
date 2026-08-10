@@ -214,7 +214,7 @@ exports.agingReport = async (req, res, next) => {
   try {
     const today = new Date();
     const bills = await prisma.bill.findMany({
-      where: { status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
+      where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
       include: { vendor: { select: { name: true } } },
     });
 

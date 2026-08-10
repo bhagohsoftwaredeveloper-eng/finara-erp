@@ -7,6 +7,7 @@ const adminOnly = authorize('ADMIN');
 router.use(authenticate, resolveBusiness);
 
 router.get('/',                              ctrl.list);
+router.post('/reset-demo', adminOnly,        ctrl.resetDemo);
 router.get('/:id',                           ctrl.get);
 router.post('/',           adminOnly,        ctrl.create);
 router.put('/:id',         adminOnly,        ctrl.update);

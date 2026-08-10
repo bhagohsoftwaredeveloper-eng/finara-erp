@@ -1,13 +1,16 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { receivable as rApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   RefreshCw, AlertCircle, CheckCircle2, TrendingUp,
-  Users, ChevronDown, ChevronUp, Filter,
+  Users, ChevronDown, ChevronUp, Filter, Printer, History, FileSpreadsheet, Eye, X,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { printDocument, phpFmt, dateFmt } from '@/lib/print';
+import { exportToExcel } from '@/lib/export';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Cell, PieChart, Pie, Legend,
@@ -31,6 +34,114 @@ const BUCKET_BADGE_CLASS = {
   '61-90 days':    'bg-red-100 text-red-700',
   'Over 90 days':  'bg-red-900 text-white',
 };
+
+const STATUS_BADGE_CLASS = {
+  OPEN:    'bg-blue-100 text-blue-700',
+  PARTIAL: 'bg-yellow-100 text-yellow-700',
+  PAID:    'bg-green-100 text-green-700',
+  OVERDUE: 'bg-red-100 text-red-700',
+  VOID:    'bg-gray-100 text-gray-500',
+};
+
+// Days-overdue → bucket, mirrors the server-side aging calculation
+function bucketFor(dueDate) {
+  const daysOverdue = Math.max(0, Math.floor((new Date() - new Date(dueDate)) / 86400000));
+  const bucket = daysOverdue === 0 ? 'Current'
+    : daysOverdue <= 30 ? '1-30 days'
+    : daysOverdue <= 60 ? '31-60 days'
+    : daysOverdue <= 90 ? '61-90 days'
+    : 'Over 90 days';
+  return { daysOverdue, bucket };
+}
+
+// ─── Print a per-customer Statement of Account (outstanding invoices only) ──
+async function printCustomerStatement(customerName, outstandingItems) {
+  const total = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rows = outstandingItems
+    .slice()
+    .sort((a, b) => b.daysOverdue - a.daysOverdue)
+    .map((i) => `
+      <tr>
+        <td class="mono">${i.invoiceNo}</td>
+        <td>${dateFmt(i.dueDate)}</td>
+        <td><span class="badge" style="background:${BUCKET_COLORS[i.bucket]}22;color:${BUCKET_COLORS[i.bucket]}">${i.bucket}</span></td>
+        <td class="right bold">${phpFmt(i.outstanding)}</td>
+      </tr>
+      ${i.notes ? `<tr><td colspan="4" class="small gray" style="padding-top:0;">Note: ${esc(i.notes)}</td></tr>` : ''}`)
+    .join('');
+
+  const body = `
+    <div class="info-grid" style="grid-template-columns:1fr;">
+      <div class="info-box"><div class="info-lbl">Customer</div><div class="info-val">${customerName}</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Invoice #</th><th>Due Date</th><th>Aging</th><th class="right">Outstanding</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="3">TOTAL OUTSTANDING</td><td class="right">${phpFmt(total)}</td></tr></tfoot>
+    </table>
+    <p class="small gray" style="margin-top:10px;">This statement reflects open and partially paid invoices only, as of the print date above.</p>`;
+
+  await printDocument('Statement of Account', customerName, body);
+}
+
+// ─── Export a per-customer Statement of Account to Excel ───────────────────
+function exportCustomerStatement(customerName, outstandingItems) {
+  const total = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+  const rows = outstandingItems.slice().sort((a, b) => b.daysOverdue - a.daysOverdue);
+  rows.push({ invoiceNo: '', dueDate: '', bucket: 'TOTAL OUTSTANDING', outstanding: total, notes: '' });
+
+  const safeName = customerName.replace(/[^a-z0-9]+/gi, '-');
+  exportToExcel(
+    rows,
+    [
+      { key: 'invoiceNo', label: 'Invoice #' },
+      { key: 'dueDate', label: 'Due Date', format: (v) => (v ? dateFmt(v) : '') },
+      { key: 'bucket', label: 'Aging' },
+      { key: 'outstanding', label: 'Outstanding', format: (v) => phpFmt(v) },
+      { key: 'notes', label: 'Notes' },
+    ],
+    `Statement-${safeName}`,
+    customerName.slice(0, 31)
+  );
+}
+
+// ─── Print / Export dropdown, used per customer row ─────────────────────────
+function ExportMenu({ onPrint, onExcel, disabled, label }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title={`Export statement — ${label}`}
+        className="text-gray-400 hover:text-green-600 transition-colors disabled:opacity-30"
+      >
+        <Printer className="w-4 h-4" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-6 z-20 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-left">
+            <button
+              onClick={() => { setOpen(false); onPrint(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Printer className="w-3.5 h-3.5 text-gray-400" /> Print / Save as PDF
+            </button>
+            <button
+              onClick={() => { setOpen(false); onExcel(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-gray-400" /> Export to Excel
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Custom Bar Tooltip ───────────────────────────────────────
 const BarTooltip = ({ active, payload, label }) => {
@@ -65,8 +176,9 @@ const PieTooltip = ({ active, payload }) => {
 };
 
 // ─── Expandable Customer Row ──────────────────────────────────
-function CustomerRow({ customerName, items }) {
+function CustomerRow({ customerName, items, onView }) {
   const [expanded, setExpanded] = useState(false);
+
   const total = items.reduce((s, i) => s + i.outstanding, 0);
 
   const bucketTotals = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
@@ -74,6 +186,7 @@ function CustomerRow({ customerName, items }) {
 
   const worstBucket = [...BUCKETS].reverse().find((b) => bucketTotals[b] > 0);
   const overdueAmt  = BUCKETS.slice(1).reduce((s, b) => s + (bucketTotals[b] || 0), 0);
+  const customerId  = items[0]?.customerId;
 
   return (
     <>
@@ -108,9 +221,23 @@ function CustomerRow({ customerName, items }) {
           <span className="font-bold text-gray-900">{formatCurrency(total)}</span>
         </td>
         <td className="py-3 pr-2 text-center">
-          {expanded
-            ? <ChevronUp   className="w-4 h-4 text-gray-400 inline" />
-            : <ChevronDown className="w-4 h-4 text-gray-400 inline" />}
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onView(customerId, customerName); }}
+              title={`View full transaction history — ${customerName}`}
+              className="text-gray-400 hover:text-blue-600 transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+            <ExportMenu
+              label={customerName}
+              onPrint={() => printCustomerStatement(customerName, items)}
+              onExcel={() => exportCustomerStatement(customerName, items)}
+            />
+            {expanded
+              ? <ChevronUp   className="w-4 h-4 text-gray-400" />
+              : <ChevronDown className="w-4 h-4 text-gray-400" />}
+          </div>
         </td>
       </tr>
 
@@ -150,13 +277,208 @@ function CustomerRow({ customerName, items }) {
   );
 }
 
+// ─── Shared full-history table: Invoice #, dates, status, aging, amounts, notes ──
+function HistoryTable({ invoices }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="table">
+        <thead>
+          <tr>
+            <th className="pl-4">Invoice #</th>
+            <th>Invoice Date</th>
+            <th>Due Date</th>
+            <th>Status</th>
+            <th>Aging</th>
+            <th className="text-right">Total</th>
+            <th className="text-right">Paid</th>
+            <th className="text-right">Outstanding</th>
+            <th className="pr-4">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.length === 0 ? (
+            <tr><td colSpan={9} className="text-center py-8 text-gray-400">No invoices for this customer yet.</td></tr>
+          ) : invoices
+            .slice()
+            .sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate))
+            .map((inv) => {
+              const isOutstanding = ['OPEN', 'PARTIAL', 'OVERDUE'].includes(inv.status);
+              const { bucket } = isOutstanding ? bucketFor(inv.dueDate) : { bucket: null };
+              return (
+                <tr key={inv.id} className="border-b border-gray-100">
+                  <td className="pl-4 py-2 font-mono text-sm text-green-700">{inv.invoiceNo}</td>
+                  <td className="py-2 text-sm text-gray-600">{formatDate(inv.invoiceDate)}</td>
+                  <td className="py-2 text-sm text-gray-600">{formatDate(inv.dueDate)}</td>
+                  <td className="py-2">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE_CLASS[inv.status] || 'bg-gray-100 text-gray-500'}`}>
+                      {inv.status}
+                    </span>
+                  </td>
+                  <td className="py-2">
+                    {bucket ? (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${BUCKET_BADGE_CLASS[bucket]}`}>
+                        {bucket}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="text-right py-2 text-sm">{formatCurrency(inv.totalAmount)}</td>
+                  <td className="text-right py-2 text-sm text-gray-500">{formatCurrency(inv.paidAmount)}</td>
+                  <td className="text-right py-2 text-sm font-semibold">
+                    {formatCurrency(Number(inv.totalAmount) - Number(inv.paidAmount))}
+                  </td>
+                  <td className="py-2 pr-4 text-xs text-gray-500 max-w-[200px] truncate" title={inv.notes || ''}>
+                    {inv.notes || <span className="text-gray-300">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function outstandingItemsFrom(invoices) {
+  return invoices
+    .filter((inv) => ['OPEN', 'PARTIAL', 'OVERDUE'].includes(inv.status))
+    .map((inv) => {
+      const { daysOverdue, bucket } = bucketFor(inv.dueDate);
+      return {
+        invoiceNo: inv.invoiceNo, dueDate: inv.dueDate, daysOverdue, bucket, notes: inv.notes,
+        outstanding: Number(inv.totalAmount) - Number(inv.paidAmount),
+      };
+    });
+}
+
+// ─── Full invoice history for one matched customer (search mode) ──────────
+function HistoryCustomerBlock({ customer, invoices }) {
+  const [expanded, setExpanded] = useState(true);
+
+  const outstandingItems = outstandingItemsFrom(invoices);
+  const outstandingTotal = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+
+  return (
+    <div className="card">
+      <div
+        className="card-header cursor-pointer select-none"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0 text-green-700 text-xs font-bold">
+            {customer.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
+          </div>
+          <h3 className="font-semibold text-gray-900">{customer.name}</h3>
+          <span className="badge-gray text-xs">{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</span>
+          {outstandingTotal > 0 && (
+            <span className="badge bg-red-100 text-red-600 text-xs">{formatCurrency(outstandingTotal)} outstanding</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            label={customer.name}
+            disabled={outstandingItems.length === 0}
+            onPrint={() => printCustomerStatement(customer.name, outstandingItems)}
+            onExcel={() => exportCustomerStatement(customer.name, outstandingItems)}
+          />
+          {expanded
+            ? <ChevronUp   className="w-4 h-4 text-gray-400" />
+            : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </div>
+      </div>
+
+      {expanded && <HistoryTable invoices={invoices} />}
+    </div>
+  );
+}
+
+// ─── Slide-out drawer: one customer's full transaction history ────────────
+function CustomerHistoryDrawer({ customerName, invoices, loading, onClose }) {
+  const outstandingItems = outstandingItemsFrom(invoices);
+  const outstandingTotal = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-6xl bg-white h-full flex flex-col shadow-2xl z-10 overflow-hidden">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-600 to-emerald-600 text-white flex-shrink-0">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                <History className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg leading-tight">{customerName}</h3>
+                <p className="text-green-200 text-sm">Full transaction history</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="mt-4 flex gap-2 flex-wrap items-center">
+            <span className="badge bg-white/10 text-green-100 text-xs">{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</span>
+            {outstandingTotal > 0 && (
+              <span className="badge bg-white/10 text-green-100 text-xs">{formatCurrency(outstandingTotal)} outstanding</span>
+            )}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-gray-400">
+              <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin mr-3" />
+              Loading history...
+            </div>
+          ) : (
+            <HistoryTable invoices={invoices} />
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-200 flex-shrink-0">
+          <ExportMenu
+            label={customerName}
+            disabled={outstandingItems.length === 0}
+            onPrint={() => printCustomerStatement(customerName, outstandingItems)}
+            onExcel={() => exportCustomerStatement(customerName, outstandingItems)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main AR Aging Page ───────────────────────────────────────
 export default function ARAgingPage() {
+  const searchParams = useSearchParams();
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(true);
-  const [search, setSearch]       = useState('');
+  const [search, setSearch]       = useState(searchParams.get('search') || '');
   const [chartType, setChartType] = useState('bar'); // 'bar' | 'pie'
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [historyResults, setHistoryResults] = useState([]); // [{ customer, invoices }] — full history for search
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [viewCustomer, setViewCustomer] = useState(null); // { customerId, customerName } — drawer target
+  const [viewInvoices, setViewInvoices] = useState([]);
+  const [viewLoading, setViewLoading]   = useState(false);
+
+  const openHistoryDrawer = async (customerId, customerName) => {
+    setViewCustomer({ customerId, customerName });
+    setViewLoading(true);
+    try {
+      const { data: invRes } = await rApi.invoices.list({ customerId, limit: 100 });
+      setViewInvoices(invRes.data);
+    } catch {
+      toast.error('Failed to load customer history');
+      setViewInvoices([]);
+    } finally {
+      setViewLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -170,6 +492,38 @@ export default function ARAgingPage() {
       setLoading(false);
     }
   }, []);
+
+  // Searching a client name pulls their FULL invoice history (paid, open, void — everything),
+  // not just what's currently outstanding — debounced so typing doesn't fire a fetch per keystroke.
+  useEffect(() => {
+    const term = search.trim();
+    if (!term) { setHistoryResults([]); setHistoryLoading(false); return; }
+
+    setHistoryLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data: customers } = await rApi.customers.list({ search: term });
+        const results = await Promise.all(
+          customers.map(async (customer) => {
+            try {
+              const { data: invRes } = await rApi.invoices.list({ customerId: customer.id, limit: 100 });
+              return { customer, invoices: invRes.data };
+            } catch {
+              return { customer, invoices: [] };
+            }
+          })
+        );
+        setHistoryResults(results);
+      } catch {
+        toast.error('Failed to load customer history');
+        setHistoryResults([]);
+      } finally {
+        setHistoryLoading(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -409,81 +763,116 @@ export default function ARAgingPage() {
         </div>
       )}
 
-      {/* Detail table */}
+      {/* Detail header + search */}
       <div className="card">
         <div className="card-header">
-          <h3 className="font-semibold text-gray-900">Detail by Customer</h3>
+          <h3 className="font-semibold text-gray-900">
+            {search.trim() ? 'Search Results — Full Customer History' : 'Detail by Customer'}
+          </h3>
           <div className="relative">
             <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
-              className="input pl-8 text-sm w-52 py-1.5"
-              placeholder="Filter customer..."
+              className="input pl-8 text-sm w-64 py-1.5"
+              placeholder="Search customer name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th className="pl-4 min-w-52">Customer</th>
-                {BUCKETS.map((b) => (
-                  <th key={b} className="text-right whitespace-nowrap">
-                    <span style={{ color: BUCKET_COLORS[b] }}>{b}</span>
-                  </th>
-                ))}
-                <th className="text-right pr-4">Total</th>
-                <th className="w-10" />
-              </tr>
-            </thead>
-            <tbody>
-              {sortedCustomers.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-12 text-gray-400">
-                    {search
-                      ? 'No customers match your search.'
-                      : 'No outstanding receivables. All invoices are collected! 🎉'}
-                  </td>
-                </tr>
-              ) : sortedCustomers.map(([customerName, items]) => (
-                <CustomerRow key={customerName} customerName={customerName} items={items} />
-              ))}
-            </tbody>
-
-            {/* Totals footer */}
-            {sortedCustomers.length > 0 && (
-              <tfoot>
-                <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
-                  <td className="py-3 pl-4 text-gray-700">TOTAL</td>
-                  {BUCKETS.map((bucket) => {
-                    const amt = filtered.filter((i) => i.bucket === bucket).reduce((s, i) => s + i.outstanding, 0);
-                    return (
-                      <td key={bucket} className="text-right py-3">
-                        <span style={{ color: amt > 0 ? BUCKET_COLORS[bucket] : '#d1d5db' }}>
-                          {formatCurrency(amt)}
-                        </span>
+        {!search.trim() && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th className="pl-4 min-w-52">Customer</th>
+                    {BUCKETS.map((b) => (
+                      <th key={b} className="text-right whitespace-nowrap">
+                        <span style={{ color: BUCKET_COLORS[b] }}>{b}</span>
+                      </th>
+                    ))}
+                    <th className="text-right pr-4">Total</th>
+                    <th className="w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedCustomers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="text-center py-12 text-gray-400">
+                        No outstanding receivables. All invoices are collected! 🎉
                       </td>
-                    );
-                  })}
-                  <td className="text-right py-3 pr-4 text-green-700">
-                    {formatCurrency(filtered.reduce((s, i) => s + i.outstanding, 0))}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+                    </tr>
+                  ) : sortedCustomers.map(([customerName, items]) => (
+                    <CustomerRow key={customerName} customerName={customerName} items={items} onView={openHistoryDrawer} />
+                  ))}
+                </tbody>
 
-        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-          <span>Aging calculated as of today · Only Open and Partial invoices are included</span>
-          <span className="flex items-center gap-1">
-            <PesoSign className="w-3.5 h-3.5" /> Amounts in Philippine Peso (₱)
-          </span>
-        </div>
+                {/* Totals footer */}
+                {sortedCustomers.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                      <td className="py-3 pl-4 text-gray-700">TOTAL</td>
+                      {BUCKETS.map((bucket) => {
+                        const amt = filtered.filter((i) => i.bucket === bucket).reduce((s, i) => s + i.outstanding, 0);
+                        return (
+                          <td key={bucket} className="text-right py-3">
+                            <span style={{ color: amt > 0 ? BUCKET_COLORS[bucket] : '#d1d5db' }}>
+                              {formatCurrency(amt)}
+                            </span>
+                          </td>
+                        );
+                      })}
+                      <td className="text-right py-3 pr-4 text-green-700">
+                        {formatCurrency(filtered.reduce((s, i) => s + i.outstanding, 0))}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+              <span>Aging calculated as of today · Only Open and Partial invoices are included</span>
+              <span className="flex items-center gap-1">
+                <PesoSign className="w-3.5 h-3.5" /> Amounts in Philippine Peso (₱)
+              </span>
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Full customer history — shown while searching */}
+      {search.trim() && (
+        <div className="space-y-3">
+          {historyLoading ? (
+            <div className="card p-10 flex items-center justify-center text-gray-400">
+              <div className="w-5 h-5 border-2 border-green-500 border-t-transparent rounded-full animate-spin mr-3" />
+              Searching customer history...
+            </div>
+          ) : historyResults.length === 0 ? (
+            <div className="card p-10 flex flex-col items-center justify-center text-center text-gray-400 gap-2">
+              <History className="w-8 h-8 text-gray-200" />
+              <p>No customers match "{search}".</p>
+            </div>
+          ) : (
+            historyResults.map(({ customer, invoices }) => (
+              <HistoryCustomerBlock key={customer.id} customer={customer} invoices={invoices} />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Per-customer history drawer, opened via the eye icon */}
+      {viewCustomer && (
+        <CustomerHistoryDrawer
+          customerName={viewCustomer.customerName}
+          invoices={viewInvoices}
+          loading={viewLoading}
+          onClose={() => setViewCustomer(null)}
+        />
+      )}
     </div>
   );
 }

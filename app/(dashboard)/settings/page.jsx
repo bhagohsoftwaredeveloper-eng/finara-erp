@@ -8,7 +8,7 @@ import {
   Calculator, Hash, Shield, Save, RefreshCw, Download, AlertTriangle,
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X, ChevronDown,
-  Inbox,
+  Inbox, HelpCircle,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
@@ -26,7 +26,10 @@ const TABS = [
   { key: 'permissions', label: 'Permissions',  icon: Key,          roles: ['ADMIN'] },
   { key: 'audit',       label: 'Audit Trail',  icon: Shield,       roles: ['ADMIN', 'MANAGER'] },
   { key: 'inquiries',   label: 'Inquiries',    icon: Inbox,        roles: ['ADMIN', 'MANAGER'] },
+  { key: 'help',        label: 'Help',         icon: HelpCircle,   roles: ['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'] },
 ];
+
+const USER_MANUAL_PDF = '/Finara-User-Manual.pdf';
 
 const INQUIRY_STATUS_COLORS = { NEW: 'badge-blue', CONTACTED: 'badge-yellow', CLOSED: 'badge-green' };
 const ROLES        = ['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'];
@@ -1396,6 +1399,35 @@ export default function SettingsPage() {
                   </table>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Help ── */}
+          {activeTab === 'help' && (
+            <div className="space-y-5">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <SectionTitle icon={HelpCircle} color="text-blue-500">Finara User Manual</SectionTitle>
+                <a href={USER_MANUAL_PDF} download="Finara-User-Manual.pdf" className="btn-primary">
+                  <Download className="w-4 h-4" /> Download PDF
+                </a>
+              </div>
+              <p className="text-sm text-gray-500">
+                A complete, module-by-module guide to every feature in Finara — Chart of Accounts,
+                General Ledger, AR/AP, Payroll, BIR Compliance, Inventory, and Reports — with
+                step-by-step instructions and workflow diagrams. View it below, or download it to
+                keep offline.
+              </p>
+              <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50" style={{ height: '80vh' }}>
+                <iframe
+                  src={USER_MANUAL_PDF}
+                  title="Finara User Manual"
+                  className="w-full h-full"
+                />
+              </div>
+              <p className="text-xs text-gray-400">
+                If the preview above doesn't load (some mobile browsers can't display PDFs inline),
+                use the <strong>Download PDF</strong> button and open it in your device's PDF reader.
+              </p>
             </div>
           )}
         </div>

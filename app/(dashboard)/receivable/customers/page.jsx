@@ -290,8 +290,14 @@ function CustomerDrawer({ customer, invoices, onClose, onEdit }) {
           </div>
         </div>
 
-        <div className="p-4 border-t border-gray-200">
-          <button onClick={onEdit} className="btn-primary w-full justify-center">
+        <div className="p-4 border-t border-gray-200 flex gap-2">
+          <Link
+            href={`/receivable/aging?search=${encodeURIComponent(customer.name)}`}
+            className="btn-secondary flex-1 justify-center"
+          >
+            <TrendingUp className="w-4 h-4" /> View AR Aging
+          </Link>
+          <button onClick={onEdit} className="btn-primary flex-1 justify-center">
             <Edit2 className="w-4 h-4" /> Edit Customer
           </button>
         </div>

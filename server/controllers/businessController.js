@@ -2,6 +2,7 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { clearBusinessCache } = require('../utils/glPost');
 const { cloneChartOfAccounts } = require('../utils/cloneChartOfAccounts');
+const { resetDemoBusiness } = require('../../prisma/seedDemo');
 
 // ─── List all businesses the current user can access ─────────────
 exports.list = async (req, res, next) => {
@@ -90,6 +91,22 @@ exports.update = async (req, res, next) => {
     clearBusinessCache(id);
 
     res.json(biz);
+  } catch (err) { next(err); }
+};
+
+// ─── Reset the demo account only ──────────────────────────────────
+// Always resolves the target by the fixed DEMO business code — never by a
+// client-supplied id — so this can never be pointed at a real business.
+// Wipes all demo transactional data and rebuilds a clean baseline: Chart of
+// Accounts, demo login, and sample customers/vendors/employees. AR/AP are
+// left empty on purpose so a live demo starts from a blank slate.
+exports.resetDemo = async (req, res, next) => {
+  try {
+    const { business } = await resetDemoBusiness({ withTransactions: false });
+    res.json({
+      message: `Demo account reset. "${business.name}" now has a fresh Chart of Accounts and sample customers/vendors/employees — no invoices or bills.`,
+      business,
+    });
   } catch (err) { next(err); }
 };
 
