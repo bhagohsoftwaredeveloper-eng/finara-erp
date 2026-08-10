@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { clearBusinessCache } = require('../utils/glPost');
+const { cloneChartOfAccounts } = require('../utils/cloneChartOfAccounts');
 
 // ─── List all businesses the current user can access ─────────────
 exports.list = async (req, res, next) => {
@@ -25,7 +26,20 @@ exports.list = async (req, res, next) => {
 // ─── Get one ─────────────────────────────────────────────────────
 exports.get = async (req, res, next) => {
   try {
-    const biz = await prisma.business.findUnique({ where: { id: Number(req.params.id) } });
+    const id = Number(req.params.id);
+
+    // Non-admins may only fetch a business they've been granted access to —
+    // same restriction list() already applies. Without this, any authenticated
+    // user could read another business's profile (name, TIN, address, contact
+    // info) just by guessing its id.
+    if (req.user.role !== 'ADMIN') {
+      const ub = await prisma.userBusiness.findUnique({
+        where: { userId_businessId: { userId: req.user.id, businessId: id } },
+      });
+      if (!ub) throw createError('Access denied to this business', 403);
+    }
+
+    const biz = await prisma.business.findUnique({ where: { id } });
     if (!biz) throw createError('Business not found', 404);
     res.json(biz);
   } catch (err) { next(err); }
@@ -45,48 +59,7 @@ exports.create = async (req, res, next) => {
     });
 
     // Auto-clone the default COA from business 1 into the new business
-    const sourceAccounts = await prisma.account.findMany({
-      where: { businessId: 1 },
-      orderBy: { accountCode: 'asc' },
-    });
-
-    if (sourceAccounts.length > 0) {
-      // Insert in two passes: first without parentId, then update parentId
-      const idMap = {}; // old id → new id
-
-      // Pass 1: insert roots (no parent)
-      for (const acc of sourceAccounts.filter((a) => !a.parentId)) {
-        const newAcc = await prisma.account.create({
-          data: {
-            businessId:   biz.id,
-            accountCode:  acc.accountCode,
-            accountName:  acc.accountName,
-            accountType:  acc.accountType,
-            normalBalance:acc.normalBalance,
-            description:  acc.description,
-            isActive:     acc.isActive,
-          },
-        });
-        idMap[acc.id] = newAcc.id;
-      }
-
-      // Pass 2: insert children with mapped parentId
-      for (const acc of sourceAccounts.filter((a) => a.parentId)) {
-        const newAcc = await prisma.account.create({
-          data: {
-            businessId:   biz.id,
-            accountCode:  acc.accountCode,
-            accountName:  acc.accountName,
-            accountType:  acc.accountType,
-            normalBalance:acc.normalBalance,
-            parentId:     idMap[acc.parentId] || null,
-            description:  acc.description,
-            isActive:     acc.isActive,
-          },
-        });
-        idMap[acc.id] = newAcc.id;
-      }
-    }
+    await cloneChartOfAccounts(1, biz.id);
 
     // Grant all ADMIN users access to the new business
     const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
