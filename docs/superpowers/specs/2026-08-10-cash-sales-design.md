@@ -129,12 +129,15 @@ the gap:
 
 ```
 1. CashSale.status → VOID, voidedReason, voidedAt
-2. Its linked JournalEntry.status → VOID
+2. Its linked JournalEntry.status → VOIDED   (the actual JournalStatus enum
+                                               value — DRAFT/POSTED/VOIDED,
+                                               prisma/schema.prisma:190)
 ```
 
 Step 2 alone is sufficient — no reversing entry needed — because every
 report already filters to `status: 'POSTED'`. This mirrors how a
-directly-voided Journal Entry already behaves in the General Ledger module.
+directly-voided Journal Entry already behaves in the General Ledger module
+(`journalController.js:201`, which sets the same `'VOIDED'` status).
 
 ## API
 
@@ -209,8 +212,11 @@ consistently with the Invoices list it sits beside.
   invoice — internal record only" to avoid it being mistaken for one).
 
 Nav: new entry under **Sales**, beside **Accounts Receivable**
-(`components/layout/Sidebar.jsx`). Permissions: add `/receivable/cash-sales`
-to the existing `receivable` module's routes in `lib/permissions.js`.
+(`components/layout/Sidebar.jsx`). No `lib/permissions.js` change needed —
+its `receivable` module already lists `routes: ['/receivable']`
+(`lib/permissions.js:17`) and `canAccess()` matches by prefix
+(`pathname.startsWith(r + '/')`), so `/receivable/cash-sales` is already
+covered.
 
 ## Error handling
 
