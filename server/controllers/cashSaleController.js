@@ -67,7 +67,19 @@ exports.create = async (req, res, next) => {
     if (!account) throw createError('accountId must be an active REVENUE account', 400);
 
     const cleanAmount = round2(Number(amount));
-    const v = vatCode === 'VAT' ? computeVAT(cleanAmount, true) : { base: cleanAmount, vat: 0, total: cleanAmount };
+    // Compute vat first (backed out of the VAT-inclusive total) and derive
+    // base as total - vat, so base + vat === total by construction. Using
+    // computeVAT()'s independently-rounded base + remainder vat can be off
+    // by a centavo (e.g. ₱24.50 → base 21.88 + vat 2.63 = 24.51 ≠ 24.50),
+    // which misbalances the GL entry built from these figures. Do not swap
+    // this back to computeVAT(cleanAmount, true) — see cash sale VAT rounding
+    // regression test in tests/cashSaleController.test.js.
+    const v = vatCode === 'VAT'
+      ? (() => {
+          const vat = round2(cleanAmount - cleanAmount / 1.12);
+          return { base: round2(cleanAmount - vat), vat, total: cleanAmount };
+        })()
+      : { base: cleanAmount, vat: 0, total: cleanAmount };
     const saleNo = await genSaleNo();
 
     const sale = await prisma.cashSale.create({

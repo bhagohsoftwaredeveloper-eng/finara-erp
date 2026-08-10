@@ -14,6 +14,7 @@ jest.mock('../server/utils/audit', () => ({ recordAudit: jest.fn() }));
 
 const prisma = require('../server/config/database');
 const ctrl = require('../server/controllers/cashSaleController');
+const glPost = require('../server/utils/glPost');
 
 const run = (fn, req) => new Promise((resolve, reject) => {
   fn({ businessId: 1, params: {}, query: {}, body: {}, ...req }, { json: resolve, status: () => ({ json: resolve }) }, reject);
@@ -54,5 +55,22 @@ describe('cashSaleController tenant isolation', () => {
     prisma.cashSale.findFirst.mockResolvedValue(null);
 
     await expect(run(ctrl.voidSale, { params: { id: '5' }, body: { reason: 'test reason' } })).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('cash sale VAT split always sums back to the total', () => {
+  test.each([1.26, 24.50, 101.50, 500.22, 1000.50])('amount %s produces subtotal + vatAmount === totalAmount', async (amount) => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+    prisma.cashSale.findFirst.mockResolvedValue(null); // genSaleNo: no prior sale
+    let created;
+    prisma.cashSale.create.mockImplementation(({ data }) => { created = data; return Promise.resolve({ id: 1, ...data }); });
+    glPost.safePost.mockResolvedValue({ id: 99 });
+    prisma.cashSale.update.mockResolvedValue({});
+
+    await run(ctrl.create, {
+      body: { saleDate: '2026-08-10', description: 'test', accountId: 1, vatCode: 'VAT', amount, paymentMethod: 'Cash' },
+    });
+
+    expect(Number(created.subtotal) + Number(created.vatAmount)).toBeCloseTo(Number(created.totalAmount), 2);
   });
 });
