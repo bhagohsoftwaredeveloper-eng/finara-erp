@@ -36,8 +36,12 @@ function NewSaleModal({ accounts, onClose, onSaved }) {
     if (amt <= 0) return toast.error('Amount must be greater than 0');
     setSaving(true);
     try {
-      await csApi.create(form);
-      toast.success('Cash sale recorded');
+      const res = await csApi.create(form);
+      if (res.data.posted) {
+        toast.success('Cash sale recorded');
+      } else {
+        toast.error('Recorded, but GL posting failed — check Audit Trail', { duration: 6000 });
+      }
       onSaved();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to record cash sale');
@@ -239,6 +243,9 @@ export default function CashSalesPage() {
                   <td className="text-right py-2 text-sm font-semibold">{formatCurrency(s.totalAmount)}</td>
                   <td className="py-2">
                     <span className={`badge text-xs ${STATUS_BADGE[s.status]}`}>{s.status}</span>
+                    {s.status === 'ACTIVE' && !s.journalEntryId && (
+                      <span className="ml-1 text-xs text-red-600" title="GL posting failed — not reflected in financial reports">⚠ unposted</span>
+                    )}
                   </td>
                   <td className="py-2 pr-4">
                     <div className="flex items-center gap-2">

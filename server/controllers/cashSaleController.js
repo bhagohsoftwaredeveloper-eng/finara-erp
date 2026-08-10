@@ -1,6 +1,6 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
-const { computeVAT } = require('../utils/phCompliance');
+const { computeVAT, round2 } = require('../utils/phCompliance');
 const { nextDocNumber } = require('../utils/docNumber');
 const { buildCashSaleEntry } = require('../utils/cashSale');
 const glPost = require('../utils/glPost');
@@ -30,7 +30,7 @@ exports.list = async (req, res, next) => {
       prisma.cashSale.findMany({
         where,
         include: { account: { select: { accountCode: true, accountName: true } } },
-        orderBy: { saleDate: 'desc' },
+        orderBy: [{ saleDate: 'desc' }, { id: 'desc' }],
         skip: (Number(page) - 1) * Number(limit),
         take: Number(limit),
       }),
@@ -66,7 +66,8 @@ exports.create = async (req, res, next) => {
     });
     if (!account) throw createError('accountId must be an active REVENUE account', 400);
 
-    const v = vatCode === 'VAT' ? computeVAT(Number(amount), true) : { base: Number(amount), vat: 0, total: Number(amount) };
+    const cleanAmount = round2(Number(amount));
+    const v = vatCode === 'VAT' ? computeVAT(cleanAmount, true) : { base: cleanAmount, vat: 0, total: cleanAmount };
     const saleNo = await genSaleNo();
 
     const sale = await prisma.cashSale.create({
@@ -104,7 +105,7 @@ exports.create = async (req, res, next) => {
       await prisma.cashSale.update({ where: { id: sale.id }, data: { journalEntryId: entry.id } });
     }
 
-    res.status(201).json({ ...sale, journalEntryId: entry?.id || null });
+    res.status(201).json({ ...sale, journalEntryId: entry?.id || null, posted: !!entry?.id });
   } catch (err) { next(err); }
 };
 

@@ -69,6 +69,9 @@ describe('daily remittance includes cash sales', () => {
 
     const r = await run('2026-08-10');
 
+    expect(prisma.cashSale.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: 'ACTIVE' }) })
+    );
     expect(r.totalSales).toBe(0);
     expect(r.counts.cashSales).toBe(0);
   });

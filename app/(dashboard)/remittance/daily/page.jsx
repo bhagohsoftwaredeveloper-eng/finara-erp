@@ -159,9 +159,11 @@ export default function DailyRemittancePage() {
         // counts.pettyCash below.
         const collectionsByMethod = {};
         for (const it of full.data.items || []) {
-          if (it.category !== 'COLLECTION') continue;
           let meta = {};
           try { meta = JSON.parse(it.meta || '{}'); } catch {}
+          const isCollection = it.category === 'COLLECTION';
+          const isCashSale = it.category === 'SALES' && meta.method;
+          if (!isCollection && !isCashSale) continue;
           const method = meta.method || 'Unspecified';
           collectionsByMethod[method] = (collectionsByMethod[method] || 0) + Number(it.amount);
         }

@@ -242,6 +242,7 @@ module.exports = {
   computeVAT,
   computeEWT,
   computePayroll,
+  round2,
   VAT_RATE,
   EWT_RATES,
 };
