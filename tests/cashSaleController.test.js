@@ -145,3 +145,45 @@ describe('cash sale item picker — stock deduction on create', () => {
     expect(glPost.safePost).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('cash sale item picker — void reverses stock', () => {
+  test('voidSale restocks the item and posts a reversing GL entry when linked to an OUT inventory transaction', async () => {
+    prisma.cashSale.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'ACTIVE', journalEntryId: 40, saleNo: 'CS-000005' });
+    prisma.cashSale.update = jest.fn().mockResolvedValue({});
+    prisma.journalEntry.update = jest.fn().mockResolvedValue({});
+    prisma.$transaction = jest.fn().mockImplementation((ops) => Promise.all(ops));
+    prisma.inventoryTransaction.findFirst.mockResolvedValue({
+      id: 1, itemId: 9, quantity: 2, unitCost: 50, totalCost: 100, type: 'OUT', reference: 'CS-000005',
+    });
+    prisma.inventoryItem.findFirst.mockResolvedValue({
+      id: 9, currentStock: 8, name: 'Widget', sku: 'SKU-0001', cogsAccountId: null, inventoryAccountId: null,
+    });
+    let restockedTo, reversalTxn;
+    prisma.inventoryItem.update.mockImplementation(({ data }) => { restockedTo = data.currentStock; return Promise.resolve({}); });
+    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { reversalTxn = data; return Promise.resolve({ id: 2, ...data }); });
+    glPost.safePost.mockResolvedValue({ id: 100 });
+
+    await run(ctrl.voidSale, { params: { id: '5' }, body: { reason: 'test reason' } });
+
+    expect(restockedTo).toBe(10); // 8 + 2
+    expect(reversalTxn).toMatchObject({ itemId: 9, type: 'RETURN_IN', quantity: 2, reference: 'CS-000005' });
+    expect(glPost.safePost).toHaveBeenCalledWith(expect.objectContaining({
+      lines: expect.arrayContaining([
+        expect.objectContaining({ accountCode: '1210', debit: 100 }),
+        expect.objectContaining({ accountCode: '5010', credit: 100 }),
+      ]),
+    }));
+  });
+
+  test('voidSale does not touch inventory when the sale has no linked OUT transaction', async () => {
+    prisma.cashSale.findFirst.mockResolvedValue({ id: 6, businessId: 1, status: 'ACTIVE', journalEntryId: null, saleNo: 'CS-000006' });
+    prisma.cashSale.update = jest.fn().mockResolvedValue({});
+    prisma.$transaction = jest.fn().mockResolvedValue([{}]);
+    prisma.inventoryTransaction.findFirst.mockResolvedValue(null);
+
+    await run(ctrl.voidSale, { params: { id: '6' }, body: { reason: 'test reason' } });
+
+    expect(prisma.inventoryItem.update).not.toHaveBeenCalled();
+    expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
+  });
+});
