@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Ban, Filter, X,
   AlertCircle, Clock, CheckCircle2, FileText,
-  Printer, ChevronDown, ChevronUp, Pencil,
+  Printer, ChevronDown, ChevronUp, Pencil, Truck,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
 import PesoSign from '@/components/icons/PesoSign';
@@ -42,7 +42,7 @@ const computeVAT = (amount, code) =>
     : { base: amount, vat: 0, total: amount };
 
 // ─── Invoice Detail Modal ─────────────────────────────────────
-function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit }) {
+function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShip }) {
   const balance = Number(invoice.totalAmount) - Number(invoice.paidAmount);
   const pct = invoice.totalAmount > 0
     ? (Number(invoice.paidAmount) / Number(invoice.totalAmount)) * 100
@@ -123,6 +123,11 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit }) {
             <span className={`${STATUS_BADGE[invoice.status]} flex items-center gap-1`}>
               {STATUS_ICON[invoice.status]} {invoice.status}
             </span>
+            {invoice.deliveryStatus === 'SHIPPED' && (
+              <span className="badge badge-green text-xs flex items-center gap-1">
+                <Truck className="w-3 h-3" /> Shipped
+              </span>
+            )}
             {isOverdue && invoice.status !== 'VOID' && (
               <span className="badge-red flex items-center gap-1 text-xs">
                 <AlertCircle className="w-3 h-3" /> Overdue
@@ -277,6 +282,9 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit }) {
                   <Pencil className="w-4 h-4" /> Edit
                 </button>
               )}
+              <button onClick={onShip} className="btn-secondary">
+                <Truck className="w-4 h-4" /> {invoice.deliveryStatus === 'SHIPPED' ? 'Shipping Info' : 'Mark as Shipped'}
+              </button>
               {invoice.status !== 'PAID' && (
                 <button onClick={onCollect} className="btn-success">
                   <PesoSign className="w-4 h-4" /> Record Collection
@@ -422,6 +430,72 @@ function CollectionModal({ invoice, onClose, onCollected }) {
             <button type="submit" disabled={saving} className="btn-success">
               <PesoSign className="w-4 h-4" />
               {saving ? 'Recording...' : 'Record Collection'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shipping Modal ─────────────────────────────────────────────
+function ShippingModal({ invoice, onClose, onShipped }) {
+  const [form, setForm] = useState({
+    shippedDate:     invoice.shippedDate ? invoice.shippedDate.slice(0, 10) : new Date().toISOString().split('T')[0],
+    shippingAddress: invoice.shippingAddress || invoice.customer?.address || '',
+    courier:         invoice.courier || '',
+    trackingNumber:  invoice.trackingNumber || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const alreadyShipped = invoice.deliveryStatus === 'SHIPPED';
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rApi.invoices.ship(invoice.id, form);
+      toast.success(alreadyShipped ? 'Shipping info updated' : 'Invoice marked as shipped');
+      onShipped();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update shipping info');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-lg">
+        <div className="modal-header">
+          <h3 className="text-lg font-semibold">{alreadyShipped ? 'Shipping Info' : 'Mark as Shipped'}</h3>
+          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body space-y-4">
+            <div className="form-group">
+              <label className="label">Ship Date *</label>
+              <input type="date" className="input" required value={form.shippedDate} onChange={set('shippedDate')} />
+            </div>
+            <div className="form-group">
+              <label className="label">Shipping Address</label>
+              <textarea className="input resize-none" rows={2} value={form.shippingAddress} onChange={set('shippingAddress')} />
+            </div>
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="label">Courier</label>
+                <input className="input" value={form.courier} onChange={set('courier')} placeholder="e.g. LBC, J&T Express" />
+              </div>
+              <div className="form-group">
+                <label className="label">Tracking Number</label>
+                <input className="input" value={form.trackingNumber} onChange={set('trackingNumber')} />
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">
+              {saving ? 'Saving...' : (alreadyShipped ? 'Update Shipping Info' : 'Mark as Shipped')}
             </button>
           </div>
         </form>
@@ -980,6 +1054,9 @@ export default function InvoicesPage() {
                       <span className={`${STATUS_BADGE[inv.status]} flex items-center gap-1 w-fit`}>
                         {STATUS_ICON[inv.status]} {inv.status}
                       </span>
+                      {inv.deliveryStatus === 'SHIPPED' && (
+                        <span className="badge badge-green text-xs ml-1">Shipped</span>
+                      )}
                     </td>
                     <td className="text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
@@ -1021,6 +1098,18 @@ export default function InvoicesPage() {
                             title="Void invoice"
                           >
                             <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+                        {inv.status !== 'VOID' && (
+                          <button
+                            onClick={async () => {
+                              const { data } = await rApi.invoices.get(inv.id);
+                              setModal({ type: 'ship', invoice: data });
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title={inv.deliveryStatus === 'SHIPPED' ? 'Shipping info' : 'Mark as shipped'}
+                          >
+                            <Truck className="w-4 h-4" />
                           </button>
                         )}
                       </div>
@@ -1086,6 +1175,7 @@ export default function InvoicesPage() {
           onCollect={() => setModal({ type: 'collect', invoice: modal.invoice })}
           onVoid={() => { handleVoid(modal.invoice); setModal(null); }}
           onEdit={() => setModal({ type: 'edit', invoice: modal.invoice })}
+          onShip={() => setModal({ type: 'ship', invoice: modal.invoice })}
         />
       )}
       {modal?.type === 'collect' && (
@@ -1093,6 +1183,13 @@ export default function InvoicesPage() {
           invoice={modal.invoice}
           onClose={() => setModal(null)}
           onCollected={() => { setModal(null); load(); }}
+        />
+      )}
+      {modal?.type === 'ship' && (
+        <ShippingModal
+          invoice={modal.invoice}
+          onClose={() => setModal(null)}
+          onShipped={() => { setModal(null); load(); }}
         />
       )}
     </div>
