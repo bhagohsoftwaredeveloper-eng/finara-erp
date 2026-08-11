@@ -193,9 +193,9 @@ exports.voidSale = async (req, res, next) => {
     if (sale.status === 'VOID') throw createError('Cash sale is already voided', 400);
 
     const outTxn = await prisma.inventoryTransaction.findFirst({
-      where: { reference: sale.saleNo, type: 'OUT' },
+      where: { reference: sale.saleNo, type: 'OUT', item: { businessId: req.businessId } },
     });
-    const item = outTxn ? await prisma.inventoryItem.findFirst({ where: { id: outTxn.itemId } }) : null;
+    const item = outTxn ? await prisma.inventoryItem.findFirst({ where: { id: outTxn.itemId, businessId: req.businessId } }) : null;
 
     let newStock, txnNo;
     if (item) {

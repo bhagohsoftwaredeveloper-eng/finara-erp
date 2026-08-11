@@ -316,13 +316,15 @@ export default function CashSalesPage() {
       .finally(() => setLoading(false));
   }, [search]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { acctApi.list({ active: true }).then((r) => setAccounts(r.data)).catch(() => {}); }, []);
-  useEffect(() => {
+  const loadItems = useCallback(() => {
     invApi.items.list({ limit: 500 })
       .then((r) => setItems(r.data.data || r.data || []))
       .catch(() => setItems([]));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { acctApi.list({ active: true }).then((r) => setAccounts(r.data)).catch(() => {}); }, []);
+  useEffect(() => { loadItems(); }, [loadItems]);
 
   const handleVoid = async (sale) => {
     const reason = prompt(`Void ${sale.saleNo}? Enter a reason:`);
@@ -331,6 +333,7 @@ export default function CashSalesPage() {
       await csApi.void(sale.id, reason);
       toast.success('Cash sale voided');
       load();
+      loadItems();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to void cash sale');
     }
@@ -431,7 +434,7 @@ export default function CashSalesPage() {
           accounts={accounts}
           items={items}
           onClose={() => setShowNew(false)}
-          onSaved={() => { setShowNew(false); load(); }}
+          onSaved={() => { setShowNew(false); load(); loadItems(); }}
         />
       )}
     </div>
