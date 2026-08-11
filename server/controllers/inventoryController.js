@@ -23,6 +23,7 @@ async function nextTxnNo() {
   const seq  = last ? last.id + 1 : 1;
   return `INV-TXN-${pad(seq)}`;
 }
+exports.nextTxnNo = nextTxnNo;
 
 // ── Categories ────────────────────────────────────────────────────────────────
 exports.listCategories = async (req, res, next) => {
