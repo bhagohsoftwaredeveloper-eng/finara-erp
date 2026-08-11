@@ -158,6 +158,78 @@ exports.createInvoice = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.updateInvoice = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const inv = await prisma.invoice.findFirst({ where: { id, businessId: req.businessId } });
+    if (!inv) throw createError('Invoice not found', 404);
+    if (inv.status === 'PAID') throw createError('Cannot edit a fully paid invoice.', 400);
+    if (inv.status === 'VOID') throw createError('Cannot edit a voided invoice.', 400);
+
+    const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
+    let subtotal = 0, vatAmount = 0;
+    const processedLines = lines.map((l) => {
+      const amt = Number(l.quantity) * Number(l.unitPrice);
+      const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
+      subtotal += v.base; vatAmount += v.vat;
+      return { ...l, amount: v.base };
+    });
+    const totalAmount = subtotal + vatAmount;
+
+    if (totalAmount < Number(inv.paidAmount) - 0.01) {
+      throw createError(
+        `New total (₱${totalAmount.toFixed(2)}) is less than the amount already collected (₱${Number(inv.paidAmount).toFixed(2)}). Adjust line items so the total covers what's been paid.`,
+        400
+      );
+    }
+
+    const remaining = totalAmount - Number(inv.paidAmount);
+    const status = remaining <= 0.01 ? 'PAID' : (Number(inv.paidAmount) > 0 ? 'PARTIAL' : inv.status);
+
+    const updated = await prisma.invoice.update({
+      where: { id },
+      data: {
+        customerId: Number(customerId),
+        invoiceDate: new Date(invoiceDate),
+        dueDate: new Date(dueDate),
+        description, notes, subtotal, vatAmount, totalAmount, status,
+        lines: {
+          deleteMany: {},
+          create: processedLines.map((l) => ({
+            accountId: Number(l.accountId), description: l.description,
+            quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+          })),
+        },
+      },
+      include: { customer: true, lines: true },
+    });
+
+    // ── GL correction: void the old entry (if any), post a fresh one ────────
+    const oldEntry = await prisma.journalEntry.findFirst({
+      where: { businessId: req.businessId, reference: updated.invoiceNo, status: 'POSTED' },
+    });
+    if (oldEntry) {
+      await prisma.journalEntry.update({ where: { id: oldEntry.id }, data: { status: 'VOIDED' } });
+    }
+
+    const glLines = [
+      { accountCode: '1100', debit: Number(updated.totalAmount), description: `AR — ${updated.customer.name} (${updated.invoiceNo})` },
+      ...updated.lines.map((l) => ({ accountId: l.accountId, credit: Number(l.amount), description: l.description })),
+      ...(Number(updated.vatAmount) > 0 ? [{ accountCode: '2030', credit: Number(updated.vatAmount), description: 'Output VAT' }] : []),
+    ];
+    await glPost.safePost({
+      entryDate:   updated.invoiceDate,
+      description: `AR Invoice (Edited) — ${updated.customer.name} (${updated.invoiceNo})`,
+      reference:   updated.invoiceNo,
+      lines:       glLines,
+      userId:      req.user?.id || 1,
+      businessId:  req.businessId,
+    });
+
+    res.json(updated);
+  } catch (err) { next(err); }
+};
+
 exports.recordPayment = async (req, res, next) => {
   try {
     const id = Number(req.params.id);

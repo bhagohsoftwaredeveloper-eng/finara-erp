@@ -27,6 +27,20 @@ router.post('/',
     body('lines.*.vatCode').isIn(['VAT','EXEMPT','ZERO']),
   ],
   validate, ctrl.createInvoice);
+router.put('/:id',
+  [
+    param('id').isInt(),
+    body('customerId').isInt(),
+    body('invoiceDate').isISO8601(),
+    body('dueDate').isISO8601(),
+    body('lines').isArray({ min: 1 }),
+    body('lines.*.accountId').isInt(),
+    body('lines.*.description').notEmpty(),
+    body('lines.*.quantity').isFloat({ min: 0.001 }),
+    body('lines.*.unitPrice').isFloat({ min: 0 }),
+    body('lines.*.vatCode').isIn(['VAT','EXEMPT','ZERO']),
+  ],
+  validate, ctrl.updateInvoice);
 router.post('/:id/payment',
   [param('id').isInt(), body('paymentDate').isISO8601(), body('amount').isFloat({ min: 0.01 }), body('paymentMethod').notEmpty()],
   validate, ctrl.recordPayment);
