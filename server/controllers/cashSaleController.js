@@ -192,6 +192,17 @@ exports.voidSale = async (req, res, next) => {
     if (!sale) throw createError('Cash sale not found', 404);
     if (sale.status === 'VOID') throw createError('Cash sale is already voided', 400);
 
+    const outTxn = await prisma.inventoryTransaction.findFirst({
+      where: { reference: sale.saleNo, type: 'OUT' },
+    });
+    const item = outTxn ? await prisma.inventoryItem.findFirst({ where: { id: outTxn.itemId } }) : null;
+
+    let newStock, txnNo;
+    if (item) {
+      newStock = round2(Number(item.currentStock) + Number(outTxn.quantity));
+      txnNo = await nextTxnNo();
+    }
+
     await prisma.$transaction([
       prisma.cashSale.update({
         where: { id },
@@ -200,51 +211,42 @@ exports.voidSale = async (req, res, next) => {
       ...(sale.journalEntryId
         ? [prisma.journalEntry.update({ where: { id: sale.journalEntryId }, data: { status: 'VOIDED' } })]
         : []),
+      ...(item ? [
+        prisma.inventoryItem.update({ where: { id: item.id }, data: { currentStock: newStock } }),
+        prisma.inventoryTransaction.create({
+          data: {
+            txnNo,
+            itemId: item.id,
+            type: 'RETURN_IN',
+            quantity: outTxn.quantity,
+            unitCost: outTxn.unitCost,
+            totalCost: outTxn.totalCost,
+            runningStock: newStock,
+            reference: sale.saleNo,
+            notes: `Void reversal — ${sale.saleNo}`,
+            txnDate: new Date(),
+          },
+        }),
+      ] : []),
     ]);
 
-    const outTxn = await prisma.inventoryTransaction.findFirst({
-      where: { reference: sale.saleNo, type: 'OUT' },
-    });
-    if (outTxn) {
-      const item = await prisma.inventoryItem.findFirst({ where: { id: outTxn.itemId } });
-      if (item) {
-        const newStock = round2(Number(item.currentStock) + Number(outTxn.quantity));
-        const txnNo = await nextTxnNo();
-        await prisma.$transaction([
-          prisma.inventoryItem.update({ where: { id: item.id }, data: { currentStock: newStock } }),
-          prisma.inventoryTransaction.create({
-            data: {
-              txnNo,
-              itemId: item.id,
-              type: 'RETURN_IN',
-              quantity: outTxn.quantity,
-              unitCost: outTxn.unitCost,
-              totalCost: outTxn.totalCost,
-              runningStock: newStock,
-              reference: sale.saleNo,
-              notes: `Void reversal — ${sale.saleNo}`,
-              txnDate: new Date(),
-            },
-          }),
-        ]);
-
-        const totalCost = Number(outTxn.totalCost);
-        if (totalCost > 0) {
-          const invLine = item.inventoryAccountId
-            ? { accountId: item.inventoryAccountId, debit: totalCost, description: `Inventory in — ${item.name} (void)` }
-            : { accountCode: '1210', debit: totalCost, description: `Inventory in — ${item.name} (void)` };
-          const cogsLine = item.cogsAccountId
-            ? { accountId: item.cogsAccountId, credit: totalCost, description: `COGS reversal — ${item.sku} (void)` }
-            : { accountCode: '5010', credit: totalCost, description: `COGS reversal — ${item.sku} (void)` };
-          await glPost.safePost({
-            entryDate: new Date(),
-            description: `Cash sale void — ${item.name} (${sale.saleNo})`,
-            reference: sale.saleNo,
-            lines: [invLine, cogsLine],
-            userId: req.user?.id || 1,
-            businessId: req.businessId,
-          });
-        }
+    if (item) {
+      const totalCost = Number(outTxn.totalCost);
+      if (totalCost > 0) {
+        const invLine = item.inventoryAccountId
+          ? { accountId: item.inventoryAccountId, debit: totalCost, description: `Inventory in — ${item.name} (void)` }
+          : { accountCode: '1210', debit: totalCost, description: `Inventory in — ${item.name} (void)` };
+        const cogsLine = item.cogsAccountId
+          ? { accountId: item.cogsAccountId, credit: totalCost, description: `COGS reversal — ${item.sku} (void)` }
+          : { accountCode: '5010', credit: totalCost, description: `COGS reversal — ${item.sku} (void)` };
+        await glPost.safePost({
+          entryDate: new Date(),
+          description: `Cash sale void — ${item.name} (${sale.saleNo})`,
+          reference: sale.saleNo,
+          lines: [invLine, cogsLine],
+          userId: req.user?.id || 1,
+          businessId: req.businessId,
+        });
       }
     }
 
