@@ -2,6 +2,8 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { computeVAT } = require('../utils/phCompliance');
 const glPost = require('../utils/glPost');
+const logger = require('../utils/logger');
+const { recordAudit } = require('../utils/audit');
 
 const genInvNo = async () => {
   const count = await prisma.invoice.count();
@@ -11,6 +13,27 @@ const genPayNo = async () => {
   const count = await prisma.paymentAR.count();
   return `PAR-${String(count + 1).padStart(6, '0')}`;
 };
+
+// Shared by createInvoice/updateInvoice: recompute per-line VAT + running totals.
+function computeInvoiceTotals(lines) {
+  let subtotal = 0, vatAmount = 0;
+  const processedLines = lines.map((l) => {
+    const amt = Number(l.quantity) * Number(l.unitPrice);
+    const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
+    subtotal += v.base; vatAmount += v.vat;
+    return { ...l, amount: v.base };
+  });
+  return { subtotal, vatAmount, totalAmount: subtotal + vatAmount, processedLines };
+}
+
+// Shared by createInvoice/updateInvoice: DR AR / CR revenue lines / CR Output VAT.
+function buildInvoiceGLLines(inv) {
+  return [
+    { accountCode: '1100', debit: Number(inv.totalAmount), description: `AR — ${inv.customer.name} (${inv.invoiceNo})` },
+    ...inv.lines.map((l) => ({ accountId: l.accountId, credit: Number(l.amount), description: l.description })),
+    ...(Number(inv.vatAmount) > 0 ? [{ accountCode: '2030', credit: Number(inv.vatAmount), description: 'Output VAT' }] : []),
+  ];
+}
 
 exports.listCustomers = async (req, res, next) => {
   try {
@@ -101,13 +124,7 @@ exports.getInvoice = async (req, res, next) => {
 exports.createInvoice = async (req, res, next) => {
   try {
     const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
-    let subtotal = 0, vatAmount = 0;
-    const processedLines = lines.map((l) => {
-      const amt = Number(l.quantity) * Number(l.unitPrice);
-      const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
-      subtotal += v.base; vatAmount += v.vat;
-      return { ...l, amount: v.base };
-    });
+    const { subtotal, vatAmount, totalAmount, processedLines } = computeInvoiceTotals(lines);
 
     const invoiceNo = await genInvNo();
     const inv = await prisma.invoice.create({
@@ -115,7 +132,7 @@ exports.createInvoice = async (req, res, next) => {
         businessId: req.businessId,
         invoiceNo, customerId: Number(customerId),
         invoiceDate: new Date(invoiceDate), dueDate: new Date(dueDate),
-        description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
+        description, notes, subtotal, vatAmount, totalAmount,
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
@@ -125,26 +142,7 @@ exports.createInvoice = async (req, res, next) => {
     });
 
     // ── Auto-post to GL ──────────────────────────────────────────────────────
-    const glLines = [
-      // DR Accounts Receivable — Trade
-      {
-        accountCode: '1100',
-        debit:       Number(inv.totalAmount),
-        description: `AR — ${inv.customer.name} (${inv.invoiceNo})`,
-      },
-      // CR each revenue line
-      ...inv.lines.map((l) => ({
-        accountId:   l.accountId,
-        credit:      Number(l.amount),
-        description: l.description,
-      })),
-      // CR Output VAT (if any)
-      ...(Number(inv.vatAmount) > 0 ? [{
-        accountCode: '2030',
-        credit:      Number(inv.vatAmount),
-        description: 'Output VAT',
-      }] : []),
-    ];
+    const glLines = buildInvoiceGLLines(inv);
     await glPost.safePost({
       entryDate:   inv.invoiceDate,
       description: `AR Invoice — ${inv.customer.name} (${inv.invoiceNo})`,
@@ -167,14 +165,7 @@ exports.updateInvoice = async (req, res, next) => {
     if (inv.status === 'VOID') throw createError('Cannot edit a voided invoice.', 400);
 
     const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
-    let subtotal = 0, vatAmount = 0;
-    const processedLines = lines.map((l) => {
-      const amt = Number(l.quantity) * Number(l.unitPrice);
-      const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
-      subtotal += v.base; vatAmount += v.vat;
-      return { ...l, amount: v.base };
-    });
-    const totalAmount = subtotal + vatAmount;
+    const { subtotal, vatAmount, totalAmount, processedLines } = computeInvoiceTotals(lines);
 
     if (totalAmount < Number(inv.paidAmount) - 0.01) {
       throw createError(
@@ -201,7 +192,7 @@ exports.updateInvoice = async (req, res, next) => {
           })),
         },
       },
-      include: { customer: true, lines: true },
+      include: { customer: true, lines: { include: { account: true } }, payments: true },
     });
 
     // ── GL correction: void the old entry (if any), post a fresh one ────────
@@ -209,14 +200,24 @@ exports.updateInvoice = async (req, res, next) => {
       where: { businessId: req.businessId, reference: updated.invoiceNo, status: 'POSTED' },
     });
     if (oldEntry) {
-      await prisma.journalEntry.update({ where: { id: oldEntry.id }, data: { status: 'VOIDED' } });
+      try {
+        await prisma.journalEntry.update({ where: { id: oldEntry.id }, data: { status: 'VOIDED' } });
+      } catch (err) {
+        logger.error(`[INVOICE EDIT — GL VOID FAILED] invoiceNo=${updated.invoiceNo} biz=${req.businessId} — ${err.message}`);
+        try {
+          await recordAudit({
+            action:     'GL_POST_FAILED',
+            entity:     'JournalEntry',
+            entityId:   String(oldEntry.id),
+            summary:    `Failed to void prior GL entry for edited invoice ${updated.invoiceNo} — ${err.message}`,
+            user:       req.user?.id ? { id: req.user.id } : undefined,
+            businessId: req.businessId,
+          });
+        } catch { /* auditing must never break anything either */ }
+      }
     }
 
-    const glLines = [
-      { accountCode: '1100', debit: Number(updated.totalAmount), description: `AR — ${updated.customer.name} (${updated.invoiceNo})` },
-      ...updated.lines.map((l) => ({ accountId: l.accountId, credit: Number(l.amount), description: l.description })),
-      ...(Number(updated.vatAmount) > 0 ? [{ accountCode: '2030', credit: Number(updated.vatAmount), description: 'Output VAT' }] : []),
-    ];
+    const glLines = buildInvoiceGLLines(updated);
     await glPost.safePost({
       entryDate:   updated.invoiceDate,
       description: `AR Invoice (Edited) — ${updated.customer.name} (${updated.invoiceNo})`,
