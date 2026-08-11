@@ -147,7 +147,7 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-3xl">
+      <div className="modal max-w-5xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">New Cash Sale</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -163,101 +163,107 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
           </button>
         </div>
         <form onSubmit={submit}>
-          <div className="modal-body space-y-4">
-            {tab === 'pick' ? (
-              <div className="space-y-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input className="input pl-9" placeholder="Search item name or SKU..."
-                    value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {categories.map((c) => (
-                    <button key={c} type="button" onClick={() => setCategory(c)}
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium ${category === c ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
-                  {filteredItems.length === 0 ? (
-                    <p className="col-span-full text-center text-sm text-gray-400 py-6">No items match.</p>
-                  ) : filteredItems.map((it) => (
-                    <ItemTile key={it.id} item={it} selected={selectedItem?.id === it.id} onSelect={selectItem} />
-                  ))}
-                </div>
-                {selectedItem && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{selectedItem.name}</p>
-                      <p className="text-xs text-gray-500">{formatCurrency(selectedItem.sellingPrice)} / {selectedItem.unit}</p>
+          <div className="modal-body">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                {tab === 'pick' ? (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input className="input pl-9" placeholder="Search item name or SKU..."
+                        value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
-                        <button type="button" onClick={() => changeQty(qty - 1)} className="px-3 py-1.5 text-gray-600 hover:bg-gray-100">−</button>
-                        <span className="px-3 text-sm font-semibold">{qty}</span>
-                        <button type="button" onClick={() => changeQty(qty + 1)} className="px-3 py-1.5 text-gray-600 hover:bg-gray-100">+</button>
+                    <div className="flex flex-wrap gap-1.5">
+                      {categories.map((c) => (
+                        <button key={c} type="button" onClick={() => setCategory(c)}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium ${category === c ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                      {filteredItems.length === 0 ? (
+                        <p className="col-span-full text-center text-sm text-gray-400 py-6">No items match.</p>
+                      ) : filteredItems.map((it) => (
+                        <ItemTile key={it.id} item={it} selected={selectedItem?.id === it.id} onSelect={selectItem} />
+                      ))}
+                    </div>
+                    {selectedItem && (
+                      <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{selectedItem.name}</p>
+                          <p className="text-xs text-gray-500">{formatCurrency(selectedItem.sellingPrice)} / {selectedItem.unit}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                            <button type="button" onClick={() => changeQty(qty - 1)} className="px-3 py-1.5 text-gray-600 hover:bg-gray-100">−</button>
+                            <span className="px-3 text-sm font-semibold">{qty}</span>
+                            <button type="button" onClick={() => changeQty(qty + 1)} className="px-3 py-1.5 text-gray-600 hover:bg-gray-100">+</button>
+                          </div>
+                          <span className="text-sm font-semibold text-green-700">{formatCurrency(amt)}</span>
+                        </div>
                       </div>
-                      <span className="text-sm font-semibold text-green-700">{formatCurrency(amt)}</span>
-                    </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label className="label">Description *</label>
+                    <input className="input" required value={form.description} onChange={set('description')} placeholder="What was sold" />
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="form-group">
-                <label className="label">Description *</label>
-                <input className="input" required value={form.description} onChange={set('description')} placeholder="What was sold" />
-              </div>
-            )}
 
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="label">Sale Date *</label>
-                <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
+              <div className="space-y-4">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="label">Sale Date *</label>
+                    <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Buyer Name</label>
+                    <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="label">Revenue Account *</label>
+                  <AccountSelect
+                    value={form.accountId}
+                    onChange={(id) => setForm((f) => ({ ...f, accountId: id }))}
+                    accounts={accounts.filter((a) => a.accountType === 'REVENUE')}
+                    placeholder="-- select revenue account --"
+                  />
+                </div>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="label">Amount (VAT-inclusive) *</label>
+                    <NumberInput className="input" value={form.amount} disabled={tab === 'pick' && !!selectedItem}
+                      onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">VAT Code</label>
+                    <select className="input" value={form.vatCode} onChange={changeVatCode}>
+                      {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="label">Payment Method *</label>
+                  <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
+                    {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                {amt > 0 && (
+                  <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-between">
+                    <span className="text-gray-500">Subtotal: {formatCurrency(subtotal)}</span>
+                    <span className="text-gray-500">VAT: {formatCurrency(vat)}</span>
+                    <span className="font-semibold">Total: {formatCurrency(amt)}</span>
+                  </div>
+                )}
+                <div className="form-group">
+                  <label className="label">Notes</label>
+                  <textarea className="input resize-none" rows={2} value={form.notes} onChange={set('notes')} />
+                </div>
               </div>
-              <div className="form-group">
-                <label className="label">Buyer Name</label>
-                <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="label">Revenue Account *</label>
-              <AccountSelect
-                value={form.accountId}
-                onChange={(id) => setForm((f) => ({ ...f, accountId: id }))}
-                accounts={accounts.filter((a) => a.accountType === 'REVENUE')}
-                placeholder="-- select revenue account --"
-              />
-            </div>
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="label">Amount (VAT-inclusive) *</label>
-                <NumberInput className="input" value={form.amount} disabled={tab === 'pick' && !!selectedItem}
-                  onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
-              </div>
-              <div className="form-group">
-                <label className="label">VAT Code</label>
-                <select className="input" value={form.vatCode} onChange={changeVatCode}>
-                  {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="label">Payment Method *</label>
-              <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
-                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            {amt > 0 && (
-              <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-between">
-                <span className="text-gray-500">Subtotal: {formatCurrency(subtotal)}</span>
-                <span className="text-gray-500">VAT: {formatCurrency(vat)}</span>
-                <span className="font-semibold">Total: {formatCurrency(amt)}</span>
-              </div>
-            )}
-            <div className="form-group">
-              <label className="label">Notes</label>
-              <textarea className="input resize-none" rows={2} value={form.notes} onChange={set('notes')} />
             </div>
           </div>
           <div className="modal-footer">
