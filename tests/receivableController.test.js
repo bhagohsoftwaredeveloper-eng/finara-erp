@@ -196,3 +196,71 @@ describe('updateInvoice — GL correction', () => {
     expect(glPost.safePost).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('markShipped', () => {
+  test('marks a PENDING invoice as SHIPPED and stores shipment details', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'OPEN', deliveryStatus: 'PENDING' });
+    let updateArgs;
+    prisma.invoice.update.mockImplementation((args) => {
+      updateArgs = args;
+      return Promise.resolve({ id: 5, deliveryStatus: 'SHIPPED', ...args.data });
+    });
+
+    await run(ctrl.markShipped, {
+      params: { id: '5' },
+      body: { shippedDate: '2026-08-11', shippingAddress: '123 Rizal St, Davao', courier: 'LBC', trackingNumber: 'TRK123' },
+    });
+
+    expect(updateArgs.data.deliveryStatus).toBe('SHIPPED');
+    expect(updateArgs.data.shippingAddress).toBe('123 Rizal St, Davao');
+    expect(updateArgs.data.courier).toBe('LBC');
+    expect(updateArgs.data.trackingNumber).toBe('TRK123');
+    expect(updateArgs.data.shippedDate).toBeInstanceOf(Date);
+  });
+
+  test('rejects shipping a VOID invoice', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'VOID', deliveryStatus: 'PENDING' });
+
+    await expect(run(ctrl.markShipped, {
+      params: { id: '5' },
+      body: { shippedDate: '2026-08-11', shippingAddress: '', courier: '', trackingNumber: '' },
+    })).rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.invoice.update).not.toHaveBeenCalled();
+  });
+
+  test('re-shipping an already-SHIPPED invoice updates the details without erroring', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'OPEN', deliveryStatus: 'SHIPPED' });
+    let updateArgs;
+    prisma.invoice.update.mockImplementation((args) => {
+      updateArgs = args;
+      return Promise.resolve({ id: 5, deliveryStatus: 'SHIPPED', ...args.data });
+    });
+
+    await run(ctrl.markShipped, {
+      params: { id: '5' },
+      body: { shippedDate: '2026-08-12', shippingAddress: 'Updated address', courier: 'J&T', trackingNumber: 'TRK999' },
+    });
+
+    expect(updateArgs.data.deliveryStatus).toBe('SHIPPED');
+    expect(updateArgs.data.trackingNumber).toBe('TRK999');
+  });
+
+  test('404s when the invoice belongs to another business', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(null);
+
+    await expect(run(ctrl.markShipped, {
+      params: { id: '5' },
+      body: { shippedDate: '2026-08-11', shippingAddress: '', courier: '', trackingNumber: '' },
+    })).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  test('only looks up the invoice scoped to the current business', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(null);
+
+    await expect(run(ctrl.markShipped, { params: { id: '5' }, body: {} })).rejects.toBeDefined();
+
+    expect(prisma.invoice.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 5, businessId: 1 }) })
+    );
+  });
+});

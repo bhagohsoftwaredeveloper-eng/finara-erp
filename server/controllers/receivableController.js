@@ -288,6 +288,29 @@ exports.voidInvoice = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.markShipped = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const inv = await prisma.invoice.findFirst({ where: { id, businessId: req.businessId } });
+    if (!inv) throw createError('Invoice not found', 404);
+    if (inv.status === 'VOID') throw createError('Cannot ship a voided invoice.', 400);
+
+    const { shippedDate, shippingAddress, courier, trackingNumber } = req.body;
+    const updated = await prisma.invoice.update({
+      where: { id },
+      data: {
+        deliveryStatus:  'SHIPPED',
+        shippedDate:     shippedDate ? new Date(shippedDate) : new Date(),
+        shippingAddress: shippingAddress || null,
+        courier:         courier || null,
+        trackingNumber:  trackingNumber || null,
+      },
+    });
+
+    res.json(updated);
+  } catch (err) { next(err); }
+};
+
 exports.agingReport = async (req, res, next) => {
   try {
     const today = new Date();

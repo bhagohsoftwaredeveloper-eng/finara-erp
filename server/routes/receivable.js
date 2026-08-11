@@ -45,5 +45,6 @@ router.post('/:id/payment',
   [param('id').isInt(), body('paymentDate').isISO8601(), body('amount').isFloat({ min: 0.01 }), body('paymentMethod').notEmpty()],
   validate, ctrl.recordPayment);
 router.post('/:id/void', authorize('ADMIN','MANAGER'), param('id').isInt(), validate, ctrl.voidInvoice);
+router.post('/:id/ship', param('id').isInt(), validate, ctrl.markShipped);
 
 module.exports = router;
