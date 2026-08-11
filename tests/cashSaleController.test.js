@@ -7,6 +7,9 @@ jest.mock('../server/config/database', () => ({
     update: jest.fn(),
   },
   account: { findFirst: jest.fn() },
+  inventoryItem: { findFirst: jest.fn(), update: jest.fn() },
+  inventoryTransaction: { findFirst: jest.fn(), create: jest.fn() },
+  journalEntry: { update: jest.fn() },
   $transaction: jest.fn(),
 }));
 jest.mock('../server/utils/glPost', () => ({ safePost: jest.fn() }));
@@ -72,5 +75,73 @@ describe('cash sale VAT split always sums back to the total', () => {
     });
 
     expect(Number(created.subtotal) + Number(created.vatAmount)).toBeCloseTo(Number(created.totalAmount), 2);
+  });
+});
+
+describe('cash sale item picker — stock deduction on create', () => {
+  test('create with itemId deducts stock and links an OUT inventory transaction via saleNo reference', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+    prisma.cashSale.findFirst.mockResolvedValue(null); // genSaleNo: no prior sale
+    prisma.inventoryItem.findFirst.mockResolvedValue({
+      id: 9, businessId: 1, isActive: true, name: 'Widget', sku: 'SKU-0001', unit: 'pcs',
+      currentStock: 10, costPrice: 50, sellingPrice: 100, cogsAccountId: null, inventoryAccountId: null,
+    });
+    prisma.inventoryTransaction.findFirst.mockResolvedValue(null); // nextTxnNo: no prior txn
+    let savedSale, savedItemUpdate, savedTxn;
+    prisma.cashSale.create.mockImplementation(({ data }) => {
+      savedSale = { id: 1, saleDate: new Date('2026-08-11'), ...data };
+      return Promise.resolve(savedSale);
+    });
+    prisma.inventoryItem.update.mockImplementation(({ data }) => { savedItemUpdate = data; return Promise.resolve({}); });
+    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { savedTxn = data; return Promise.resolve({ id: 1, ...data }); });
+    prisma.$transaction.mockImplementation((ops) => Promise.all(ops));
+    glPost.safePost.mockResolvedValue({ id: 99 });
+    prisma.cashSale.update.mockResolvedValue({});
+
+    await run(ctrl.create, {
+      body: {
+        saleDate: '2026-08-11', description: 'Widget x2', accountId: 1, vatCode: 'VAT',
+        amount: 224, paymentMethod: 'Cash', itemId: 9, quantity: 2,
+      },
+    });
+
+    expect(savedItemUpdate.currentStock).toBe(8); // 10 - 2
+    expect(savedTxn).toMatchObject({ itemId: 9, type: 'OUT', quantity: 2, reference: savedSale.saleNo });
+    expect(glPost.safePost).toHaveBeenCalledTimes(2); // cash-sale entry + COGS entry
+
+    const cogsCall = glPost.safePost.mock.calls.find((c) => c[0].description.includes('Inventory OUT'));
+    expect(cogsCall).toBeTruthy();
+    const lines = cogsCall[0].lines;
+    expect(lines.find((l) => l.accountCode === '5010').debit).toBeCloseTo(100, 2);  // 2 * costPrice 50
+    expect(lines.find((l) => l.accountCode === '1210').credit).toBeCloseTo(100, 2);
+  });
+
+  test('create rejects when quantity exceeds current stock, without creating anything', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+    prisma.inventoryItem.findFirst.mockResolvedValue({
+      id: 9, isActive: true, currentStock: 1, unit: 'pcs', name: 'Widget', sku: 'SKU-0001', costPrice: 50, sellingPrice: 100,
+    });
+
+    await expect(run(ctrl.create, {
+      body: { saleDate: '2026-08-11', description: 'Widget x5', accountId: 1, amount: 560, paymentMethod: 'Cash', itemId: 9, quantity: 5 },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+  });
+
+  test('create without itemId does not touch inventory at all', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+    prisma.cashSale.findFirst.mockResolvedValue(null);
+    prisma.cashSale.create.mockResolvedValue({ id: 1, saleDate: new Date('2026-08-11'), saleNo: 'CS-000001' });
+    glPost.safePost.mockResolvedValue({ id: 99 });
+    prisma.cashSale.update.mockResolvedValue({});
+
+    await run(ctrl.create, {
+      body: { saleDate: '2026-08-11', description: 'Service fee', accountId: 1, amount: 100, paymentMethod: 'Cash' },
+    });
+
+    expect(prisma.inventoryItem.findFirst).not.toHaveBeenCalled();
+    expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
+    expect(glPost.safePost).toHaveBeenCalledTimes(1);
   });
 });
