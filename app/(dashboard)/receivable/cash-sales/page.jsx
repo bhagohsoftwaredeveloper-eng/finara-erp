@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { cashSales as csApi, accounts as acctApi } from '@/lib/api';
+import { cashSales as csApi, accounts as acctApi, inventory as invApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Search, Ban, Printer } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
@@ -21,10 +21,101 @@ function emptyForm() {
 }
 
 // ─── New Cash Sale Modal ────────────────────────────────────────
-function NewSaleModal({ accounts, onClose, onSaved }) {
+const CATEGORY_ALL = 'All';
+
+function StockBadge({ item }) {
+  if (item.isOutOfStock) return <span className="badge badge-gray text-xs">Out of stock</span>;
+  if (item.isLowStock) return <span className="badge badge-yellow text-xs">Low stock</span>;
+  return <span className="badge badge-green text-xs">{Number(item.currentStock)} {item.unit}</span>;
+}
+
+function ItemTile({ item, selected, onSelect }) {
+  const disabled = item.isOutOfStock;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onSelect(item)}
+      className={`text-left rounded-xl border p-3 transition ${
+        disabled ? 'opacity-50 cursor-not-allowed bg-gray-50'
+        : selected ? 'border-green-500 ring-2 ring-green-200 bg-green-50'
+        : 'border-gray-200 hover:border-green-400'
+      }`}
+    >
+      <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
+      <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-sm font-semibold text-green-700">{formatCurrency(item.sellingPrice)}</span>
+        <StockBadge item={item} />
+      </div>
+    </button>
+  );
+}
+
+function applyItemAmount(item, quantity, vatCode) {
+  const price = Number(item.sellingPrice) || 0;
+  const raw = price * quantity;
+  return String(Math.round((vatCode === 'VAT' ? raw * 1.12 : raw) * 100) / 100);
+}
+
+function NewSaleModal({ accounts, items, onClose, onSaved }) {
+  const [tab, setTab] = useState('pick'); // 'pick' | 'custom'
   const [form, setForm] = useState(emptyForm());
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [qty, setQty] = useState(1);
+  const [itemSearch, setItemSearch] = useState('');
+  const [category, setCategory] = useState(CATEGORY_ALL);
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const categories = [CATEGORY_ALL, ...new Set(items.map((it) => it.category?.name).filter(Boolean))];
+
+  const filteredItems = items.filter((it) => {
+    if (category !== CATEGORY_ALL && it.category?.name !== category) return false;
+    if (!itemSearch.trim()) return true;
+    const q = itemSearch.toLowerCase();
+    return it.name.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q);
+  });
+
+  const selectItem = (item) => {
+    setSelectedItem(item);
+    setQty(1);
+    setForm((f) => ({
+      ...f,
+      description: `${item.name} x1`,
+      amount: applyItemAmount(item, 1, f.vatCode),
+      accountId: f.accountId || (item.revenueAccountId ? String(item.revenueAccountId) : f.accountId),
+    }));
+  };
+
+  const changeQty = (next) => {
+    if (!selectedItem) return;
+    const max = Math.max(1, Math.floor(Number(selectedItem.currentStock)) || 1);
+    const clamped = Math.max(1, Math.min(next, max));
+    setQty(clamped);
+    setForm((f) => ({
+      ...f,
+      description: `${selectedItem.name} x${clamped}`,
+      amount: applyItemAmount(selectedItem, clamped, f.vatCode),
+    }));
+  };
+
+  const switchTab = (next) => {
+    setTab(next);
+    if (next === 'custom') {
+      setSelectedItem(null);
+      setForm((f) => ({ ...f, description: '', amount: '' }));
+    }
+  };
+
+  const changeVatCode = (e) => {
+    const vatCode = e.target.value;
+    setForm((f) => ({
+      ...f,
+      vatCode,
+      amount: selectedItem ? applyItemAmount(selectedItem, qty, vatCode) : f.amount,
+    }));
+  };
 
   const amt = Number(form.amount) || 0;
   const vat = form.vatCode === 'VAT' ? amt - amt / 1.12 : 0;
@@ -32,11 +123,15 @@ function NewSaleModal({ accounts, onClose, onSaved }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (tab === 'pick' && !selectedItem) return toast.error('Select an item or switch to Custom');
     if (!form.accountId) return toast.error('Select a revenue account');
     if (amt <= 0) return toast.error('Amount must be greater than 0');
     setSaving(true);
     try {
-      const res = await csApi.create(form);
+      const payload = tab === 'pick' && selectedItem
+        ? { ...form, itemId: selectedItem.id, quantity: qty }
+        : form;
+      const res = await csApi.create(payload);
       if (res.data.posted) {
         toast.success('Cash sale recorded');
       } else {
@@ -52,13 +147,69 @@ function NewSaleModal({ accounts, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-lg">
+      <div className="modal max-w-3xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">New Cash Sale</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
         </div>
+        <div className="flex gap-1 px-6 pt-3 border-b border-gray-100">
+          <button type="button" onClick={() => switchTab('pick')}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === 'pick' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+            Pick Item
+          </button>
+          <button type="button" onClick={() => switchTab('custom')}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === 'custom' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+            Custom
+          </button>
+        </div>
         <form onSubmit={submit}>
           <div className="modal-body space-y-4">
+            {tab === 'pick' ? (
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input className="input pl-9" placeholder="Search item name or SKU..."
+                    value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {categories.map((c) => (
+                    <button key={c} type="button" onClick={() => setCategory(c)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium ${category === c ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                  {filteredItems.length === 0 ? (
+                    <p className="col-span-full text-center text-sm text-gray-400 py-6">No items match.</p>
+                  ) : filteredItems.map((it) => (
+                    <ItemTile key={it.id} item={it} selected={selectedItem?.id === it.id} onSelect={selectItem} />
+                  ))}
+                </div>
+                {selectedItem && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{selectedItem.name}</p>
+                      <p className="text-xs text-gray-500">{formatCurrency(selectedItem.sellingPrice)} / {selectedItem.unit}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                        <button type="button" onClick={() => changeQty(qty - 1)} className="px-3 py-1.5 text-gray-600 hover:bg-gray-100">−</button>
+                        <span className="px-3 text-sm font-semibold">{qty}</span>
+                        <button type="button" onClick={() => changeQty(qty + 1)} className="px-3 py-1.5 text-gray-600 hover:bg-gray-100">+</button>
+                      </div>
+                      <span className="text-sm font-semibold text-green-700">{formatCurrency(amt)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="form-group">
+                <label className="label">Description *</label>
+                <input className="input" required value={form.description} onChange={set('description')} placeholder="What was sold" />
+              </div>
+            )}
+
             <div className="form-grid">
               <div className="form-group">
                 <label className="label">Sale Date *</label>
@@ -68,10 +219,6 @@ function NewSaleModal({ accounts, onClose, onSaved }) {
                 <label className="label">Buyer Name</label>
                 <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
               </div>
-            </div>
-            <div className="form-group">
-              <label className="label">Description *</label>
-              <input className="input" required value={form.description} onChange={set('description')} placeholder="What was sold" />
             </div>
             <div className="form-group">
               <label className="label">Revenue Account *</label>
@@ -85,11 +232,12 @@ function NewSaleModal({ accounts, onClose, onSaved }) {
             <div className="form-grid">
               <div className="form-group">
                 <label className="label">Amount (VAT-inclusive) *</label>
-                <NumberInput className="input" value={form.amount} onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
+                <NumberInput className="input" value={form.amount} disabled={tab === 'pick' && !!selectedItem}
+                  onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
               </div>
               <div className="form-group">
                 <label className="label">VAT Code</label>
-                <select className="input" value={form.vatCode} onChange={set('vatCode')}>
+                <select className="input" value={form.vatCode} onChange={changeVatCode}>
                   {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -150,6 +298,7 @@ export default function CashSalesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState([]);
+  const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
   const [showNew, setShowNew] = useState(false);
 
@@ -163,6 +312,11 @@ export default function CashSalesPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { acctApi.list({ active: true }).then((r) => setAccounts(r.data)).catch(() => {}); }, []);
+  useEffect(() => {
+    invApi.items.list({ limit: 500 })
+      .then((r) => setItems(r.data.data || r.data || []))
+      .catch(() => setItems([]));
+  }, []);
 
   const handleVoid = async (sale) => {
     const reason = prompt(`Void ${sale.saleNo}? Enter a reason:`);
@@ -269,6 +423,7 @@ export default function CashSalesPage() {
       {showNew && (
         <NewSaleModal
           accounts={accounts}
+          items={items}
           onClose={() => setShowNew(false)}
           onSaved={() => { setShowNew(false); load(); }}
         />
