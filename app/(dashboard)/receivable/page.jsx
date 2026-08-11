@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Ban, Filter, X,
   AlertCircle, Clock, CheckCircle2, FileText,
-  Printer, ChevronDown, ChevronUp,
+  Printer, ChevronDown, ChevronUp, Pencil,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
 import PesoSign from '@/components/icons/PesoSign';
@@ -42,7 +42,7 @@ const computeVAT = (amount, code) =>
     : { base: amount, vat: 0, total: amount };
 
 // ─── Invoice Detail Modal ─────────────────────────────────────
-function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid }) {
+function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit }) {
   const balance = Number(invoice.totalAmount) - Number(invoice.paidAmount);
   const pct = invoice.totalAmount > 0
     ? (Number(invoice.paidAmount) / Number(invoice.totalAmount)) * 100
@@ -273,6 +273,11 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid }) {
                 </button>
               )}
               {invoice.status !== 'PAID' && (
+                <button onClick={onEdit} className="btn-secondary">
+                  <Pencil className="w-4 h-4" /> Edit
+                </button>
+              )}
+              {invoice.status !== 'PAID' && (
                 <button onClick={onCollect} className="btn-success">
                   <PesoSign className="w-4 h-4" /> Record Collection
                 </button>
@@ -426,8 +431,18 @@ function CollectionModal({ invoice, onClose, onCollected }) {
 }
 
 // ─── Create Invoice Modal ─────────────────────────────────────
-function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerAdded }) {
-  const [form, setForm] = useState({
+function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, onCustomerAdded }) {
+  const [form, setForm] = useState(() => invoice ? {
+    customerId:  String(invoice.customerId),
+    invoiceDate: invoice.invoiceDate.slice(0, 10),
+    dueDate:     invoice.dueDate.slice(0, 10),
+    description: invoice.description || '',
+    notes:       invoice.notes || '',
+    lines: invoice.lines.map((l) => ({
+      accountId: String(l.accountId), description: l.description,
+      quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
+    })),
+  } : {
     customerId:   '',
     invoiceDate:  new Date().toISOString().split('T')[0],
     dueDate:      '',
@@ -478,7 +493,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
     validLines.forEach((l) => rememberDescription(l.description));
     setSaving(true);
     try {
-      await rApi.invoices.create({
+      const payload = {
         ...form,
         customerId: Number(form.customerId),
         lines: validLines.map((l) => ({
@@ -488,11 +503,17 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
           unitPrice:   Number(l.unitPrice),
           vatCode:     l.vatCode,
         })),
-      });
-      toast.success('Invoice created successfully');
+      };
+      if (invoice) {
+        await rApi.invoices.update(invoice.id, payload);
+        toast.success('Invoice updated successfully');
+      } else {
+        await rApi.invoices.create(payload);
+        toast.success('Invoice created successfully');
+      }
       onSaved();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to create invoice');
+      toast.error(err.response?.data?.error || `Failed to ${invoice ? 'update' : 'create'} invoice`);
     } finally {
       setSaving(false);
     }
@@ -502,7 +523,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
     <div className="modal-overlay">
       <div className="modal max-w-6xl">
         <div className="modal-header">
-          <h3 className="text-lg font-semibold">New Sales Invoice</h3>
+          <h3 className="text-lg font-semibold">{invoice ? 'Edit Invoice' : 'New Sales Invoice'}</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -666,7 +687,7 @@ function CreateInvoiceModal({ customers, accounts, onClose, onSaved, onCustomerA
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               <PesoReceipt className="w-4 h-4" />
-              {saving ? 'Creating Invoice...' : 'Create Invoice'}
+              {saving ? (invoice ? 'Saving...' : 'Creating Invoice...') : (invoice ? 'Save Changes' : 'Create Invoice')}
             </button>
           </div>
         </form>
@@ -973,6 +994,18 @@ export default function InvoicesPage() {
                           <button
                             onClick={async () => {
                               const { data } = await rApi.invoices.get(inv.id);
+                              setModal({ type: 'edit', invoice: data });
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit invoice"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {inv.status !== 'PAID' && inv.status !== 'VOID' && (
+                          <button
+                            onClick={async () => {
+                              const { data } = await rApi.invoices.get(inv.id);
                               setModal({ type: 'collect', invoice: data });
                             }}
                             className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -1036,12 +1069,23 @@ export default function InvoicesPage() {
           onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])}
         />
       )}
+      {modal?.type === 'edit' && (
+        <CreateInvoiceModal
+          customers={customers}
+          accounts={accounts}
+          invoice={modal.invoice}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); load(); }}
+          onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])}
+        />
+      )}
       {modal?.type === 'detail' && (
         <InvoiceDetailModal
           invoice={modal.invoice}
           onClose={() => setModal(null)}
           onCollect={() => setModal({ type: 'collect', invoice: modal.invoice })}
           onVoid={() => { handleVoid(modal.invoice); setModal(null); }}
+          onEdit={() => setModal({ type: 'edit', invoice: modal.invoice })}
         />
       )}
       {modal?.type === 'collect' && (
