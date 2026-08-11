@@ -330,6 +330,11 @@ model Invoice {
   totalAmount Decimal       @default(0) @db.Decimal(15, 2)
   paidAmount  Decimal       @default(0) @db.Decimal(15, 2)
   status      InvoiceStatus @default(OPEN)
+  deliveryStatus  DeliveryStatus @default(PENDING)
+  shippedDate     DateTime?      @db.Date
+  shippingAddress String?        @db.Text
+  courier         String?        @db.VarChar(100)
+  trackingNumber  String?        @db.VarChar(100)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -381,6 +386,11 @@ enum InvoiceStatus {
   PAID
   OVERDUE
   VOID
+}
+
+enum DeliveryStatus {
+  PENDING
+  SHIPPED
 }
 
 // ─── Sales Quotations ──────────────────────────────────────
