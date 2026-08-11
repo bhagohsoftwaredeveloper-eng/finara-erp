@@ -1,27 +1,37 @@
-# Invoice Editing (Unpaid Invoices) — Design
+# Invoice Editing (Unpaid or Partially Paid Invoices) — Design
 
 **Date:** 2026-08-11
 **Status:** Approved
 
 ## Goal
 
-Let staff correct a mistake on a Sales Invoice — wrong customer, wrong line
-item, wrong price — without voiding and recreating it, as long as no
-payment has been collected against it yet. Today `Invoice` has no edit
+Let staff correct or add to a Sales Invoice — wrong customer, wrong line
+item, wrong price, an additional item — without voiding and recreating it,
+for as long as it isn't fully settled yet. Today `Invoice` has no edit
 capability at all: only Create, Record Collection, and Void exist
 (`server/controllers/receivableController.js`).
 
 ## Scope decision
 
-**Edit is all-or-nothing on the same eligibility rule Void already uses:**
-`paidAmount == 0 && status !== 'VOID'` (in practice: `OPEN` or `OVERDUE`
-invoices only — `PARTIAL`/`PAID` imply a collection exists, `VOID` is
-already dead). Everything on the invoice is editable when that rule
-passes: customer, invoice date, due date, description, notes, and the full
-line-items table (add/remove/edit lines) — the same fields `CreateInvoiceModal`
-already exposes on create. There is no narrower "amounts only" mode; once
-any payment lands, the invoice is frozen and the only corrections available
-are Void (if still `paidAmount == 0`) or a manual adjusting entry.
+**Edit is allowed whenever the invoice isn't fully paid or voided:**
+`status !== 'PAID' && status !== 'VOID'` — i.e. `OPEN`, `PARTIAL`, or
+`OVERDUE`. This is deliberately broader than Void's own eligibility rule
+(`paidAmount == 0`) — a `PARTIAL` invoice (some collections already
+recorded) is still editable, e.g. to add a line the customer is asking for
+before final settlement. The one guard this broader scope requires: **the
+edited total can never drop below what's already been collected.** If
+`newTotalAmount < paidAmount`, the save is rejected (see Backend, step 4) —
+existing `PaymentAR` collection records are never touched or reversed by an
+edit, only the invoice's own totals and status are recomputed around them.
+
+Everything on the invoice is editable when the status check passes:
+customer, invoice date, due date, description, notes, and the full
+line-items table (add/remove/edit lines) — the same fields
+`CreateInvoiceModal` already exposes on create. There is no narrower
+"amounts only" mode. Once an invoice is fully `PAID`, it is frozen — the
+only corrections available are a manual adjusting entry (Void is also
+blocked at that point, same as today, since `voidInvoice` already requires
+`paidAmount == 0`).
 
 ## Data model
 
@@ -56,19 +66,28 @@ requires ADMIN/MANAGER because it removes a transaction outright, which is
 a different kind of risk.
 
 1. Fetch the invoice (404 if missing).
-2. `paidAmount > 0` → 400 `"Cannot edit an invoice with collections. Void and recreate, or reverse the collection first."`
-   (wording mirrors `voidInvoice`'s existing `"Cannot void an invoice with
-   collections. Reverse first."`, `receivableController.js:213`).
-3. `status === 'VOID'` → 400 `"Cannot edit a voided invoice"`.
+2. `status === 'PAID'` → 400 `"Cannot edit a fully paid invoice."`
+3. `status === 'VOID'` → 400 `"Cannot edit a voided invoice."`
 4. Recompute `subtotal`/`vatAmount`/`totalAmount` from the submitted lines
    using the exact same `computeVAT()` call `createInvoice` already uses
    (`receivableController.js:107`) — same rounding behavior, no drift
-   between create and edit math.
-5. `prisma.invoice.update({ where: { id }, data: { customerId, invoiceDate,
-   dueDate, description, notes, subtotal, vatAmount, totalAmount, lines: {
-   deleteMany: {}, create: [...] } }, include: { customer: true, lines: true
-   } })`.
-6. GL correction:
+   between create and edit math. Then: `if (totalAmount < Number(inv.paidAmount) - 0.01)
+   throw createError(\`New total (₱${totalAmount}) is less than the amount
+   already collected (₱${inv.paidAmount}). Adjust line items so the total
+   covers what's been paid.\`, 400)`.
+5. Recompute status the same way `recordPayment` already does
+   (`receivableController.js:172`): `const remaining = totalAmount -
+   Number(inv.paidAmount); const status = remaining <= 0.01 ? 'PAID' :
+   (Number(inv.paidAmount) > 0 ? 'PARTIAL' : inv.status);` — this only
+   changes status when the edit itself pushes the balance to zero (editing
+   a `PARTIAL` invoice down to exactly what's already been collected marks
+   it `PAID`, same as a payment would); an `OPEN`/`OVERDUE` invoice with no
+   collections keeps its existing status untouched.
+6. `prisma.invoice.update({ where: { id }, data: { customerId, invoiceDate,
+   dueDate, description, notes, subtotal, vatAmount, totalAmount, status,
+   lines: { deleteMany: {}, create: [...] } }, include: { customer: true,
+   lines: true } })`.
+7. GL correction:
    - `const oldEntry = await prisma.journalEntry.findFirst({ where: {
      businessId: req.businessId, reference: inv.invoiceNo, status: 'POSTED'
      } })` — if found, `prisma.journalEntry.update({ where: { id:
@@ -83,10 +102,10 @@ a different kind of risk.
      computed from the updated invoice. Best-effort, non-blocking, same
      `safePost` convention as everywhere else in the app — a failure here
      doesn't fail the edit; it lands in the Audit Trail as `GL_POST_FAILED`.
-7. Respond `200` with the updated invoice (customer + lines included), same
+8. Respond `200` with the updated invoice (customer + lines included), same
    shape `getInvoice` already returns.
 
-The invoice-update DB write (step 5) and the GL-void-then-repost (step 6)
+The invoice-update DB write (step 6) and the GL-void-then-repost (step 7)
 are **not** wrapped in one atomic transaction — this matches
 `createInvoice`'s own existing structure (DB write, then a separate
 best-effort GL post) rather than introducing a new pattern. A GL posting
@@ -113,9 +132,10 @@ optional `invoice` prop:
   clobber an existing invoice's due date when the modal opens pre-filled.
 
 An **Edit** action (pencil icon, same icon-button style as the existing
-Void/Collect actions) is added in two places, both gated by the identical
-condition Void already uses (`invoice.paidAmount == 0 && invoice.status !==
-'VOID'`):
+Void/Collect actions) is added in two places, both gated by
+`invoice.status !== 'PAID' && invoice.status !== 'VOID'` — a wider
+condition than Void's own gate (`paidAmount == 0`), since `PARTIAL`
+invoices are now editable too:
 
 - The invoice list's row actions (`page.jsx:963-993`), alongside the
   existing "Record collection" and "Void invoice" icon buttons.
@@ -132,8 +152,10 @@ sufficient without a fresh `getInvoice` call.
 ## Error handling
 
 - 404 if the invoice doesn't exist.
-- 400 `paidAmount > 0` — cannot edit, collections exist.
+- 400 `status === 'PAID'` — cannot edit a fully settled invoice.
 - 400 `status === 'VOID'` — cannot edit a dead invoice.
+- 400 if the edited total would drop below `paidAmount` — never allow an
+  edit to create an overpayment/negative-balance state.
 - Standard express-validator 400s for malformed body (missing customerId,
   empty lines array, bad line fields) — identical validators to create, so
   behavior is consistent between the two endpoints.
@@ -145,9 +167,12 @@ sufficient without a fresh `getInvoice` call.
 
 ## Out of scope
 
-- Editing an invoice that already has a collection (`paidAmount > 0`) —
-  the existing correction path (Void + recreate, or a manual adjusting
-  entry) is unchanged.
+- Editing a fully `PAID` invoice, or reducing a `PARTIAL` invoice's total
+  below what's already been collected — the existing correction path (a
+  manual adjusting entry) is unchanged for both.
+- Reversing or editing existing `PaymentAR` collection records themselves
+  — an invoice edit only ever touches the invoice's own totals/lines/status,
+  never a past payment.
 - Fixing `voidInvoice`'s pre-existing gap of not voiding its own linked
   journal entry (flagged in the 2026-08-10 Cash Sales design as a known,
   deliberately-unfixed issue) — out of scope here too; this design only
