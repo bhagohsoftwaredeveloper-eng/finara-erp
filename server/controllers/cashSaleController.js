@@ -3,6 +3,7 @@ const { createError } = require('../middleware/errorHandler');
 const { computeVAT, round2 } = require('../utils/phCompliance');
 const { nextDocNumber } = require('../utils/docNumber');
 const { buildCashSaleEntry } = require('../utils/cashSale');
+const { nextTxnNo } = require('./inventoryController');
 const glPost = require('../utils/glPost');
 
 const genSaleNo = async () => {
@@ -12,12 +13,6 @@ const genSaleNo = async () => {
   });
   return nextDocNumber('CS-', last?.saleNo);
 };
-
-async function nextTxnNo() {
-  const last = await prisma.inventoryTransaction.findFirst({ orderBy: { id: 'desc' } });
-  const seq = last ? last.id + 1 : 1;
-  return `INV-TXN-${String(seq).padStart(6, '0')}`;
-}
 
 // ─── List ────────────────────────────────────────────────────────
 exports.list = async (req, res, next) => {
