@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { purchaseOrders as poApi, payable, accounts as acctApi, poScanner, poForm as poFormApi } from '@/lib/api';
+import { purchaseOrders as poApi, payable, accounts as acctApi, poScanner, poForm as poFormApi, inventory as invApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 import toast from 'react-hot-toast';
@@ -276,7 +276,7 @@ function POViewModal({ po, onClose, onEdit, onSend, onReceive, onConvert, onPett
 }
 
 // ─── Create / Edit Modal ──────────────────────────────────────
-function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendorAdded }) {
+function POModal({ po, vendors, accounts, items, initialData, onClose, onSaved, onVendorAdded }) {
   const [form, setForm] = useState(po ? {
     vendorId:     po.vendorId,
     orderDate:    po.orderDate?.split('T')[0] || new Date().toISOString().split('T')[0],
@@ -306,6 +306,25 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
   const setLine = (i, f, v) => setForm((p) => ({ ...p, lines: p.lines.map((l, idx) => idx === i ? { ...l, [f]: v } : l) }));
   const addLine = () => setForm((p) => ({ ...p, lines: [...p.lines, emptyLine()] }));
   const rmLine  = (i) => setForm((p) => ({ ...p, lines: p.lines.filter((_, idx) => idx !== i) }));
+
+  // Typing is free-form; if the text exactly matches a stocked inventory item,
+  // pull its cost price and inventory asset account so buying stock doesn't
+  // require re-typing what's already set up in Inventory > Items.
+  const setDescription = (i, value) => {
+    const match = items.find((it) => it.name === value);
+    setForm((p) => ({
+      ...p,
+      lines: p.lines.map((l, idx) => {
+        if (idx !== i) return l;
+        const next = { ...l, description: value };
+        if (match) {
+          if (!Number(l.unitPrice)) next.unitPrice = String(match.costPrice);
+          if (!l.accountId && match.inventoryAccountId) next.accountId = String(match.inventoryAccountId);
+        }
+        return next;
+      }),
+    }));
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -353,6 +372,9 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
                 <label className="label mb-0">Line Items</label>
                 <button type="button" onClick={addLine} className="btn-secondary btn-sm">+ Add Line</button>
               </div>
+              <datalist id="po-items">
+                {items.map((it) => <option key={it.id} value={it.name}>{it.sku}</option>)}
+              </datalist>
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="table table-compact text-sm">
                   <thead>
@@ -368,7 +390,7 @@ function POModal({ po, vendors, accounts, initialData, onClose, onSaved, onVendo
                   <tbody>
                     {form.lines.map((l, i) => (
                       <tr key={i}>
-                        <td><input className="input w-full text-xs" placeholder="Item description" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} /></td>
+                        <td><input className="input w-full text-xs" list="po-items" placeholder="Item description" value={l.description} onChange={(e) => setDescription(i, e.target.value)} /></td>
                         <td><NumberInput decimals={3} className="input w-full text-right text-xs" value={l.quantity} onChange={(v) => setLine(i, 'quantity', v)} /></td>
                         <td><NumberInput className="input w-full text-right text-xs" value={l.unitPrice} onChange={(v) => setLine(i, 'unitPrice', v)} /></td>
                         <td>
@@ -942,6 +964,7 @@ export default function PurchaseOrdersPage() {
   const [loading,  setLoading]  = useState(true);
   const [vendors,  setVendors]  = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [items,    setItems]    = useState([]);
   const [search,   setSearch]   = useState('');
   const [filter,   setFilter]   = useState('');
 
@@ -967,6 +990,7 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     payable.vendors.list().then((r) => setVendors(r.data.data || r.data)).catch(() => {});
     acctApi.list({ active: true }).then((r) => setAccounts(r.data)).catch(() => {});
+    invApi.items.list({ limit: 500 }).then((r) => setItems(r.data.data || r.data || [])).catch(() => setItems([]));
   }, []);
 
   const doSend = async (po) => {
@@ -1123,13 +1147,14 @@ export default function PurchaseOrdersPage() {
         <POModal
           vendors={vendors}
           accounts={accounts}
+          items={items}
           initialData={newPOInit}
           onClose={() => { setNewPO(false); setNewPOInit(null); }}
           onSaved={() => { setNewPO(false); setNewPOInit(null); load(); }}
           onVendorAdded={(v) => setVendors((p) => [v, ...p])} />
       )}
       {editPO && (
-        <POModal po={editPO} vendors={vendors} accounts={accounts}
+        <POModal po={editPO} vendors={vendors} accounts={accounts} items={items}
           onClose={() => setEditPO(null)}
           onSaved={() => { setEditPO(null); load(); }}
           onVendorAdded={(v) => setVendors((p) => [v, ...p])} />

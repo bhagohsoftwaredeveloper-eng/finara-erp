@@ -27,7 +27,7 @@ Audit Trail) and the user asked for it under Settings.
   roles: ['ADMIN', 'MANAGER'] }` — mirrors the API's role gate.
 - Tab content:
   - Table (`table-wrapper` / `table` classes, same as Users tab) with columns:
-    Date, Name, Company, Email, Phone, Message, Status.
+    Date, Name, Company, Email, Phone, Message, Status.![alt text](image.png)
   - Status rendered as a badge: NEW = `badge-blue`, CONTACTED = `badge-yellow`,
     CLOSED = `badge-green`.
   - Long messages truncated in the row; clicking the row expands it to show

@@ -5,7 +5,7 @@ import { receivable as rApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   RefreshCw, AlertCircle, CheckCircle2, TrendingUp,
-  Users, ChevronDown, ChevronUp, Filter, Printer, History, FileSpreadsheet, Eye, X,
+  Users, ChevronDown, ChevronUp, Filter, Printer, History, FileSpreadsheet, Eye, X, Download,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
@@ -404,7 +404,7 @@ function CustomerHistoryDrawer({ customerName, invoices, loading, onClose }) {
       <div className="relative w-full max-w-6xl bg-white h-full flex flex-col shadow-2xl z-10 overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-600 to-emerald-600 text-white flex-shrink-0">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
                 <History className="w-6 h-6" />
@@ -414,7 +414,23 @@ function CustomerHistoryDrawer({ customerName, invoices, loading, onClose }) {
                 <p className="text-green-200 text-sm">Full transaction history</p>
               </div>
             </div>
-            <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
+            <div className="flex-1 flex items-center justify-center gap-3">
+              <button
+                onClick={() => printCustomerStatement(customerName, outstandingItems)}
+                disabled={outstandingItems.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Printer className="w-4 h-4" /> Print
+              </button>
+              <button
+                onClick={() => exportCustomerStatement(customerName, outstandingItems)}
+                disabled={outstandingItems.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4" /> Download SOA
+              </button>
+            </div>
+            <button onClick={onClose} className="text-white/70 hover:text-white transition-colors flex-shrink-0">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -436,16 +452,6 @@ function CustomerHistoryDrawer({ customerName, invoices, loading, onClose }) {
           ) : (
             <HistoryTable invoices={invoices} />
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 flex-shrink-0">
-          <ExportMenu
-            label={customerName}
-            disabled={outstandingItems.length === 0}
-            onPrint={() => printCustomerStatement(customerName, outstandingItems)}
-            onExcel={() => exportCustomerStatement(customerName, outstandingItems)}
-          />
         </div>
       </div>
     </div>
