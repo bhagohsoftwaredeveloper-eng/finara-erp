@@ -8,7 +8,7 @@ const { resetDemoBusiness } = require('../../prisma/seedDemo');
 exports.list = async (req, res, next) => {
   try {
     let businesses;
-    if (req.user.role === 'ADMIN') {
+    if (['ADMIN', 'SUPER_ADMIN'].includes(req.user.role)) {
       businesses = await prisma.business.findMany({
         where: { isActive: true },
         orderBy: { name: 'asc' },
@@ -33,7 +33,7 @@ exports.get = async (req, res, next) => {
     // same restriction list() already applies. Without this, any authenticated
     // user could read another business's profile (name, TIN, address, contact
     // info) just by guessing its id.
-    if (req.user.role !== 'ADMIN') {
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(req.user.role)) {
       const ub = await prisma.userBusiness.findUnique({
         where: { userId_businessId: { userId: req.user.id, businessId: id } },
       });

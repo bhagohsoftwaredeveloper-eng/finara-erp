@@ -32,6 +32,10 @@ const computeVAT = (amount, code) =>
 
 const todayStr  = () => new Date().toISOString().split('T')[0];
 const plusDays  = (n) => new Date(Date.now() + n * 86400000).toISOString().split('T')[0];
+const fmtDateTime = (d) => {
+  const dt = new Date(d);
+  return `${formatDate(dt)} ${dt.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`;
+};
 
 // ─── Create / Edit Quotation Modal ────────────────────────────
 const emptyQtnLine = () => ({ itemName: '', itemId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' });
@@ -391,6 +395,17 @@ function QuotationDetailModal({ quotation, onClose, onAction, onConvert, onEdit,
             <div><span className="text-gray-400">Quotation Date</span><div>{formatDate(q.quotationDate)}</div></div>
             <div><span className="text-gray-400">Valid Until</span><div>{formatDate(q.validUntil)}</div></div>
             {q.description && <div className="col-span-2"><span className="text-gray-400">Subject</span><div>{q.description}</div></div>}
+            <div>
+              <span className="text-gray-400">Created</span>
+              <div>
+                {fmtDateTime(q.createdAt)}
+                {q.creator && <span className="text-gray-400"> by {q.creator.firstName} {q.creator.lastName}</span>}
+              </div>
+            </div>
+            {q.updatedAt && fmtDateTime(q.updatedAt) !== fmtDateTime(q.createdAt) && (
+              <div><span className="text-gray-400">Last Updated</span><div>{fmtDateTime(q.updatedAt)}</div></div>
+            )}
+            {q.notes && <div className="col-span-2"><span className="text-gray-400">Notes</span><div className="whitespace-pre-wrap">{q.notes}</div></div>}
           </div>
 
           <div className="border border-gray-200 rounded-xl overflow-hidden">

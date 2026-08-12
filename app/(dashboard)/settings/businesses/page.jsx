@@ -38,7 +38,7 @@ export default function BusinessesPage() {
   const [resetting,   setResetting]   = useState(false);
 
   const me = getUser();
-  const isAdmin = me?.role === 'ADMIN';
+  const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(me?.role);
 
   async function load() {
     try {
@@ -262,8 +262,8 @@ export default function BusinessesPage() {
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Toggle to grant or revoke access for each user. ADMIN users always have full access.</p>
           <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
             {users.map((u) => {
-              const hasAccess = u.role === 'ADMIN' || bizUserIds.has(u.id);
-              const isForced  = u.role === 'ADMIN';
+              const hasAccess = ['ADMIN', 'SUPER_ADMIN'].includes(u.role) || bizUserIds.has(u.id);
+              const isForced  = ['ADMIN', 'SUPER_ADMIN'].includes(u.role);
               return (
                 <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
                   <div>

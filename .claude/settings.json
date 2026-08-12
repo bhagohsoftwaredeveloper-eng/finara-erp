@@ -3,7 +3,18 @@
     "allow": [
       "Bash(git pull *)",
       "Bash(git worktree *)",
-      "Bash(powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\\\"name='node.exe'\\\\\" | Select-Object ProcessId,CommandLine | Format-Table -AutoSize -Wrap\")"
+      "Bash(powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\\\"name='node.exe'\\\\\" | Select-Object ProcessId,CommandLine | Format-Table -AutoSize -Wrap\")",
+      "Bash(C-c)",
+      "mcp__plugin_playwright_playwright__browser_find",
+      "PowerShell(foreach \\($pid in 20724,21080,32904,1860,22276,13756,18176\\) { try { Stop-Process -Id $pid -Force -ErrorAction Stop; Write-Output \"killed $pid\" } catch { Write-Output \"not found: $pid\" } })",
+      "PowerShell(foreach \\($p in 20724,21080,32904,1860,22276,13756,18176\\) { try { Stop-Process -Id $p -Force -ErrorAction Stop; Write-Output \"killed $p\" } catch { Write-Output \"not found: $p\" } })",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000 --max-time 3)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5000/api/health --max-time 3)",
+      "PowerShell(foreach \\($p in 29532,24240,2500,12868,28572,5172,16096\\) { try { Stop-Process -Id $p -Force -ErrorAction Stop; Write-Output \"killed $p\" } catch { Write-Output \"not found: $p\" } })",
+      "Bash(rm -f \".playwright-mcp/page-2026-08-12T01-21-51-906Z.yml\" \".playwright-mcp/page-2026-08-12T01-23-24-280Z.yml\" && git status --short)"
+    ],
+    "additionalDirectories": [
+      "D:\\Accounting System ERP\\.playwright-mcp"
     ]
   },
   "enabledPlugins": {

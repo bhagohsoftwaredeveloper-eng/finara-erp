@@ -74,23 +74,30 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
-          label="Open Receivables"
+          label="Total Sales"
+          value={formatCurrency(d.gl?.monthRevenue)}
+          sub="This month"
+          icon={TrendingUp} color="bg-blue-100 text-blue-600"
+        />
+        <StatCard
+          label="Accounts Receivable"
           value={formatCurrency(d.receivables?.openAmount)}
-          sub={`${d.receivables?.openCount || 0} invoices open`}
+          sub={`${d.receivables?.openCount || 0} invoices outstanding`}
           icon={PesoSign} color="bg-green-100 text-green-600"
         />
         <StatCard
-          label="Open Payables"
+          label="Accounts Payable"
           value={formatCurrency(d.payables?.openAmount)}
-          sub={`${d.payables?.openCount || 0} bills open`}
+          sub={`${d.payables?.openCount || 0} bills outstanding`}
           icon={ShoppingCart} color="bg-orange-100 text-orange-600"
         />
         <StatCard
-          label="This Month Revenue"
-          value={formatCurrency(d.gl?.monthRevenue)}
-          icon={TrendingUp} color="bg-blue-100 text-blue-600"
+          label="Total Expenses"
+          value={formatCurrency(d.gl?.monthExpense)}
+          sub="This month"
+          icon={TrendingDown} color="bg-red-100 text-red-600"
         />
         <StatCard
           label="Net Income (MTD)"

@@ -85,6 +85,72 @@ async function printCustomerStatement(customerName, outstandingItems) {
   await printDocument('Statement of Account', customerName, body);
 }
 
+// ─── Print ALL customers, alphabetically, each with their full invoice history ──
+// Mirrors the on-screen expandable row: a bold customer summary line, followed
+// by every one of that customer's outstanding invoices — no need to expand
+// each row individually, it's all shown at once.
+async function printAllCustomersSummary(customerGroups) {
+  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const alphabetical = customerGroups.slice().sort(([a], [b]) => a.localeCompare(b));
+
+  const grandTotals = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
+  let grandTotal = 0;
+  let invoiceCount = 0;
+
+  const sections = alphabetical.map(([customerName, items]) => {
+    const bucketTotals = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
+    items.forEach((i) => { bucketTotals[i.bucket] = (bucketTotals[i.bucket] || 0) + i.outstanding; });
+    const total = items.reduce((s, i) => s + i.outstanding, 0);
+    BUCKETS.forEach((b) => { grandTotals[b] += bucketTotals[b]; });
+    grandTotal += total;
+    invoiceCount += items.length;
+
+    const customerRow = `
+      <tr style="background:#f9fafb;">
+        <td class="bold">${esc(customerName)} <span class="small gray">(${items.length} inv.)</span></td>
+        ${BUCKETS.map((b) => `<td class="right mono bold">${bucketTotals[b] > 0 ? phpFmt(bucketTotals[b]) : '—'}</td>`).join('')}
+        <td class="right mono bold">${phpFmt(total)}</td>
+      </tr>`;
+
+    const invoiceRows = items
+      .slice()
+      .sort((a, b) => b.daysOverdue - a.daysOverdue)
+      .map((i) => `
+        <tr>
+          <td class="small gray" style="padding-left:20px;">
+            <span class="mono">${i.invoiceNo}</span> · Due ${dateFmt(i.dueDate)}${i.daysOverdue > 0 ? ` · ${i.daysOverdue}d overdue` : ''}
+          </td>
+          ${BUCKETS.map((b) => `<td class="right mono small">${i.bucket === b ? phpFmt(i.outstanding) : ''}</td>`).join('')}
+          <td class="right mono small">${phpFmt(i.outstanding)}</td>
+        </tr>`)
+      .join('');
+
+    return customerRow + invoiceRows;
+  }).join('');
+
+  const body = `
+    <table>
+      <thead>
+        <tr>
+          <th>Customer / Invoice</th>
+          ${BUCKETS.map((b) => `<th class="right">${b}</th>`).join('')}
+          <th class="right">Total</th>
+        </tr>
+      </thead>
+      <tbody>${sections}</tbody>
+      <tfoot>
+        <tr>
+          <td class="bold">GRAND TOTAL (${alphabetical.length} customer${alphabetical.length !== 1 ? 's' : ''}, ${invoiceCount} invoice${invoiceCount !== 1 ? 's' : ''})</td>
+          ${BUCKETS.map((b) => `<td class="right mono bold">${phpFmt(grandTotals[b])}</td>`).join('')}
+          <td class="right mono bold">${phpFmt(grandTotal)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <p class="small gray" style="margin-top:10px;">Customers listed alphabetically, each with their full outstanding invoice history. Reflects open and partially paid invoices only, as of the print date above.</p>`;
+
+  await printDocument('AR Aging — Detail by Customer', `${alphabetical.length} customer${alphabetical.length !== 1 ? 's' : ''} · ${invoiceCount} invoice${invoiceCount !== 1 ? 's' : ''}`, body);
+}
+
 // ─── Export a per-customer Statement of Account to Excel ───────────────────
 function exportCustomerStatement(customerName, outstandingItems) {
   const total = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
@@ -464,6 +530,9 @@ export default function ARAgingPage() {
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState(searchParams.get('search') || '');
+  const [bucketFilter, setBucketFilter] = useState('');
+  const [dateFrom, setDateFrom]   = useState('');
+  const [dateTo, setDateTo]       = useState('');
   const [chartType, setChartType] = useState('bar'); // 'bar' | 'pie'
   const [lastRefresh, setLastRefresh] = useState(null);
   const [historyResults, setHistoryResults] = useState([]); // [{ customer, invoices }] — full history for search
@@ -543,9 +612,14 @@ export default function ARAgingPage() {
   if (!data) return null;
 
   // Group by customer
-  const filtered = data.items.filter((i) =>
-    !search || i.customer.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = data.items.filter((i) => {
+    if (search && !i.customer.toLowerCase().includes(search.toLowerCase())) return false;
+    if (bucketFilter && i.bucket !== bucketFilter) return false;
+    if (dateFrom && new Date(i.dueDate) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(i.dueDate) > new Date(dateTo)) return false;
+    return true;
+  });
+  const hasDetailFilters = !!(bucketFilter || dateFrom || dateTo);
   const grouped = {};
   filtered.forEach((item) => {
     if (!grouped[item.customer]) grouped[item.customer] = [];
@@ -775,19 +849,59 @@ export default function ARAgingPage() {
           <h3 className="font-semibold text-gray-900">
             {search.trim() ? 'Search Results — Full Customer History' : 'Detail by Customer'}
           </h3>
-          <div className="relative">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input
-              className="input pl-8 text-sm w-64 py-1.5"
-              placeholder="Search customer name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex items-center gap-2">
+            {!search.trim() && (
+              <button
+                className="btn-secondary btn-sm"
+                disabled={sortedCustomers.length === 0}
+                onClick={() => printAllCustomersSummary(sortedCustomers)}
+                title="Print all customers, alphabetically, each with their full invoice history"
+              >
+                <Printer className="w-3.5 h-3.5" /> Print All
+              </button>
+            )}
+            <div className="relative">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                className="input pl-8 text-sm w-64 py-1.5"
+                placeholder="Search customer name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 
         {!search.trim() && (
           <>
+            <div className="card-body py-3 border-b border-gray-100 flex flex-wrap items-center gap-3">
+              <select
+                className="select w-40 text-sm py-1.5"
+                value={bucketFilter}
+                onChange={(e) => setBucketFilter(e.target.value)}
+              >
+                <option value="">All Terms</option>
+                {BUCKETS.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">Due From</label>
+                <input type="date" className="input w-40 text-sm py-1.5"
+                  value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">Due To</label>
+                <input type="date" className="input w-40 text-sm py-1.5"
+                  value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              {hasDetailFilters && (
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={() => { setBucketFilter(''); setDateFrom(''); setDateTo(''); }}
+                >
+                  <X className="w-3.5 h-3.5" /> Clear
+                </button>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="table">
                 <thead>
@@ -806,7 +920,9 @@ export default function ARAgingPage() {
                   {sortedCustomers.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="text-center py-12 text-gray-400">
-                        No outstanding receivables. All invoices are collected! 🎉
+                        {hasDetailFilters
+                          ? 'No invoices match the selected terms/date range.'
+                          : 'No outstanding receivables. All invoices are collected! 🎉'}
                       </td>
                     </tr>
                   ) : sortedCustomers.map(([customerName, items]) => (

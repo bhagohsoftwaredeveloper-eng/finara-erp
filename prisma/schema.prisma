@@ -77,6 +77,7 @@ enum Role {
   MANAGER
   ACCOUNTANT
   VIEWER
+  SUPER_ADMIN
 }
 
 // ─── Audit Trail ───────────────────────────────────────────
@@ -409,6 +410,7 @@ model Quotation {
   totalAmount   Decimal         @default(0) @db.Decimal(15, 2)
   status        QuotationStatus @default(DRAFT)
   convertedInvoiceId Int?
+  createdBy     Int?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 

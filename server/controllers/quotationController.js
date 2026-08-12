@@ -55,7 +55,19 @@ exports.get = async (req, res, next) => {
       include: { customer: true, lines: { include: { account: { select: { accountCode: true, accountName: true } } } } },
     });
     if (!q) throw createError('Quotation not found', 404);
-    res.json(q);
+
+    // createdBy is a plain user id (matches the createdBy convention used
+    // elsewhere in this codebase, e.g. journalController) — resolve it to a
+    // display name here rather than via a Prisma relation.
+    let creator = null;
+    if (q.createdBy) {
+      creator = await prisma.user.findUnique({
+        where: { id: q.createdBy },
+        select: { firstName: true, lastName: true },
+      });
+    }
+
+    res.json({ ...q, creator });
   } catch (err) { next(err); }
 };
 
@@ -72,6 +84,7 @@ exports.create = async (req, res, next) => {
         quotationNo, customerId: Number(customerId),
         quotationDate: new Date(quotationDate), validUntil: new Date(validUntil),
         description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
+        createdBy: req.user?.id ?? null,
         lines: { create: processed.map((l) => ({
           // No GL account while quoting — it is assigned at convert-to-invoice.
           itemName: l.itemName || null,

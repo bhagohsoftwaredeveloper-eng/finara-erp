@@ -254,10 +254,15 @@ const listUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const ALLOWED_ROLES = ['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'];
+
 const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { role, isActive, firstName, lastName } = req.body;
+    if (role && !ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
     const user = await prisma.user.update({
       where: { id: Number(id) },
       data: { ...(role && { role }), ...(isActive !== undefined && { isActive }), ...(firstName && { firstName }), ...(lastName && { lastName }) },

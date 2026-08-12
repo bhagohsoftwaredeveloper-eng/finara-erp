@@ -53,6 +53,15 @@ describe('businessController.get access control', () => {
     expect(prisma.userBusiness.findUnique).not.toHaveBeenCalled();
   });
 
+  test('SUPER_ADMIN bypasses the grant check entirely too', async () => {
+    prisma.business.findUnique.mockResolvedValue({ id: 2, name: 'Beulah IT' });
+
+    const biz = await run({ id: 1, role: 'SUPER_ADMIN' }, 2);
+
+    expect(biz).toEqual({ id: 2, name: 'Beulah IT' });
+    expect(prisma.userBusiness.findUnique).not.toHaveBeenCalled();
+  });
+
   test('a nonexistent business still 404s (not swallowed by the grant check)', async () => {
     prisma.userBusiness.findUnique.mockResolvedValue({ userId: 5, businessId: 99 });
     prisma.business.findUnique.mockResolvedValue(null);

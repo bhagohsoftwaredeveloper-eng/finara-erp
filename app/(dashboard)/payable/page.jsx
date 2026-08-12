@@ -635,6 +635,66 @@ export default function BillsPage() {
   const clearFilter = () => setFilter({ status: '', vendorId: '', from: '', to: '', search: '' });
   const activeFilters = Object.values(filter).filter(Boolean).length;
 
+  // Prints every bill matching the current filters (not just the visible page).
+  const handlePrintList = async () => {
+    try {
+      const params = { ...filter, limit: 1000 };
+      Object.keys(params).forEach((k) => !params[k] && delete params[k]);
+      const { data } = await pApi.bills.list(params);
+      const all = data.data;
+      if (!all.length) { toast.error('No bills to print'); return; }
+
+      const rows = all.map((b) => {
+        const balance = Number(b.totalAmount) - Number(b.paidAmount);
+        return `<tr>
+          <td class="mono blue small">${b.billNo}</td>
+          <td>${b.vendor?.name || ''}</td>
+          <td>${dateFmt(b.billDate)}</td>
+          <td>${dateFmt(b.dueDate)}</td>
+          <td class="right mono">${phpFmt(b.totalAmount)}</td>
+          <td class="right mono">${phpFmt(b.paidAmount)}</td>
+          <td class="right mono">${phpFmt(balance)}</td>
+          <td class="center">${badge(b.status)}</td>
+        </tr>`;
+      }).join('');
+
+      const totalAmt     = all.reduce((s, b) => s + Number(b.totalAmount), 0);
+      const totalPaid    = all.reduce((s, b) => s + Number(b.paidAmount), 0);
+      const totalBalance = totalAmt - totalPaid;
+
+      const subtitle = [
+        filter.status   && `Status: ${filter.status}`,
+        filter.vendorId && `Vendor: ${vendors.find((v) => String(v.id) === String(filter.vendorId))?.name || ''}`,
+        filter.from     && `From: ${dateFmt(filter.from)}`,
+        filter.to       && `To: ${dateFmt(filter.to)}`,
+      ].filter(Boolean).join('  ·  ') || `All bills — ${all.length} total`;
+
+      const body = `
+        <table>
+          <thead>
+            <tr>
+              <th>Bill No.</th><th>Vendor</th><th>Bill Date</th><th>Due Date</th>
+              <th class="right">Total</th><th class="right">Paid</th><th class="right">Balance</th><th class="center">Status</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4" class="right">TOTAL (${all.length} bill${all.length !== 1 ? 's' : ''})</td>
+              <td class="right mono">${phpFmt(totalAmt)}</td>
+              <td class="right mono">${phpFmt(totalPaid)}</td>
+              <td class="right mono">${phpFmt(totalBalance)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>`;
+
+      printDocument('Bills', subtitle, body);
+    } catch {
+      toast.error('Failed to prepare print list');
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Page header */}
@@ -643,9 +703,14 @@ export default function BillsPage() {
           <h1 className="page-title">Bills</h1>
           <p className="page-subtitle">Accounts Payable — {total} bill{total !== 1 ? 's' : ''} total</p>
         </div>
-        <button className="btn-primary" onClick={() => setModal({ type: 'create' })}>
-          <Plus className="w-4 h-4" /> New Bill
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={handlePrintList}>
+            <Printer className="w-4 h-4" /> Print List
+          </button>
+          <button className="btn-primary" onClick={() => setModal({ type: 'create' })}>
+            <Plus className="w-4 h-4" /> New Bill
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}

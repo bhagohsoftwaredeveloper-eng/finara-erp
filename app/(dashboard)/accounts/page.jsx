@@ -118,7 +118,11 @@ function AccountModal({ account, onClose, onSaved, allAccounts }) {
 }
 
 // ── Pagination Controls ────────────────────────────────────────────────────────
+const JUMP_THRESHOLD = 7; // show "Go to page" input once there are more pages than fit inline
+
 function Pagination({ page, totalPages, total, pageSize, onPage }) {
+  const [jumpValue, setJumpValue] = useState('');
+
   if (totalPages <= 1) return null;
   const start = (page - 1) * pageSize + 1;
   const end   = Math.min(page * pageSize, total);
@@ -132,32 +136,60 @@ function Pagination({ page, totalPages, total, pageSize, onPage }) {
     }
   }
 
+  const submitJump = (e) => {
+    e.preventDefault();
+    const n = Number(jumpValue);
+    if (Number.isInteger(n) && n >= 1 && n <= totalPages) {
+      onPage(n);
+    }
+    setJumpValue('');
+  };
+
   return (
     <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
       <p className="text-sm text-gray-500">
         Showing <span className="font-medium">{start}–{end}</span> of <span className="font-medium">{total}</span> accounts
       </p>
-      <div className="flex items-center gap-1">
-        <button onClick={() => onPage(page - 1)} disabled={page === 1}
-          className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        {pages.map((p, i) =>
-          p === '…' ? (
-            <span key={`ellipsis-${i}`} className="px-2 text-gray-400 text-sm">…</span>
-          ) : (
-            <button key={p} onClick={() => onPage(p)}
-              className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
-                p === page ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-              }`}>
-              {p}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
+          <button onClick={() => onPage(page - 1)} disabled={page === 1}
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          {pages.map((p, i) =>
+            p === '…' ? (
+              <span key={`ellipsis-${i}`} className="px-2 text-gray-400 text-sm">…</span>
+            ) : (
+              <button key={p} onClick={() => onPage(p)}
+                className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
+                  p === page ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                }`}>
+                {p}
+              </button>
+            )
+          )}
+          <button onClick={() => onPage(page + 1)} disabled={page === totalPages}
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        {totalPages > JUMP_THRESHOLD && (
+          <form onSubmit={submitJump} className="flex items-center gap-1.5 text-sm text-gray-500">
+            <span className="whitespace-nowrap">Go to</span>
+            <input
+              type="number"
+              min={1}
+              max={totalPages}
+              value={jumpValue}
+              onChange={(e) => setJumpValue(e.target.value)}
+              placeholder={String(page)}
+              className="w-14 px-2 py-1 border border-gray-200 rounded-md text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button type="submit" className="px-2 py-1 text-gray-600 hover:text-blue-600 font-medium">
+              Go
             </button>
-          )
+          </form>
         )}
-        <button onClick={() => onPage(page + 1)} disabled={page === totalPages}
-          className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed">
-          <ChevronRight className="w-4 h-4" />
-        </button>
       </div>
     </div>
   );

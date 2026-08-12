@@ -118,7 +118,7 @@ export default function AdminOverridePage() {
   const user = typeof window !== 'undefined' ? getUser() : null;
 
   // Access guard — client-side fallback (server enforces via JWT)
-  if (user && user.role !== 'ADMIN') {
+  if (user && !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
     return (
       <div className="flex flex-col items-center justify-center h-96 text-gray-400">
         <ShieldAlert className="w-12 h-12 mb-3 text-red-300" />

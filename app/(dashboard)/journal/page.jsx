@@ -426,8 +426,10 @@ export default function JournalPage() {
       <div className="card mb-4">
         <div className="card-body py-3 flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-48">
+            <label htmlFor="journal-search" className="sr-only">Search by entry number, description, or reference</label>
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-            <input className="input pl-9 w-full" placeholder="Search entry no., description, reference…"
+            <input id="journal-search" className="input pl-9 w-full" placeholder="Search entry"
+              title="Search by entry number, description, or reference"
               value={filter.search} onChange={(e) => setFilter(f => ({...f, search: e.target.value}))} />
           </div>
           <select className="select w-40" value={filter.status} onChange={(e) => setFilter(f => ({...f, status: e.target.value}))}>

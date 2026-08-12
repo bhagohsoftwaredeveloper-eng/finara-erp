@@ -29,7 +29,7 @@ const resolveBusiness = async (req, res, next) => {
 
     // If no header supplied, fall back to the first business the user has access to
     if (!headerBizId) {
-      if (req.user?.role === 'ADMIN') {
+      if (['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role)) {
         // Admin with no header: default to business 1
         req.businessId = 1;
         return next();
@@ -43,7 +43,7 @@ const resolveBusiness = async (req, res, next) => {
     }
 
     // Admin can switch to any business
-    if (req.user?.role === 'ADMIN') {
+    if (['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role)) {
       req.businessId = headerBizId;
       return next();
     }
@@ -68,6 +68,9 @@ const resolveBusiness = async (req, res, next) => {
 };
 
 const authorize = (...roles) => (req, res, next) => {
+  // SUPER_ADMIN is a hidden tier above ADMIN — it passes every role check
+  // without needing to be listed explicitly at each call site.
+  if (req.user?.role === 'SUPER_ADMIN') return next();
   if (!roles.includes(req.user?.role)) {
     return res.status(403).json({ error: 'Insufficient permissions' });
   }

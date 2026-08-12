@@ -6,7 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import PageTransition from '@/components/layout/PageTransition';
 import { isAuthenticated, getUser } from '@/lib/auth';
-import { canAccess, canWrite, setPermissions } from '@/lib/permissions';
+import { canAccess, canWrite, setPermissions, setDisabledModules } from '@/lib/permissions';
 import { permissions as permApi } from '@/lib/api';
 import { BusinessProvider } from '@/lib/businessContext';
 
@@ -43,6 +43,13 @@ export default function DashboardLayout({ children }) {
       .then(({ data }) => setPermissions(data))
       .catch(() => setPermissions(null))
       .finally(() => setPermReady(true));
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    permApi.getDisabled()
+      .then(({ data }) => setDisabledModules(data))
+      .catch(() => setDisabledModules([]));
   }, [authed]);
 
   useEffect(() => {
