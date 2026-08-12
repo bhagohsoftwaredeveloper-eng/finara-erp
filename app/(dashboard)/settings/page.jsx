@@ -313,7 +313,7 @@ function ModuleResetModal({ modules, moduleList, onClose, onDone }) {
 export default function SettingsPage() {
   const [role, setRole] = useState(null);
   useEffect(() => { setRole(getUser()?.role); }, []);
-  const visibleTabs = TABS.filter((t) => !role || t.roles.includes(role));
+  const visibleTabs = TABS.filter((t) => !role || role === 'SUPER_ADMIN' || t.roles.includes(role));
 
   const [activeTab, setActiveTab] = useState('company');
   const [menuOpen, setMenuOpen] = useState(false); // mobile: tab menu open/close

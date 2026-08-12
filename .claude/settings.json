@@ -11,7 +11,17 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000 --max-time 3)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5000/api/health --max-time 3)",
       "PowerShell(foreach \\($p in 29532,24240,2500,12868,28572,5172,16096\\) { try { Stop-Process -Id $p -Force -ErrorAction Stop; Write-Output \"killed $p\" } catch { Write-Output \"not found: $p\" } })",
-      "Bash(rm -f \".playwright-mcp/page-2026-08-12T01-21-51-906Z.yml\" \".playwright-mcp/page-2026-08-12T01-23-24-280Z.yml\" && git status --short)"
+      "Bash(rm -f \".playwright-mcp/page-2026-08-12T01-21-51-906Z.yml\" \".playwright-mcp/page-2026-08-12T01-23-24-280Z.yml\" && git status --short)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5000/api/auth/login --max-time 3 -X POST)",
+      "Bash(curl -s http://localhost:3000/api/health --max-time 3)",
+      "Bash(curl -s http://localhost:3000/api/permissions/disabled-modules -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MywiZW1haWwiOiJyZXhAZ21haWwuY29tIiwicm9sZSI6IlNVUEVSX0FETUlOIiwibmFtZSI6IlJleCBEb21pbmdvIiwiaWF0IjoxNzg2NTIyMjk3LCJleHAiOjE3ODY1MjI4OTd9.LfLeFNY4XA0oqarqDX7tK4XFA7ZUd6gXg57Tvf7apOI' -H 'x-business-id: 1')",
+      "Bash(curl -s -X PUT http://localhost:3000/api/permissions/disabled-modules -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MywiZW1haWwiOiJyZXhAZ21haWwuY29tIiwicm9sZSI6IlNVUEVSX0FETUlOIiwibmFtZSI6IlJleCBEb21pbmdvIiwiaWF0IjoxNzg2NTIyMjk3LCJleHAiOjE3ODY1MjI4OTd9.LfLeFNY4XA0oqarqDX7tK4XFA7ZUd6gXg57Tvf7apOI' -H 'x-business-id: 1' -H 'Content-Type: application/json' -d '{\"disabled\":[\"payroll\"]}')",
+      "Bash(curl -s -X PUT http://localhost:3000/api/permissions/disabled-modules -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MywiZW1haWwiOiJyZXhAZ21haWwuY29tIiwicm9sZSI6IlNVUEVSX0FETUlOIiwibmFtZSI6IlJleCBEb21pbmdvIiwiaWF0IjoxNzg2NTIyMjk3LCJleHAiOjE3ODY1MjI4OTd9.LfLeFNY4XA0oqarqDX7tK4XFA7ZUd6gXg57Tvf7apOI' -H 'x-business-id: 1' -H 'Content-Type: application/json' -d '{\"disabled\":[\"payroll\",\"settings\",\"dashboard\"]}')",
+      "Bash(curl -s -w '\\\\nHTTP:%{http_code}\\\\n' -X PUT http://localhost:3000/api/permissions/disabled-modules -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6OCwiZW1haWwiOiJkZW1vQGZpbmFyYS5sb2NhbCIsInJvbGUiOiJNQU5BR0VSIiwibmFtZSI6IkRlbW8gTWFuYWdlciIsImlhdCI6MTc4NjUyMjMzMywiZXhwIjoxNzg2NTIyOTMzfQ.2ks0rZEHLJSGWxTBDIzyX7VeyYb6bnAXUanyD6eCOrw' -H 'x-business-id: 1' -H 'Content-Type: application/json' -d '{\"disabled\":[\"accounts\"]}')",
+      "Bash(curl -s http://localhost:3000/api/permissions/disabled-modules -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6OCwiZW1haWwiOiJkZW1vQGZpbmFyYS5sb2NhbCIsInJvbGUiOiJNQU5BR0VSIiwibmFtZSI6IkRlbW8gTWFuYWdlciIsImlhdCI6MTc4NjUyMjMzMywiZXhwIjoxNzg2NTIyOTMzfQ.2ks0rZEHLJSGWxTBDIzyX7VeyYb6bnAXUanyD6eCOrw' -H 'x-business-id: 1')",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -w '\\\\nHTTP:%{http_code}\\\\n' -X PUT http://localhost:3000/api/settings/users/3 -H 'Authorization: Bearer __TRACKED_VAR__' -H 'x-business-id: 1' -H 'Content-Type: application/json' -d '{\"role\":\"SUPER_ADMIN\"}')",
+      "Bash(curl -s -X PUT http://localhost:3000/api/permissions/disabled-modules -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MywiZW1haWwiOiJyZXhAZ21haWwuY29tIiwicm9sZSI6IlNVUEVSX0FETUlOIiwibmFtZSI6IlJleCBEb21pbmdvIiwiaWF0IjoxNzg2NTIyMjk3LCJleHAiOjE3ODY1MjI4OTd9.LfLeFNY4XA0oqarqDX7tK4XFA7ZUd6gXg57Tvf7apOI' -H 'x-business-id: 1' -H 'Content-Type: application/json' -d '{\"disabled\":[]}')"
     ],
     "additionalDirectories": [
       "D:\\Accounting System ERP\\.playwright-mcp"
