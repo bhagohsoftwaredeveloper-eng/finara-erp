@@ -257,18 +257,41 @@ exports.convert = async (req, res, next) => {
     const invoiceNo = await genInvNo();
     const due = dueDate ? new Date(dueDate) : new Date(Date.now() + 30 * 86400000);
 
+    // The quotation's own subtotal/amount were computed with no account
+    // attached (accounts are assigned here, at conversion) so they can't
+    // reflect contra-revenue accounts. Recompute per line now that every
+    // line has a real account, so a Sales Discounts / Returns line
+    // subtracts instead of adding — same rule as a normal AR invoice.
+    const lineAccountIds = [...new Set(q.lines.map((l) => accountFor(l)))];
+    const lineAccounts = await prisma.account.findMany({
+      where: { id: { in: lineAccountIds } },
+      select: { id: true, normalBalance: true },
+    });
+    const normalBalanceById = new Map(lineAccounts.map((a) => [a.id, a.normalBalance]));
+
+    let subtotal = 0, vatAmount = 0;
+    const invLines = q.lines.map((l) => {
+      const accountId = accountFor(l);
+      const sign = normalBalanceById.get(accountId) === 'DEBIT' ? -1 : 1;
+      const amt = sign * Number(l.quantity) * Number(l.unitPrice);
+      const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
+      subtotal += v.base; vatAmount += v.vat;
+      return {
+        accountId,
+        description: l.itemName ? `${l.itemName} — ${l.description}` : l.description,
+        quantity: l.quantity, unitPrice: l.unitPrice, amount: v.base, vatCode: l.vatCode,
+      };
+    });
+    const totalAmount = subtotal + vatAmount;
+
     const inv = await prisma.invoice.create({
       data: {
         businessId: q.businessId,
         invoiceNo, customerId: q.customerId,
         invoiceDate: new Date(), dueDate: due,
         description: q.description || `From quotation ${q.quotationNo}`,
-        subtotal: q.subtotal, vatAmount: q.vatAmount, totalAmount: q.totalAmount,
-        lines: { create: q.lines.map((l) => ({
-          accountId: accountFor(l),
-          description: l.itemName ? `${l.itemName} — ${l.description}` : l.description,
-          quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
-        })) },
+        subtotal, vatAmount, totalAmount,
+        lines: { create: invLines },
       },
       include: { customer: true, lines: true },
     });
@@ -276,7 +299,12 @@ exports.convert = async (req, res, next) => {
     // ── Auto-post to GL (same as a normal AR invoice) ───────────────────────────
     const glLines = [
       { accountCode: '1100', debit: Number(inv.totalAmount), description: `AR — ${inv.customer.name} (${inv.invoiceNo})` },
-      ...inv.lines.map((l) => ({ accountId: l.accountId, credit: Number(l.amount), description: l.description })),
+      ...inv.lines.map((l) => {
+        const amt = Number(l.amount);
+        return amt < 0
+          ? { accountId: l.accountId, debit: -amt, description: l.description }
+          : { accountId: l.accountId, credit: amt, description: l.description };
+      }),
       ...(Number(inv.vatAmount) > 0 ? [{ accountCode: '2030', credit: Number(inv.vatAmount), description: 'Output VAT' }] : []),
     ];
     await glPost.safePost({

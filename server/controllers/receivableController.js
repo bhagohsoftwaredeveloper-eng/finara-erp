@@ -15,10 +15,21 @@ const genPayNo = async () => {
 };
 
 // Shared by createInvoice/updateInvoice: recompute per-line VAT + running totals.
-function computeInvoiceTotals(lines) {
+// Contra-revenue accounts (e.g. Sales Discounts, Sales Returns & Allowances —
+// REVENUE type but normalBalance DEBIT) reduce the subtotal instead of adding
+// to it, so their line amount is negated before VAT is applied.
+async function computeInvoiceTotals(lines) {
+  const accountIds = [...new Set(lines.map((l) => Number(l.accountId)))];
+  const accounts = await prisma.account.findMany({
+    where: { id: { in: accountIds } },
+    select: { id: true, normalBalance: true },
+  });
+  const normalBalanceById = new Map(accounts.map((a) => [a.id, a.normalBalance]));
+
   let subtotal = 0, vatAmount = 0;
   const processedLines = lines.map((l) => {
-    const amt = Number(l.quantity) * Number(l.unitPrice);
+    const sign = normalBalanceById.get(Number(l.accountId)) === 'DEBIT' ? -1 : 1;
+    const amt = sign * Number(l.quantity) * Number(l.unitPrice);
     const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
     subtotal += v.base; vatAmount += v.vat;
     return { ...l, amount: v.base };
@@ -26,11 +37,18 @@ function computeInvoiceTotals(lines) {
   return { subtotal, vatAmount, totalAmount: subtotal + vatAmount, processedLines };
 }
 
-// Shared by createInvoice/updateInvoice: DR AR / CR revenue lines / CR Output VAT.
+// Shared by createInvoice/updateInvoice: DR AR / revenue lines (CR) or
+// contra-revenue lines (DR, since l.amount is already negative for those,
+// matching their DEBIT normal balance) / CR Output VAT.
 function buildInvoiceGLLines(inv) {
   return [
     { accountCode: '1100', debit: Number(inv.totalAmount), description: `AR — ${inv.customer.name} (${inv.invoiceNo})` },
-    ...inv.lines.map((l) => ({ accountId: l.accountId, credit: Number(l.amount), description: l.description })),
+    ...inv.lines.map((l) => {
+      const amt = Number(l.amount);
+      return amt < 0
+        ? { accountId: l.accountId, debit: -amt, description: l.description }
+        : { accountId: l.accountId, credit: amt, description: l.description };
+    }),
     ...(Number(inv.vatAmount) > 0 ? [{ accountCode: '2030', credit: Number(inv.vatAmount), description: 'Output VAT' }] : []),
   ];
 }
@@ -124,7 +142,7 @@ exports.getInvoice = async (req, res, next) => {
 exports.createInvoice = async (req, res, next) => {
   try {
     const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
-    const { subtotal, vatAmount, totalAmount, processedLines } = computeInvoiceTotals(lines);
+    const { subtotal, vatAmount, totalAmount, processedLines } = await computeInvoiceTotals(lines);
 
     const invoiceNo = await genInvNo();
     const inv = await prisma.invoice.create({
@@ -165,7 +183,7 @@ exports.updateInvoice = async (req, res, next) => {
     if (inv.status === 'VOID') throw createError('Cannot edit a voided invoice.', 400);
 
     const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
-    const { subtotal, vatAmount, totalAmount, processedLines } = computeInvoiceTotals(lines);
+    const { subtotal, vatAmount, totalAmount, processedLines } = await computeInvoiceTotals(lines);
 
     if (totalAmount < Number(inv.paidAmount) - 0.01) {
       throw createError(

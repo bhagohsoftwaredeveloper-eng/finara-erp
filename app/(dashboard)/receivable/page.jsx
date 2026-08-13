@@ -550,9 +550,16 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
 
   const revenueAccounts = accounts.filter((a) => a.accountType === 'REVENUE');
 
+  // Contra-revenue accounts (Sales Discounts, Sales Returns & Allowances —
+  // normalBalance DEBIT) reduce the subtotal instead of adding to it.
+  const lineSign = (accountId) => {
+    const acct = accounts.find((a) => a.id === Number(accountId));
+    return acct?.normalBalance === 'DEBIT' ? -1 : 1;
+  };
+
   const totals = form.lines.reduce(
     (s, l) => {
-      const amt = (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0);
+      const amt = lineSign(l.accountId) * (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0);
       const v = computeVAT(amt, l.vatCode);
       return { subtotal: s.subtotal + v.base, vat: s.vat + v.vat, total: s.total + v.total };
     },
@@ -655,7 +662,7 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
                   </thead>
                   <tbody>
                     {form.lines.map((line, i) => {
-                      const amt = (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
+                      const amt = lineSign(line.accountId) * (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
                       const v   = computeVAT(amt, line.vatCode);
                       return (
                         <tr key={i} className="align-top">

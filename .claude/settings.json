@@ -22,7 +22,8 @@
       "Bash(node -e ' *)",
       "Bash(curl -s -w '\\\\nHTTP:%{http_code}\\\\n' -X PUT http://localhost:3000/api/settings/users/3 -H 'Authorization: Bearer __TRACKED_VAR__' -H 'x-business-id: 1' -H 'Content-Type: application/json' -d '{\"role\":\"SUPER_ADMIN\"}')",
       "Bash(curl -s -X PUT http://localhost:3000/api/permissions/disabled-modules -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MywiZW1haWwiOiJyZXhAZ21haWwuY29tIiwicm9sZSI6IlNVUEVSX0FETUlOIiwibmFtZSI6IlJleCBEb21pbmdvIiwiaWF0IjoxNzg2NTIyMjk3LCJleHAiOjE3ODY1MjI4OTd9.LfLeFNY4XA0oqarqDX7tK4XFA7ZUd6gXg57Tvf7apOI' -H 'x-business-id: 1' -H 'Content-Type: application/json' -d '{\"disabled\":[]}')",
-      "Bash(node --check \"d:\\\\Accounting System ERP\\\\server\\\\controllers\\\\quotationController.js\")"
+      "Bash(node --check \"d:\\\\Accounting System ERP\\\\server\\\\controllers\\\\quotationController.js\")",
+      "Bash(node --check \"d:\\\\Accounting System ERP\\\\server\\\\controllers\\\\receivableController.js\")"
     ],
     "additionalDirectories": [
       "D:\\Accounting System ERP\\.playwright-mcp"
