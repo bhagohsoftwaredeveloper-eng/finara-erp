@@ -4,9 +4,17 @@ const { computeVAT } = require('../utils/phCompliance');
 const glPost = require('../utils/glPost');
 
 // ─── Sequential numbers ───────────────────────────────────────────
+// Derived from the highest existing quotationNo (not a row count) so that
+// deleting a non-latest quotation can't shrink the count and collide with
+// a still-existing higher number (QUO-000006 exists, QUO-000003 gets
+// deleted, count-based numbering would then re-issue QUO-000006).
 async function genQuotationNo() {
-  const count = await prisma.quotation.count();
-  return `QUO-${String(count + 1).padStart(6, '0')}`;
+  const last = await prisma.quotation.findFirst({
+    orderBy: { quotationNo: 'desc' },
+    select: { quotationNo: true },
+  });
+  const next = last ? parseInt(last.quotationNo.replace('QUO-', ''), 10) + 1 : 1;
+  return `QUO-${String(next).padStart(6, '0')}`;
 }
 async function genInvNo() {
   const count = await prisma.invoice.count();
@@ -76,25 +84,37 @@ exports.create = async (req, res, next) => {
   try {
     const { customerId, quotationDate, validUntil, description, notes, lines } = req.body;
     const { subtotal, vatAmount, processed } = computeTotals(lines);
-    const quotationNo = await genQuotationNo();
 
-    const q = await prisma.quotation.create({
-      data: {
-        businessId: req.businessId,
-        quotationNo, customerId: Number(customerId),
-        quotationDate: new Date(quotationDate), validUntil: new Date(validUntil),
-        description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
-        createdBy: req.user?.id ?? null,
-        lines: { create: processed.map((l) => ({
-          // No GL account while quoting — it is assigned at convert-to-invoice.
-          itemName: l.itemName || null,
-          itemId:   l.itemId ? Number(l.itemId) : null,
-          description: l.description,
-          quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
-        })) },
-      },
-      include: { customer: true, lines: true },
-    });
+    // Retry once on a quotationNo collision (e.g. two near-simultaneous
+    // submissions computing the same next number) rather than surfacing
+    // the raw unique-constraint error to the user.
+    let q;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const quotationNo = await genQuotationNo();
+      try {
+        q = await prisma.quotation.create({
+          data: {
+            businessId: req.businessId,
+            quotationNo, customerId: Number(customerId),
+            quotationDate: new Date(quotationDate), validUntil: new Date(validUntil),
+            description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
+            createdBy: req.user?.id ?? null,
+            lines: { create: processed.map((l) => ({
+              // No GL account while quoting — it is assigned at convert-to-invoice.
+              itemName: l.itemName || null,
+              itemId:   l.itemId ? Number(l.itemId) : null,
+              description: l.description,
+              quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+            })) },
+          },
+          include: { customer: true, lines: true },
+        });
+        break;
+      } catch (err) {
+        if (err.code === 'P2002' && attempt < 2) continue;
+        throw err;
+      }
+    }
     res.status(201).json(q);
   } catch (err) { next(err); }
 };
