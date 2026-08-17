@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { receivable as rApi } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -55,20 +55,36 @@ function bucketFor(dueDate) {
 }
 
 // ─── Print a per-customer Statement of Account (outstanding invoices only) ──
+// Each invoice row is followed by its payment history (if any were recorded
+// against it) so the reader can see exactly what was collected and when.
 async function printCustomerStatement(customerName, outstandingItems) {
   const total = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
   const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const rows = outstandingItems
     .slice()
     .sort((a, b) => b.daysOverdue - a.daysOverdue)
-    .map((i) => `
+    .map((i) => {
+      // `payments` is undefined when the source list didn't fetch payment history at
+      // all (e.g. the main aging table) — omit the section rather than claim "none".
+      const paymentRows = !Array.isArray(i.payments) ? '' : i.payments.length
+        ? i.payments.map((p) => `
+          <tr>
+            <td class="small gray" style="padding-left:20px;">↳ ${esc(p.paymentNo)}</td>
+            <td class="small gray">${dateFmt(p.paymentDate)}</td>
+            <td class="small gray">${esc(p.paymentMethod)}${p.reference ? ` · Ref: ${esc(p.reference)}` : ''}</td>
+            <td class="right small gray">${phpFmt(p.amount)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="4" class="small gray" style="padding-left:20px;font-style:italic;">No payments recorded yet</td></tr>`;
+      return `
       <tr>
         <td class="mono">${i.invoiceNo}</td>
         <td>${dateFmt(i.dueDate)}</td>
         <td><span class="badge" style="background:${BUCKET_COLORS[i.bucket]}22;color:${BUCKET_COLORS[i.bucket]}">${i.bucket}</span></td>
         <td class="right bold">${phpFmt(i.outstanding)}</td>
       </tr>
-      ${i.notes ? `<tr><td colspan="4" class="small gray" style="padding-top:0;">Note: ${esc(i.notes)}</td></tr>` : ''}`)
+      ${i.notes ? `<tr><td colspan="4" class="small gray" style="padding-top:0;">Note: ${esc(i.notes)}</td></tr>` : ''}
+      ${paymentRows}`;
+    })
     .join('');
 
   const body = `
@@ -80,7 +96,7 @@ async function printCustomerStatement(customerName, outstandingItems) {
       <tbody>${rows}</tbody>
       <tfoot><tr><td colspan="3">TOTAL OUTSTANDING</td><td class="right">${phpFmt(total)}</td></tr></tfoot>
     </table>
-    <p class="small gray" style="margin-top:10px;">This statement reflects open and partially paid invoices only, as of the print date above.</p>`;
+    <p class="small gray" style="margin-top:10px;">This statement reflects open and partially paid invoices only, with their payment history, as of the print date above.</p>`;
 
   await printDocument('Statement of Account', customerName, body);
 }
@@ -152,20 +168,41 @@ async function printAllCustomersSummary(customerGroups) {
 }
 
 // ─── Export a per-customer Statement of Account to Excel ───────────────────
+// Each invoice row is followed by one row per payment applied to it, so the
+// payment history is visible in the spreadsheet, not just the outstanding total.
 function exportCustomerStatement(customerName, outstandingItems) {
   const total = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
-  const rows = outstandingItems.slice().sort((a, b) => b.daysOverdue - a.daysOverdue);
-  rows.push({ invoiceNo: '', dueDate: '', bucket: 'TOTAL OUTSTANDING', outstanding: total, notes: '' });
+  const rows = [];
+  outstandingItems
+    .slice()
+    .sort((a, b) => b.daysOverdue - a.daysOverdue)
+    .forEach((i) => {
+      rows.push({ type: 'Invoice', invoiceNo: i.invoiceNo, dueDate: i.dueDate, bucket: i.bucket, outstanding: i.outstanding, amount: '', notes: i.notes });
+      // `payments` is undefined when the source list didn't fetch payment history at
+      // all (e.g. the main aging table) — omit the rows rather than claim "none".
+      if (Array.isArray(i.payments)) {
+        if (i.payments.length) {
+          i.payments.forEach((p) => rows.push({
+            type: 'Payment', invoiceNo: `  ↳ ${p.paymentNo}`, dueDate: p.paymentDate, bucket: p.paymentMethod,
+            outstanding: '', amount: Number(p.amount), notes: p.reference || '',
+          }));
+        } else {
+          rows.push({ type: 'Payment', invoiceNo: '  ↳ (none)', dueDate: '', bucket: '', outstanding: '', amount: '', notes: 'No payments recorded yet' });
+        }
+      }
+    });
+  rows.push({ type: '', invoiceNo: '', dueDate: '', bucket: 'TOTAL OUTSTANDING', outstanding: total, amount: '', notes: '' });
 
   const safeName = customerName.replace(/[^a-z0-9]+/gi, '-');
   exportToExcel(
     rows,
     [
-      { key: 'invoiceNo', label: 'Invoice #' },
-      { key: 'dueDate', label: 'Due Date', format: (v) => (v ? dateFmt(v) : '') },
-      { key: 'bucket', label: 'Aging' },
-      { key: 'outstanding', label: 'Outstanding', format: (v) => phpFmt(v) },
-      { key: 'notes', label: 'Notes' },
+      { key: 'invoiceNo', label: 'Invoice # / Payment #' },
+      { key: 'dueDate', label: 'Due / Payment Date', format: (v) => (v ? dateFmt(v) : '') },
+      { key: 'bucket', label: 'Aging / Method' },
+      { key: 'outstanding', label: 'Outstanding', format: (v) => (v === '' ? '' : phpFmt(v)) },
+      { key: 'amount', label: 'Amount Paid', format: (v) => (v === '' ? '' : phpFmt(v)) },
+      { key: 'notes', label: 'Notes / Reference' },
     ],
     `Statement-${safeName}`,
     customerName.slice(0, 31)
@@ -344,7 +381,17 @@ function CustomerRow({ customerName, items, onView }) {
 }
 
 // ─── Shared full-history table: Invoice #, dates, status, aging, amounts, notes ──
+// Each row expands to show the individual AR payments applied to that invoice,
+// so a partial/aging balance can be traced back to exactly what was collected and when.
 function HistoryTable({ invoices }) {
+  const [expandedIds, setExpandedIds] = useState(new Set());
+
+  const toggle = (id) => setExpandedIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
   return (
     <div className="overflow-x-auto">
       <table className="table">
@@ -370,34 +417,70 @@ function HistoryTable({ invoices }) {
             .map((inv) => {
               const isOutstanding = ['OPEN', 'PARTIAL', 'OVERDUE'].includes(inv.status);
               const { bucket } = isOutstanding ? bucketFor(inv.dueDate) : { bucket: null };
+              const payments = inv.payments || [];
+              const expanded = expandedIds.has(inv.id);
               return (
-                <tr key={inv.id} className="border-b border-gray-100">
-                  <td className="pl-4 py-2 font-mono text-sm text-green-700">{inv.invoiceNo}</td>
-                  <td className="py-2 text-sm text-gray-600">{formatDate(inv.invoiceDate)}</td>
-                  <td className="py-2 text-sm text-gray-600">{formatDate(inv.dueDate)}</td>
-                  <td className="py-2">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE_CLASS[inv.status] || 'bg-gray-100 text-gray-500'}`}>
-                      {inv.status}
-                    </span>
-                  </td>
-                  <td className="py-2">
-                    {bucket ? (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${BUCKET_BADGE_CLASS[bucket]}`}>
-                        {bucket}
+                <Fragment key={inv.id}>
+                  <tr
+                    className="border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+                    onClick={() => toggle(inv.id)}
+                  >
+                    <td className="pl-4 py-2 font-mono text-sm text-green-700">
+                      <span className="inline-flex items-center gap-1.5">
+                        {expanded
+                          ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                          : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                        {inv.invoiceNo}
+                        {payments.length > 0 && <span className="badge-gray text-xs font-sans">{payments.length}</span>}
                       </span>
-                    ) : (
-                      <span className="text-gray-300 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="text-right py-2 text-sm">{formatCurrency(inv.totalAmount)}</td>
-                  <td className="text-right py-2 text-sm text-gray-500">{formatCurrency(inv.paidAmount)}</td>
-                  <td className="text-right py-2 text-sm font-semibold">
-                    {formatCurrency(Number(inv.totalAmount) - Number(inv.paidAmount))}
-                  </td>
-                  <td className="py-2 pr-4 text-xs text-gray-500 max-w-[200px] truncate" title={inv.notes || ''}>
-                    {inv.notes || <span className="text-gray-300">—</span>}
-                  </td>
-                </tr>
+                    </td>
+                    <td className="py-2 text-sm text-gray-600">{formatDate(inv.invoiceDate)}</td>
+                    <td className="py-2 text-sm text-gray-600">{formatDate(inv.dueDate)}</td>
+                    <td className="py-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE_CLASS[inv.status] || 'bg-gray-100 text-gray-500'}`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td className="py-2">
+                      {bucket ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${BUCKET_BADGE_CLASS[bucket]}`}>
+                          {bucket}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="text-right py-2 text-sm">{formatCurrency(inv.totalAmount)}</td>
+                    <td className="text-right py-2 text-sm text-gray-500">{formatCurrency(inv.paidAmount)}</td>
+                    <td className="text-right py-2 text-sm font-semibold">
+                      {formatCurrency(Number(inv.totalAmount) - Number(inv.paidAmount))}
+                    </td>
+                    <td className="py-2 pr-4 text-xs text-gray-500 max-w-[200px] truncate" title={inv.notes || ''}>
+                      {inv.notes || <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                  {expanded && (
+                    payments.length === 0 ? (
+                      <tr className="bg-blue-50/30 border-b border-blue-100/50">
+                        <td colSpan={9} className="py-2 pl-14 text-xs text-gray-400 italic">No payments recorded yet for this invoice.</td>
+                      </tr>
+                    ) : payments.map((p) => (
+                      <tr key={p.id} className="bg-blue-50/30 border-b border-blue-100/50">
+                        <td colSpan={2} className="py-1.5 pl-14">
+                          <span className="font-mono text-xs text-blue-700">{p.paymentNo}</span>
+                        </td>
+                        <td className="py-1.5 text-xs text-gray-500">{formatDate(p.paymentDate)}</td>
+                        <td colSpan={2} className="py-1.5 text-xs text-gray-500">{p.paymentMethod}{p.reference ? ` · Ref: ${p.reference}` : ''}</td>
+                        <td className="text-right py-1.5" />
+                        <td className="text-right py-1.5 text-xs font-medium text-blue-700">{formatCurrency(p.amount)}</td>
+                        <td className="text-right py-1.5" />
+                        <td className="py-1.5 pr-4 text-xs text-gray-400 max-w-[200px] truncate" title={p.notes || ''}>
+                          {p.notes || ''}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </Fragment>
               );
             })}
         </tbody>
@@ -414,6 +497,9 @@ function outstandingItemsFrom(invoices) {
       return {
         invoiceNo: inv.invoiceNo, dueDate: inv.dueDate, daysOverdue, bucket, notes: inv.notes,
         outstanding: Number(inv.totalAmount) - Number(inv.paidAmount),
+        // `undefined` (not `[]`) when the source list didn't fetch payments at all —
+        // print/export treat that as "unknown" rather than falsely claiming none were made.
+        payments: inv.payments,
       };
     });
 }

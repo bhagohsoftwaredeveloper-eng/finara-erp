@@ -1,6 +1,7 @@
 jest.mock('../server/config/database', () => ({
   invoice: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     update: jest.fn(),
   },
   journalEntry: {
@@ -194,6 +195,42 @@ describe('updateInvoice — GL correction', () => {
 
     expect(prisma.journalEntry.update).not.toHaveBeenCalled();
     expect(glPost.safePost).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('voidInvoice — GL correction', () => {
+  test('rejects voiding an invoice with collections', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...baseInvoice, paidAmount: 500 });
+
+    await expect(run(ctrl.voidInvoice, { params: { id: '5' } }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.invoice.update).not.toHaveBeenCalled();
+  });
+
+  test('voids the existing POSTED journal entry (scoped to businessId) when voiding an invoice', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...baseInvoice, paidAmount: 0 });
+    prisma.invoice.update.mockResolvedValue({ ...baseInvoice, status: 'VOID' });
+    prisma.journalEntry.findFirst.mockResolvedValue({ id: 77, entryNo: 'JE-1-000077' });
+    prisma.journalEntry.update.mockResolvedValue({});
+
+    await run(ctrl.voidInvoice, { params: { id: '5' } });
+
+    expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ businessId: 1, reference: 'INV-000005', status: 'POSTED' }) })
+    );
+    expect(prisma.journalEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 77 }, data: { status: 'VOIDED' } })
+    );
+  });
+
+  test('proceeds without voiding anything when no prior POSTED entry is found', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ ...baseInvoice, paidAmount: 0 });
+    prisma.invoice.update.mockResolvedValue({ ...baseInvoice, status: 'VOID' });
+    prisma.journalEntry.findFirst.mockResolvedValue(null);
+
+    await run(ctrl.voidInvoice, { params: { id: '5' } });
+
+    expect(prisma.journalEntry.update).not.toHaveBeenCalled();
   });
 });
 

@@ -33,8 +33,9 @@ exports.calculate = async (req, res, next) => {
     const range = dayRange(date);
 
     const [invoices, arPayments, bills, apPayments, invTxns, expVouchers, cashSales, pettyCashGL, pettyCashGcashGL, cashOnHandGL] = await Promise.all([
+      // Voided invoices carry no cash/VAT impact — exclude them, same as cashSales below.
       prisma.invoice.findMany({
-        where: { businessId: req.businessId, invoiceDate: range },
+        where: { businessId: req.businessId, invoiceDate: range, status: { not: 'VOID' } },
         include: { customer: { select: { name: true, customerCode: true } } },
         orderBy: { invoiceNo: 'asc' },
       }),

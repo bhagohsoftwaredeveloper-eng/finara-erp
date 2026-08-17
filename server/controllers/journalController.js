@@ -54,10 +54,11 @@ exports.validateLines = validateLines;
 
 exports.list = async (req, res, next) => {
   try {
-    const { status, from, to, search, page = 1, limit = 20 } = req.query;
+    const { status, from, to, search, accountId, page = 1, limit = 20 } = req.query;
     const where = { businessId: req.businessId };
     if (status) where.status = status;
     if (from || to) where.entryDate = { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) };
+    if (accountId) where.lines = { some: { accountId: Number(accountId) } };
     if (search) where.OR = [
       { entryNo:     { contains: search } },
       { description: { contains: search } },
@@ -236,6 +237,11 @@ exports.trialBalance = async (req, res, next) => {
         accountName:   acc?.accountName,
         accountType:   acc?.accountType,
         normalBalance: acc?.normalBalance,
+        // Aliases used by the trial balance frontend — same convention as
+        // incomeStatement/balanceSheet below.
+        type:          acc?.accountType,
+        code:          acc?.accountCode,
+        name:          acc?.accountName,
         totalDebit:    debit,
         totalCredit:   credit,
         balance,
@@ -254,6 +260,7 @@ exports.incomeStatement = async (req, res, next) => {
     const { from, to } = req.query;
     const where = {
       entry: {
+        businessId: req.businessId,
         status: 'POSTED',
         ...(from || to ? { entryDate: { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) } } : {}),
       },

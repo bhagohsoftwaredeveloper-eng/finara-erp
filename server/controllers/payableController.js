@@ -2,6 +2,8 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { computeVAT } = require('../utils/phCompliance');
 const glPost = require('../utils/glPost');
+const logger = require('../utils/logger');
+const { recordAudit } = require('../utils/audit');
 
 const genBillNo = async () => {
   const count = await prisma.bill.count();
@@ -206,7 +208,32 @@ exports.voidBill = async (req, res, next) => {
     const bill = await prisma.bill.findUnique({ where: { id } });
     if (!bill) throw createError('Bill not found', 404);
     if (bill.paidAmount > 0) throw createError('Cannot void a bill with payments. Reverse payments first.', 400);
-    res.json(await prisma.bill.update({ where: { id }, data: { status: 'VOID' } }));
+    const updated = await prisma.bill.update({ where: { id }, data: { status: 'VOID' } });
+
+    // Void the bill's GL posting too — otherwise its expense/AP impact keeps
+    // showing up in the Income Statement, Trial Balance, and Balance Sheet.
+    const entry = await prisma.journalEntry.findFirst({
+      where: { businessId: bill.businessId, reference: bill.billNo, status: 'POSTED' },
+    });
+    if (entry) {
+      try {
+        await prisma.journalEntry.update({ where: { id: entry.id }, data: { status: 'VOIDED' } });
+      } catch (err) {
+        logger.error(`[BILL VOID — GL VOID FAILED] billNo=${bill.billNo} biz=${bill.businessId} — ${err.message}`);
+        try {
+          await recordAudit({
+            action:     'GL_POST_FAILED',
+            entity:     'JournalEntry',
+            entityId:   String(entry.id),
+            summary:    `Failed to void GL entry for voided bill ${bill.billNo} — ${err.message}`,
+            user:       req.user?.id ? { id: req.user.id } : undefined,
+            businessId: bill.businessId,
+          });
+        } catch { /* auditing must never break anything either */ }
+      }
+    }
+
+    res.json(updated);
   } catch (err) { next(err); }
 };
 

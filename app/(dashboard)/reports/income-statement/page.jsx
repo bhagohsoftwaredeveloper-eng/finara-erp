@@ -9,11 +9,11 @@ import {
 import {
   TrendingUp, TrendingDown, Percent, RefreshCw,
   Printer, AlertCircle, ChevronDown, ChevronUp, ArrowUp, ArrowDown,
-  Target, Activity,
+  Target, Activity, History, X,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
-import { printDocument, phpFmt } from '@/lib/print';
+import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 
 // ─── Constants ─────────────────────────────────────────────────
 const CURRENT_YEAR  = new Date().getFullYear();
@@ -71,7 +71,9 @@ function LineItem({ label, value, indent = 0, bold = false, total = false, negat
 }
 
 // ─── Section ──────────────────────────────────────────────────
-function Section({ title, accounts, total, totalLabel, color, startCollapsed = false, totalRevenue }) {
+// Each account row is clickable — opens its full transaction history (every
+// journal entry that touched it in the selected period) via onViewAccount.
+function Section({ title, accounts, total, totalLabel, color, startCollapsed = false, totalRevenue, onViewAccount }) {
   const [collapsed, setCollapsed] = useState(startCollapsed);
   return (
     <div>
@@ -92,18 +94,160 @@ function Section({ title, accounts, total, totalLabel, color, startCollapsed = f
           {accounts.map((acct) => {
             const pct = totalRevenue > 0 ? (acct.balance / totalRevenue) * 100 : 0;
             return (
-              <LineItem
+              <div
                 key={acct.id}
-                label={acct.name}
-                value={acct.balance}
-                indent={1}
-                sub={`(${acct.code})`}
-                pct={Math.abs(pct)}
-              />
+                onClick={() => onViewAccount(acct)}
+                className="cursor-pointer hover:bg-blue-50/60 rounded-lg transition-colors"
+                title={`View transaction history — ${acct.name}`}
+              >
+                <LineItem
+                  label={acct.name}
+                  value={acct.balance}
+                  indent={1}
+                  sub={`(${acct.code})`}
+                  pct={Math.abs(pct)}
+                />
+              </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Print a single account's full transaction history ─────────────────────
+function printAccountHistory(account, entries, periodLabel) {
+  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let running = 0;
+  const rows = entries.map((e) => {
+    // An entry can carry more than one line against the same account (e.g. one
+    // invoice line per product) — sum them all rather than taking just the first.
+    const acctLines = e.lines.filter((l) => l.accountId === account.id);
+    const debit  = acctLines.reduce((s, l) => s + Number(l.debit  || 0), 0);
+    const credit = acctLines.reduce((s, l) => s + Number(l.credit || 0), 0);
+    running += account.accountType === 'REVENUE' ? credit - debit : debit - credit;
+    return `
+      <tr>
+        <td class="mono small">${esc(e.entryNo)}</td>
+        <td>${dateFmt(e.entryDate)}</td>
+        <td>${esc(e.description)}${e.reference ? ` <span class="small gray">(${esc(e.reference)})</span>` : ''}</td>
+        <td class="right mono">${debit  > 0 ? phpFmt(debit)  : ''}</td>
+        <td class="right mono">${credit > 0 ? phpFmt(credit) : ''}</td>
+        <td class="right mono bold">${phpFmt(running)}</td>
+      </tr>`;
+  }).join('');
+
+  const body = `
+    <div class="info-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="info-box"><div class="info-lbl">Account</div><div class="info-val">${esc(account.name)} (${esc(account.code)})</div></div>
+      <div class="info-box"><div class="info-lbl">Period</div><div class="info-val">${esc(periodLabel)}</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Entry #</th><th>Date</th><th>Description</th><th class="right">Debit</th><th class="right">Credit</th><th class="right">Balance</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" class="center gray">No transactions in this period.</td></tr>`}</tbody>
+    </table>`;
+
+  return printDocument(`Account History — ${account.name}`, `${account.code} · ${periodLabel}`, body);
+}
+
+// ─── Drawer: one account's full transaction history for the selected period ─
+function AccountHistoryDrawer({ account, from, to, periodLabel, onClose }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    journal.list({ accountId: account.id, from, to, status: 'POSTED', limit: 200 })
+      .then((r) => setEntries(r.data.data))
+      .catch(() => toast.error('Failed to load account history'))
+      .finally(() => setLoading(false));
+  }, [account.id, from, to]);
+
+  let running = 0;
+  const rows = entries.map((e) => {
+    // An entry can carry more than one line against the same account (e.g. one
+    // invoice line per product) — sum them all rather than taking just the first.
+    const acctLines = e.lines.filter((l) => l.accountId === account.id);
+    const debit  = acctLines.reduce((s, l) => s + Number(l.debit  || 0), 0);
+    const credit = acctLines.reduce((s, l) => s + Number(l.credit || 0), 0);
+    running += account.accountType === 'REVENUE' ? credit - debit : debit - credit;
+    return { entry: e, debit, credit, running };
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-4xl bg-white h-full flex flex-col shadow-2xl z-10 overflow-hidden">
+        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex-shrink-0">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                <History className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg leading-tight">{account.name}</h3>
+                <p className="text-blue-200 text-sm font-mono">{account.code} · {periodLabel}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => printAccountHistory(account, entries, periodLabel)}
+              disabled={loading || entries.length === 0}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Printer className="w-4 h-4" /> Print
+            </button>
+            <button onClick={onClose} className="text-white/70 hover:text-white transition-colors flex-shrink-0">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="mt-4 flex gap-2 flex-wrap items-center">
+            <span className="badge bg-white/10 text-blue-100 text-xs">{entries.length} transaction{entries.length !== 1 ? 's' : ''}</span>
+            <span className="badge bg-white/10 text-blue-100 text-xs">{formatCurrency(account.balance)} balance for this period</span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-gray-400">
+              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-3" />
+              Loading transaction history...
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th className="pl-4">Entry #</th>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th className="text-right">Debit</th>
+                    <th className="text-right">Credit</th>
+                    <th className="text-right pr-4">Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">No transactions for this account in the selected period.</td></tr>
+                  ) : rows.map(({ entry: e, debit, credit, running }) => (
+                    <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="pl-4 py-2 font-mono text-sm text-blue-700">{e.entryNo}</td>
+                      <td className="py-2 text-sm text-gray-600">{formatDate(e.entryDate)}</td>
+                      <td className="py-2 text-sm text-gray-700">
+                        {e.description}
+                        {e.reference && <span className="text-xs text-gray-400 ml-2">({e.reference})</span>}
+                      </td>
+                      <td className="text-right py-2 text-sm">{debit  > 0 ? formatCurrency(debit)  : <span className="text-gray-200">—</span>}</td>
+                      <td className="text-right py-2 text-sm">{credit > 0 ? formatCurrency(credit) : <span className="text-gray-200">—</span>}</td>
+                      <td className="text-right py-2 pr-4 text-sm font-semibold">{formatCurrency(running)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -146,6 +290,8 @@ export default function IncomeStatementPage() {
   const [data,   setData]   = useState(null);
   const [loading,setLoading]= useState(false);
   const [chartMode, setChartMode] = useState('bar'); // 'bar' | 'pie'
+  const [viewAccount, setViewAccount] = useState(null); // account whose transaction history drawer is open
+  const [printing, setPrinting] = useState(false);
 
   const getParams = () => {
     if (period === 'month') {
@@ -210,13 +356,50 @@ export default function IncomeStatementPage() {
     { name: 'Net Income',    value: netIncome,    fill: netIncome >= 0 ? '#22c55e' : '#ef4444' },
   ];
 
-  const handlePrint = () => {
-    const makeRows = (accts) => accts.map((a) => `
+  const handlePrint = async () => {
+    setPrinting(true);
+    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmtSigned = (n) => (n < 0 ? `(${phpFmt(Math.abs(n))})` : phpFmt(n));
+
+    // One bulk fetch of every posted entry in the period — cheaper than one
+    // request per account, and each account's transactions are just filtered
+    // out of the same list by which account their lines touch.
+    let entries = [];
+    try {
+      const { from: pFrom, to: pTo } = getParams();
+      const r = await journal.list({ from: pFrom, to: pTo, status: 'POSTED', limit: 1000 });
+      entries = r.data.data;
+    } catch {
+      toast.error('Failed to load transaction history for print');
+    }
+    const entriesForAccount = (accountId) => entries.filter((e) => e.lines.some((l) => l.accountId === accountId));
+
+    const makeRows = (accts) => accts.map((a) => {
+      const acctEntries = entriesForAccount(a.id);
+      const txnRows = acctEntries.length
+        ? acctEntries.map((e) => {
+            // An entry can carry more than one line against the same account (e.g. one
+            // invoice line per product) — sum them all rather than taking just the first.
+            const acctLines = e.lines.filter((l) => l.accountId === a.id);
+            const debit  = acctLines.reduce((s, l) => s + Number(l.debit  || 0), 0);
+            const credit = acctLines.reduce((s, l) => s + Number(l.credit || 0), 0);
+            const movement = a.accountType === 'REVENUE' ? credit - debit : debit - credit;
+            return `
+              <tr>
+                <td class="mono small gray" style="padding-left:20px;">↳ ${esc(e.entryNo)} · ${dateFmt(e.entryDate)}</td>
+                <td class="small gray">${esc(e.description)}${e.reference ? ` (${esc(e.reference)})` : ''}</td>
+                <td class="right mono small gray">${fmtSigned(movement)}</td>
+              </tr>`;
+          }).join('')
+        : `<tr><td colspan="3" class="small gray" style="padding-left:20px;font-style:italic;">No transactions in this period</td></tr>`;
+      return `
       <tr>
         <td class="mono blue small">${a.code || a.accountCode || ''}</td>
         <td>${a.name || a.accountName || ''}</td>
         <td class="right mono">${phpFmt(a.balance)}</td>
-      </tr>`).join('');
+      </tr>
+      ${txnRows}`;
+    }).join('');
 
     const sectionBlock = (title, accts, total, color = '') => `
       <tr class="section-row"><td colspan="3">${title}</td></tr>
@@ -257,9 +440,14 @@ export default function IncomeStatementPage() {
             <td class="right mono ${netIncome >= 0 ? 'green' : 'red'}">${phpFmt(netIncome)}</td>
           </tr>
         </tfoot>
-      </table>`;
+      </table>
+      <p class="small gray" style="margin-top:10px;">Each account is followed by every posted transaction that moved it during this period.</p>`;
 
-    printDocument('Income Statement', `${periodLabel()} · Profit & Loss`, body);
+    try {
+      await printDocument('Income Statement', `${periodLabel()} · Profit & Loss`, body);
+    } finally {
+      setPrinting(false);
+    }
   };
 
   // Pie: expense breakdown
@@ -277,8 +465,8 @@ export default function IncomeStatementPage() {
           <p className="page-subtitle">Statement of Profit & Loss · {periodLabel()}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={handlePrint} disabled={!data} className="btn-secondary">
-            <Printer className="w-4 h-4" /> Print
+          <button onClick={handlePrint} disabled={!data || printing} className="btn-secondary">
+            <Printer className={`w-4 h-4 ${printing ? 'animate-pulse' : ''}`} /> {printing ? 'Preparing…' : 'Print'}
           </button>
           <button onClick={load} disabled={loading} className="btn-secondary">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -459,6 +647,7 @@ export default function IncomeStatementPage() {
                 totalLabel="Total Revenue"
                 totalRevenue={revenue}
                 color={{ bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700' }}
+                onViewAccount={setViewAccount}
               />
               <LineItem label="Total Revenue" value={revenue} bold total />
 
@@ -472,6 +661,7 @@ export default function IncomeStatementPage() {
                     totalRevenue={revenue}
                     color={{ bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700' }}
                     startCollapsed={false}
+                    onViewAccount={setViewAccount}
                   />
                   <LineItem label="Gross Profit" value={grossProfit} bold total
                     sub={`(${grossMargin.toFixed(1)}% margin)`} pct={grossMargin} />
@@ -490,6 +680,7 @@ export default function IncomeStatementPage() {
                     totalRevenue={revenue}
                     color={{ bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700' }}
                     startCollapsed={false}
+                    onViewAccount={setViewAccount}
                   />
                   <LineItem label="Income from Operations" value={opIncome} bold total
                     sub={`(${opMargin.toFixed(1)}% margin)`} />
@@ -508,6 +699,7 @@ export default function IncomeStatementPage() {
                       totalRevenue={revenue}
                       color={{ bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700' }}
                       startCollapsed={true}
+                      onViewAccount={setViewAccount}
                     />
                   )}
                   {otherExpAccounts.length > 0 && (
@@ -518,6 +710,7 @@ export default function IncomeStatementPage() {
                       totalRevenue={revenue}
                       color={{ bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700' }}
                       startCollapsed={true}
+                      onViewAccount={setViewAccount}
                     />
                   )}
                 </>
@@ -554,6 +747,17 @@ export default function IncomeStatementPage() {
           <p className="text-gray-500">No income statement data</p>
           <p className="text-xs text-gray-400 mt-1">Post revenue and expense journal entries to see the P&L</p>
         </div>
+      )}
+
+      {/* Per-account transaction history, opened by clicking an account row */}
+      {viewAccount && (
+        <AccountHistoryDrawer
+          account={viewAccount}
+          from={getParams().from}
+          to={getParams().to}
+          periodLabel={periodLabel()}
+          onClose={() => setViewAccount(null)}
+        />
       )}
     </div>
   );

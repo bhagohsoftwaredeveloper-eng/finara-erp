@@ -86,4 +86,16 @@ describe('daily remittance includes cash sales', () => {
     expect(row.category).toBe('SALES');
     expect(row.amount).toBe(112);
   });
+
+  test('a VOID invoice is excluded entirely', async () => {
+    prisma.invoice.findMany.mockResolvedValue([]); // the query itself filters status: { not: 'VOID' } — VOID rows never come back
+
+    const r = await run('2026-08-10');
+
+    expect(prisma.invoice.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: { not: 'VOID' } }) })
+    );
+    expect(r.totalSales).toBe(0);
+    expect(r.counts.invoices).toBe(0);
+  });
 });

@@ -118,7 +118,11 @@ exports.listInvoices = async (req, res, next) => {
     const [invoices, total] = await Promise.all([
       prisma.invoice.findMany({
         where,
-        include: { customer: { select: { name: true, customerCode: true } }, lines: true },
+        include: {
+          customer: { select: { name: true, customerCode: true } },
+          lines: true,
+          payments: { orderBy: { paymentDate: 'asc' } },
+        },
         orderBy: { invoiceDate: 'desc' },
         skip: (Number(page)-1)*Number(limit), take: Number(limit),
       }),
@@ -302,7 +306,32 @@ exports.voidInvoice = async (req, res, next) => {
     const inv = await prisma.invoice.findUnique({ where: { id } });
     if (!inv) throw createError('Invoice not found', 404);
     if (inv.paidAmount > 0) throw createError('Cannot void an invoice with collections. Reverse first.', 400);
-    res.json(await prisma.invoice.update({ where: { id }, data: { status: 'VOID' } }));
+    const updated = await prisma.invoice.update({ where: { id }, data: { status: 'VOID' } });
+
+    // Void the invoice's GL posting too — otherwise its revenue/AR impact keeps
+    // showing up in the Income Statement, Trial Balance, and Balance Sheet.
+    const entry = await prisma.journalEntry.findFirst({
+      where: { businessId: inv.businessId, reference: inv.invoiceNo, status: 'POSTED' },
+    });
+    if (entry) {
+      try {
+        await prisma.journalEntry.update({ where: { id: entry.id }, data: { status: 'VOIDED' } });
+      } catch (err) {
+        logger.error(`[INVOICE VOID — GL VOID FAILED] invoiceNo=${inv.invoiceNo} biz=${inv.businessId} — ${err.message}`);
+        try {
+          await recordAudit({
+            action:     'GL_POST_FAILED',
+            entity:     'JournalEntry',
+            entityId:   String(entry.id),
+            summary:    `Failed to void GL entry for voided invoice ${inv.invoiceNo} — ${err.message}`,
+            user:       req.user?.id ? { id: req.user.id } : undefined,
+            businessId: inv.businessId,
+          });
+        } catch { /* auditing must never break anything either */ }
+      }
+    }
+
+    res.json(updated);
   } catch (err) { next(err); }
 };
 
