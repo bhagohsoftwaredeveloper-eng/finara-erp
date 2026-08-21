@@ -1,0 +1,36 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - img "Finara" [ref=e5]
+      - generic [ref=e6]:
+        - generic [ref=e13]:
+          - heading "Smart accounting for the Philippines." [level=2] [ref=e14]: Smart accountingfor the Philippines.
+          - paragraph [ref=e15]: Full double-entry accounting with built-in BIR compliance, payroll, and real-time financial reporting.
+        - generic [ref=e16]:
+          - generic [ref=e17]: BIR Compliant
+          - generic [ref=e18]: TRAIN Law 2023
+          - generic [ref=e19]: SSS · PhilHealth · Pag-IBIG
+          - generic [ref=e20]: PFRS for SMEs
+      - paragraph [ref=e21]: © 2026 Finara · RA 11976 · PFRS/PFRS for SMEs
+    - generic [ref=e25]:
+      - generic [ref=e28]:
+        - generic [ref=e37]:
+          - heading "Welcome back" [level=1] [ref=e38]
+          - paragraph [ref=e39]: Sign in to your Finara account
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - generic [ref=e42]: Email Address
+            - textbox "you@company.com" [ref=e47]: rex@gmail.com
+          - generic [ref=e48]:
+            - generic [ref=e49]: Password
+            - generic [ref=e50]:
+              - textbox "••••••••" [ref=e54]: Admin@123
+              - button [ref=e55] [cursor=pointer]
+            - link "Forgot password?" [ref=e60] [cursor=pointer]:
+              - /url: /forgot-password
+          - button "Sign In" [ref=e61] [cursor=pointer]
+        - generic [ref=e64]:
+          - paragraph [ref=e65]: Secured with JWT + bcrypt
+          - generic [ref=e66]: System online
+      - paragraph [ref=e69]: BIR · SSS · PhilHealth · Pag-IBIG · PFRS compliant
+  - alert [ref=e70]

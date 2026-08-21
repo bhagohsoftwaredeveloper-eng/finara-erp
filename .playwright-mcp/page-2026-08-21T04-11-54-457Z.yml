@@ -1,0 +1,121 @@
+- generic [active] [ref=f7e1]:
+  - generic [ref=f7e2]:
+    - complementary [ref=f7e3]:
+      - generic [ref=f7e4]:
+        - img "Finara" [ref=f7e5]
+        - button "Collapse sidebar" [ref=f7e6] [cursor=pointer]
+      - navigation [ref=f7e10]:
+        - link "Dashboard" [ref=f7e13] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f7e19]:
+          - paragraph [ref=f7e20]: Accounting
+          - generic [ref=f7e21]:
+            - link "Chart of Accounts" [ref=f7e22] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=f7e26] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=f7e30] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=f7e36]:
+          - paragraph [ref=f7e37]: Sales
+          - generic [ref=f7e38]:
+            - button "Accounts Receivable" [ref=f7e40] [cursor=pointer]
+            - link "Cash Sales" [ref=f7e47] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=f7e51]:
+          - paragraph [ref=f7e52]: Purchases
+          - generic [ref=f7e53]:
+            - button "Accounts Payable" [ref=f7e55] [cursor=pointer]
+            - link "Purchase Orders" [ref=f7e61] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=f7e66] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=f7e70] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=f7e77]:
+          - paragraph [ref=f7e78]: Payroll
+          - button "Payroll" [ref=f7e81] [cursor=pointer]
+        - generic [ref=f7e90]:
+          - paragraph [ref=f7e91]: Inventory & Assets
+          - generic [ref=f7e92]:
+            - button "Inventory" [ref=f7e94] [cursor=pointer]
+            - link "Fixed Assets" [ref=f7e102] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=f7e107]:
+          - paragraph [ref=f7e108]: Banking & Compliance
+          - generic [ref=f7e109]:
+            - link "Bank Reconciliation" [ref=f7e110] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=f7e115] [cursor=pointer]
+            - button "Remittances" [ref=f7e123] [cursor=pointer]
+        - generic [ref=f7e129]:
+          - paragraph [ref=f7e130]: Planning & Reports
+          - generic [ref=f7e131]:
+            - link "Budgeting" [ref=f7e132] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=f7e136] [cursor=pointer]
+      - generic [ref=f7e143]:
+        - link "Settings" [ref=f7e144] [cursor=pointer]:
+          - /url: /settings
+        - link "Businesses" [ref=f7e148] [cursor=pointer]:
+          - /url: /settings/businesses
+        - link "Opening Balances" [ref=f7e153] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - button "Logout" [ref=f7e160] [cursor=pointer]
+    - generic [ref=f7e164]:
+      - banner [ref=f7e165]:
+        - generic [ref=f7e166]:
+          - heading "Finara ERP" [level=1] [ref=f7e167]
+          - paragraph [ref=f7e168]: Aug 21, 2026
+        - button "Search… ⌘K" [ref=f7e169] [cursor=pointer]:
+          - generic [ref=f7e173]: Search…
+          - generic [ref=f7e174]: ⌘K
+        - generic [ref=f7e175]: Loading…
+        - button "Notifications" [ref=f7e183] [cursor=pointer]
+      - main [ref=f7e187]:
+        - generic [ref=f7e189]:
+          - generic [ref=f7e190]:
+            - generic [ref=f7e191]:
+              - heading "Expense Vouchers" [level=1] [ref=f7e192]
+              - paragraph [ref=f7e196]: Petty cash, reimbursements, direct payments, cash advances & liquidations
+            - generic [ref=f7e197]:
+              - button [ref=f7e198] [cursor=pointer]
+              - button "New Voucher" [ref=f7e204] [cursor=pointer]
+          - generic [ref=f7e207]:
+            - generic [ref=f7e208]:
+              - button "All" [ref=f7e209] [cursor=pointer]
+              - button "Petty Cash" [ref=f7e210] [cursor=pointer]
+              - button "Reimbursement" [ref=f7e211] [cursor=pointer]
+              - button "Direct Payment" [ref=f7e212] [cursor=pointer]
+              - button "Cash Advance" [ref=f7e213] [cursor=pointer]
+              - button "Liquidation" [ref=f7e214] [cursor=pointer]
+            - generic [ref=f7e215]:
+              - textbox "Search voucher, payee, purpose…" [ref=f7e220]
+              - combobox [ref=f7e221]:
+                - option "All Statuses" [selected]
+                - option "DRAFT"
+                - option "SUBMITTED"
+                - option "APPROVED"
+                - option "PAID"
+                - option "REJECTED"
+              - textbox [ref=f7e222]:
+                - /placeholder: From
+              - textbox [ref=f7e223]:
+                - /placeholder: To
+          - table [ref=f7e226]:
+            - rowgroup [ref=f7e227]:
+              - row [ref=f7e228]:
+                - columnheader "Voucher No." [ref=f7e229]
+                - columnheader "Type" [ref=f7e230]
+                - columnheader "Date" [ref=f7e231]
+                - columnheader "Payee" [ref=f7e232]
+                - columnheader "Category" [ref=f7e233]
+                - columnheader "Purpose" [ref=f7e234]
+                - columnheader "Amount" [ref=f7e235]
+                - columnheader "Status" [ref=f7e236]
+                - columnheader "Requested By" [ref=f7e237]
+                - columnheader "Actions" [ref=f7e238]
+            - rowgroup [ref=f7e239]:
+              - row [ref=f7e240]:
+                - cell "Loading…" [ref=f7e241]
+  - alert [ref=f7e242]
