@@ -228,10 +228,31 @@ exports.submit = async (req, res, next) => {
 exports.approve = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { approvedBy } = req.body;
+    const { approvedBy, items } = req.body;
+
+    if (Array.isArray(items)) {
+      await prisma.expenseVoucherItem.deleteMany({ where: { voucherId: id } });
+      if (items.length) {
+        await prisma.expenseVoucherItem.createMany({
+          data: items.map(it => ({
+            voucherId:   id,
+            description: it.description,
+            accountId:   it.accountId || null,
+            amount:      Number(it.amount || 0),
+            receiptNo:   it.receiptNo  || null,
+          })),
+        });
+      }
+    }
+
+    const totalAmount = Array.isArray(items)
+      ? items.reduce((s, it) => s + Number(it.amount || 0), 0)
+      : undefined;
+
     const updated = await prisma.expenseVoucher.update({
       where: { id },
-      data: { status: 'APPROVED', approvedBy: approvedBy || undefined },
+      data: { status: 'APPROVED', approvedBy: approvedBy || undefined, totalAmount },
+      include: { items: { include: { account: { select: { id: true, accountCode: true, accountName: true } } } } },
     });
     res.json(updated);
   } catch (err) { next(err); }

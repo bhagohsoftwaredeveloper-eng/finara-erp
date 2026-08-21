@@ -133,6 +133,7 @@ export default function ExpensesPage() {
   const [actionMode,   setActionMode]   = useState(''); // submit|approve|pay|reject
   const [actionRecord, setActionRecord] = useState(null);
   const [actionForm,   setActionForm]   = useState({ name: '', date: todayStr(), reason: '', paymentAccountCode: '' });
+  const [actionItems,  setActionItems]  = useState([]);
   const [cashAccounts, setCashAccounts] = useState([]);
 
   // Form state
@@ -263,14 +264,37 @@ export default function ExpensesPage() {
     // Default payment account: Petty Cash (1011) for PETTY_CASH type, else Cash in Bank (1020)
     const defaultCashCode = rec.type === 'PETTY_CASH' ? '1011' : '1020';
     setActionForm({ name: existingName || userName, date: todayStr(), reason: '', paymentAccountCode: defaultCashCode });
+    setActionItems(mode === 'approve'
+      ? (rec.items?.length
+          ? rec.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
+          : [{ description: '', accountId: null, amount: '', receiptNo: '' }])
+      : []);
     setActionOpen(true);
   }
 
+  function addActionItem() {
+    setActionItems(prev => [...prev, { description: '', accountId: null, amount: '', receiptNo: '' }]);
+  }
+
+  function updateActionItem(idx, field, val) {
+    setActionItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+  }
+
+  function removeActionItem(idx) {
+    setActionItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  const actionItemsTotal = actionItems.reduce((s, it) => s + Number(it.amount || 0), 0);
+
   async function handleAction() {
     const { id } = actionRecord;
+    if (actionMode === 'approve') {
+      if (!actionItems.length) { toast.error('At least one line item is required'); return; }
+      if (actionItems.some(it => !it.description || !Number(it.amount))) { toast.error('Each line item needs a description and amount'); return; }
+    }
     try {
       if (actionMode === 'submit')  await expApi.submit(id,  { requestedBy: actionForm.name });
-      if (actionMode === 'approve') await expApi.approve(id, { approvedBy: actionForm.name });
+      if (actionMode === 'approve') await expApi.approve(id, { approvedBy: actionForm.name, items: actionItems.map(it => ({ ...it, amount: Number(it.amount) })) });
       if (actionMode === 'pay')     await expApi.pay(id,     { paidBy: actionForm.name, paidDate: actionForm.date, paymentAccountCode: actionForm.paymentAccountCode });
       if (actionMode === 'reject')  await expApi.reject(id,  { rejectedReason: actionForm.reason });
       toast.success(`Voucher ${actionMode}${actionMode === 'pay' ? 'd' : 'ed'}`);
@@ -590,7 +614,7 @@ export default function ExpensesPage() {
       </Drawer>
 
       {/* ── Action Sub-Drawer ── */}
-      <Drawer open={actionOpen} onClose={() => setActionOpen(false)} title={aCfg.title || ''}
+      <Drawer open={actionOpen} onClose={() => setActionOpen(false)} title={aCfg.title || ''} wide={actionMode === 'approve'}
         subtitle={actionRecord ? `${actionRecord.voucherNo} · ${actionRecord.payee} · ${fmt(actionRecord.totalAmount)}` : ''}
         footer={
           <>
@@ -606,6 +630,37 @@ export default function ExpensesPage() {
               <div className="text-gray-500 mt-0.5">Payee: <strong>{actionRecord.payee}</strong> · Amount: <strong>{fmt(actionRecord.totalAmount)}</strong></div>
               <div className="text-gray-400 mt-0.5 text-xs">{actionRecord.purpose}</div>
             </div>
+
+            {actionMode === 'approve' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label mb-0">Line Items *</label>
+                  <button type="button" className="btn-secondary btn-sm" onClick={addActionItem}><Plus className="w-3 h-3" /> Add Line</button>
+                </div>
+
+                <div className="grid grid-cols-12 gap-2 px-0.5 mb-1">
+                  <div className="col-span-5 text-xs text-gray-500 font-medium">Description</div>
+                  <div className="col-span-3 text-xs text-gray-500 font-medium">COA Account (opt.)</div>
+                  <div className="col-span-2 text-xs text-gray-500 font-medium text-right">Amount</div>
+                  <div className="col-span-1 text-xs text-gray-500 font-medium">Receipt #</div>
+                  <div className="col-span-1" />
+                </div>
+
+                <div className="space-y-2">
+                  {actionItems.map((it, idx) => (
+                    <ItemRow key={idx} item={it} index={idx} accounts={accounts}
+                      onChange={updateActionItem} onRemove={removeActionItem} />
+                  ))}
+                </div>
+
+                <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
+                  <div className="text-right">
+                    <span className="text-sm text-gray-500 mr-4">Total</span>
+                    <span className="text-xl font-bold text-gray-900">{fmt(actionItemsTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {actionMode !== 'reject' ? (
               <>
