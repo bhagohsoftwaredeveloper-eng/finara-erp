@@ -2,10 +2,11 @@ const prisma = require('../config/database');
 
 exports.list = async (req, res, next) => {
   try {
-    const { action, entity, userId, from, to, search, page = 1, limit = 50 } = req.query;
+    const { action, entity, entityId, userId, from, to, search, page = 1, limit = 50 } = req.query;
     const where = {};
     if (action) where.action = action;
     if (entity) where.entity = entity;
+    if (entityId) where.entityId = String(entityId);
     if (userId) where.userId = Number(userId);
     if (from || to) {
       where.createdAt = {

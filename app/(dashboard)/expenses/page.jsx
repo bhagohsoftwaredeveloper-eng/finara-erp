@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { expenses as expApi, accounts as accountsApi } from '@/lib/api';
-import { formatCurrency, getUser } from '@/lib/auth';
+import { expenses as expApi, accounts as accountsApi, audit as auditApi } from '@/lib/api';
+import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
 import Attachments from '@/components/Attachments';
 import AccountSelect from '@/components/ui/AccountSelect';
@@ -10,11 +10,26 @@ import toast from 'react-hot-toast';
 import {
   Plus, X, Printer, RefreshCw, Trash2, Send, CheckCircle2,
   Banknote, AlertCircle, Edit2, Search, Wallet, ChevronDown,
-  FileText,
+  FileText, History,
 } from 'lucide-react';
 
 const fmt = n => formatCurrency(Number(n || 0));
 const todayStr = () => new Date().toISOString().slice(0, 10);
+
+const HISTORY_ACTION_BADGE = {
+  CREATE:  'badge-green',
+  UPDATE:  'badge-blue',
+  SUBMIT:  'badge-blue',
+  APPROVE: 'badge-green',
+  PAY:     'badge-green',
+  REJECT:  'badge-red',
+  DELETE:  'badge-red',
+};
+
+const fmtDateTime = (d) => {
+  const dt = new Date(d);
+  return `${formatDate(dt)} ${dt.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+};
 
 const TYPE_OPTS = [
   { value: 'PETTY_CASH',     label: 'Petty Cash',      sub: 'Small cash purchases from petty fund',  color: 'blue'   },
@@ -135,6 +150,13 @@ export default function ExpensesPage() {
   const [actionForm,   setActionForm]   = useState({ name: '', date: todayStr(), reason: '', paymentAccountCode: '' });
   const [actionItems,  setActionItems]  = useState([]);
   const [cashAccounts, setCashAccounts] = useState([]);
+
+  // History drawer
+  const [historyOpen,    setHistoryOpen]    = useState(false);
+  const [historyRecord,  setHistoryRecord]  = useState(null);
+  const [historyLogs,    setHistoryLogs]    = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(null);
 
   // Form state
   const [fType,       setFType]       = useState('PETTY_CASH');
@@ -307,6 +329,19 @@ export default function ExpensesPage() {
     if (!confirm('Delete this expense voucher?')) return;
     try { await expApi.remove(id); toast.success('Deleted'); load(); }
     catch (e) { toast.error(e?.response?.data?.error || 'Delete failed'); }
+  }
+
+  // ── History ──────────────────────────────────────────────────
+  async function openHistory(v) {
+    setHistoryRecord(v);
+    setHistoryExpanded(null);
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const res = await auditApi.list({ entity: 'ExpenseVoucher', entityId: v.id, limit: 100 });
+      setHistoryLogs(res.data.data || res.data);
+    } catch { toast.error('Failed to load history'); }
+    finally { setHistoryLoading(false); }
   }
 
   // ── Print single voucher ──────────────────────────────────────
@@ -484,6 +519,7 @@ export default function ExpensesPage() {
                         {v.status === 'SUBMITTED' && <button className="btn-danger btn-sm"   onClick={() => openAction('reject',  v)} title="Reject"><X className="w-3 h-3" /></button>}
                         {v.status === 'APPROVED'  && <button className="btn-success btn-sm"  onClick={() => openAction('pay',     v)} title="Mark Paid"><Banknote className="w-3 h-3" /></button>}
                         <button className="btn-secondary btn-sm" onClick={() => printVoucher(v)} title="Print"><Printer className="w-3 h-3" /></button>
+                        <button className="btn-secondary btn-sm" onClick={() => openHistory(v)} title="History"><History className="w-3 h-3" /></button>
                         {can.del && <button className="btn-danger btn-sm" onClick={() => handleDelete(v.id)} title="Delete"><Trash2 className="w-3 h-3" /></button>}
                       </div>
                     </td>
@@ -701,6 +737,38 @@ export default function ExpensesPage() {
                   onChange={e => setActionForm(p => ({ ...p, reason: e.target.value }))} placeholder="Explain why this voucher is being rejected…" />
               </div>
             )}
+          </div>
+        )}
+      </Drawer>
+
+      {/* ── History Drawer ── */}
+      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)}
+        title={historyRecord ? `History — ${historyRecord.voucherNo}` : 'History'}
+        subtitle={historyRecord ? `${historyRecord.payee} · ${fmt(historyRecord.totalAmount)}` : ''}
+        footer={<button className="btn-secondary" onClick={() => setHistoryOpen(false)}>Close</button>}
+      >
+        {historyLoading ? (
+          <div className="py-10 text-center text-gray-400 text-sm">Loading…</div>
+        ) : historyLogs.length === 0 ? (
+          <div className="py-10 text-center text-gray-400 text-sm">No history recorded yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {historyLogs.map(l => (
+              <div key={l.id} className="border border-gray-100 rounded-lg overflow-hidden">
+                <button type="button" className="w-full text-left p-3 hover:bg-gray-50"
+                  onClick={() => l.changes && setHistoryExpanded(historyExpanded === l.id ? null : l.id)}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`badge ${HISTORY_ACTION_BADGE[l.action] || 'badge-gray'}`}>{l.action}</span>
+                    <span className="text-xs text-gray-400 font-mono">{fmtDateTime(l.createdAt)}</span>
+                    <span className="text-xs text-gray-400">· {l.userEmail || '—'}</span>
+                  </div>
+                  <div className="text-sm text-gray-700 mt-1">{l.summary || '—'}</div>
+                </button>
+                {historyExpanded === l.id && l.changes && (
+                  <pre className="text-xs bg-gray-50 border-t border-gray-100 p-3 overflow-x-auto text-gray-700">{JSON.stringify(l.changes, null, 2)}</pre>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </Drawer>

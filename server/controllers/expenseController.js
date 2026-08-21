@@ -2,6 +2,10 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const glPost = require('../utils/glPost');
 const { buildLiquidationEntry } = require('../utils/cashAdvance');
+const { recordAudit, diff } = require('../utils/audit');
+
+// Compact item snapshot for audit diffs — avoids dumping full nested objects.
+const itemSnapshot = (items = []) => items.map(it => ({ description: it.description, amount: Number(it.amount) }));
 
 // Category → GL account code mapping
 const CATEGORY_ACCOUNT = {
@@ -164,6 +168,11 @@ exports.create = async (req, res, next) => {
       include: { items: true },
     });
 
+    await recordAudit({
+      req, action: 'CREATE', entity: 'ExpenseVoucher', entityId: record.id,
+      summary: `Created ${type} voucher ${voucherNo} for ${payee}`,
+    });
+
     res.status(201).json(record);
   } catch (err) { next(err); }
 };
@@ -172,7 +181,7 @@ exports.create = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const existing = await prisma.expenseVoucher.findUnique({ where: { id } });
+    const existing = await prisma.expenseVoucher.findUnique({ where: { id }, include: { items: true } });
     if (!existing) throw createError('Not found', 404);
     if (!['DRAFT', 'REJECTED'].includes(existing.status)) throw createError('Only DRAFT or REJECTED vouchers can be edited', 400);
 
@@ -207,6 +216,20 @@ exports.update = async (req, res, next) => {
       where: { id },
       include: { items: { include: { account: { select: { id: true, accountCode: true, accountName: true } } } } },
     });
+
+    await recordAudit({
+      req, action: 'UPDATE', entity: 'ExpenseVoucher', entityId: id,
+      summary: `Updated voucher ${updated.voucherNo}`,
+      changes: diff(
+        { type: existing.type, payee: existing.payee, category: existing.category, purpose: existing.purpose,
+          receiptNo: existing.receiptNo, notes: existing.notes, totalAmount: Number(existing.totalAmount),
+          items: itemSnapshot(existing.items) },
+        { type: updated.type, payee: updated.payee, category: updated.category, purpose: updated.purpose,
+          receiptNo: updated.receiptNo, notes: updated.notes, totalAmount: Number(updated.totalAmount),
+          items: itemSnapshot(updated.items) },
+      ),
+    });
+
     res.json(updated);
   } catch (err) { next(err); }
 };
@@ -220,6 +243,12 @@ exports.submit = async (req, res, next) => {
       where: { id },
       data: { status: 'SUBMITTED', requestedBy: requestedBy || undefined },
     });
+
+    await recordAudit({
+      req, action: 'SUBMIT', entity: 'ExpenseVoucher', entityId: id,
+      summary: `Submitted ${updated.voucherNo} for approval`,
+    });
+
     res.json(updated);
   } catch (err) { next(err); }
 };
@@ -229,6 +258,10 @@ exports.approve = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { approvedBy, items } = req.body;
+
+    const existing = Array.isArray(items)
+      ? await prisma.expenseVoucher.findUnique({ where: { id }, include: { items: true } })
+      : null;
 
     if (Array.isArray(items)) {
       await prisma.expenseVoucherItem.deleteMany({ where: { voucherId: id } });
@@ -254,6 +287,17 @@ exports.approve = async (req, res, next) => {
       data: { status: 'APPROVED', approvedBy: approvedBy || undefined, totalAmount },
       include: { items: { include: { account: { select: { id: true, accountCode: true, accountName: true } } } } },
     });
+
+    const itemsChanged = existing && Number(existing.totalAmount) !== Number(updated.totalAmount);
+    await recordAudit({
+      req, action: 'APPROVE', entity: 'ExpenseVoucher', entityId: id,
+      summary: `Approved ${updated.voucherNo}${itemsChanged ? ' — items adjusted' : ''}`,
+      changes: existing
+        ? diff({ items: itemSnapshot(existing.items), totalAmount: Number(existing.totalAmount) },
+                { items: itemSnapshot(updated.items),  totalAmount: Number(updated.totalAmount) })
+        : undefined,
+    });
+
     res.json(updated);
   } catch (err) { next(err); }
 };
@@ -353,6 +397,11 @@ exports.pay = async (req, res, next) => {
       });
     }
 
+    await recordAudit({
+      req, action: 'PAY', entity: 'ExpenseVoucher', entityId: id,
+      summary: `Marked ${voucher.voucherNo} as paid via ${cashCode}`,
+    });
+
     res.json(updated);
   } catch (err) { next(err); }
 };
@@ -366,6 +415,12 @@ exports.reject = async (req, res, next) => {
       where: { id },
       data: { status: 'REJECTED', rejectedReason },
     });
+
+    await recordAudit({
+      req, action: 'REJECT', entity: 'ExpenseVoucher', entityId: id,
+      summary: `Rejected ${updated.voucherNo}${rejectedReason ? `: ${rejectedReason}` : ''}`,
+    });
+
     res.json(updated);
   } catch (err) { next(err); }
 };
@@ -378,6 +433,12 @@ exports.remove = async (req, res, next) => {
     if (!existing) throw createError('Not found', 404);
     if (!['DRAFT', 'REJECTED'].includes(existing.status)) throw createError('Only DRAFT or REJECTED vouchers can be deleted', 400);
     await prisma.expenseVoucher.delete({ where: { id } });
+
+    await recordAudit({
+      req, action: 'DELETE', entity: 'ExpenseVoucher', entityId: id,
+      summary: `Deleted voucher ${existing.voucherNo}`,
+    });
+
     res.json({ message: 'Deleted' });
   } catch (err) { next(err); }
 };
