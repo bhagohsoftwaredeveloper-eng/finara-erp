@@ -288,20 +288,37 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
 
 // ─── Print a cash sale receipt ───────────────────────────────────
 async function printCashSale(sale) {
+  const hasItems = Array.isArray(sale.items) && sale.items.length > 0;
+  const rows = hasItems
+    ? sale.items.map((it) => `
+        <tr>
+          <td>${it.description}</td>
+          <td class="right">${Number(it.quantity)}</td>
+          <td class="right">${phpFmt(it.unitPrice)}</td>
+          <td class="right bold">${phpFmt(it.amount)}</td>
+        </tr>`).join('')
+    : `
+        <tr>
+          <td>${sale.description}</td>
+          <td class="right">1</td>
+          <td class="right">${phpFmt(sale.subtotal)}</td>
+          <td class="right bold">${phpFmt(sale.subtotal)}</td>
+        </tr>`;
+
   const body = `
     <div class="info-grid" style="grid-template-columns:repeat(2,1fr);">
       <div class="info-box"><div class="info-lbl">Buyer</div><div class="info-val">${sale.buyerName || 'Walk-in'}</div></div>
       <div class="info-box"><div class="info-lbl">Payment Method</div><div class="info-val">${sale.paymentMethod}</div></div>
     </div>
     <table>
-      <thead><tr><th>Description</th><th class="right">Subtotal</th><th class="right">VAT</th><th class="right">Total</th></tr></thead>
-      <tbody><tr>
-        <td>${sale.description}</td>
-        <td class="right">${phpFmt(sale.subtotal)}</td>
-        <td class="right">${phpFmt(sale.vatAmount)}</td>
-        <td class="right bold">${phpFmt(sale.totalAmount)}</td>
-      </tr></tbody>
+      <thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
     </table>
+    <div style="text-align:right;margin-top:8px;">
+      <p class="small">Subtotal: ${phpFmt(sale.subtotal)}</p>
+      <p class="small">VAT: ${phpFmt(sale.vatAmount)}</p>
+      <p class="bold">Total: ${phpFmt(sale.totalAmount)}</p>
+    </div>
     <p class="small gray" style="margin-top:10px;">Not a BIR-registered sales invoice — internal record only.</p>`;
   await printDocument('Cash Sale Receipt', sale.saleNo, body);
 }
