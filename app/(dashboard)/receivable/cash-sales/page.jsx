@@ -112,17 +112,15 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
         </datalist>
         <form onSubmit={submit}>
           <div className="modal-body">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="label">Sale Date *</label>
-                    <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Buyer Name</label>
-                    <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="md:col-span-1 space-y-4">
+                <div className="form-group">
+                  <label className="label">Sale Date *</label>
+                  <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
+                </div>
+                <div className="form-group">
+                  <label className="label">Buyer Name</label>
+                  <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
                 </div>
                 <div className="form-group">
                   <label className="label">Revenue Account *</label>
@@ -133,19 +131,17 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
                     placeholder="-- select revenue account --"
                   />
                 </div>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="label">VAT Code</label>
-                    <select className="input" value={form.vatCode} onChange={set('vatCode')}>
-                      {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Payment Method *</label>
-                    <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
-                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
+                <div className="form-group">
+                  <label className="label">VAT Code</label>
+                  <select className="input" value={form.vatCode} onChange={set('vatCode')}>
+                    {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="label">Payment Method *</label>
+                  <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
+                    {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
                 </div>
                 <div className="form-group">
                   <label className="label">Notes</label>
@@ -153,7 +149,7 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
                 </div>
               </div>
 
-              <div>
+              <div className="md:col-span-3">
                 <div className="flex items-center justify-between mb-2">
                   <label className="label mb-0">Items</label>
                   <button type="button" onClick={addLine} className="text-xs font-medium text-green-700 hover:text-green-800 flex items-center gap-1">
