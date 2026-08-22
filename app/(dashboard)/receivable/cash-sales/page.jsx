@@ -102,7 +102,7 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-3xl">
+      <div className="modal max-w-5xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">New Cash Sale</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -111,106 +111,110 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
           {items.map((it) => <option key={it.id} value={it.name}>{it.sku}</option>)}
         </datalist>
         <form onSubmit={submit}>
-          <div className="modal-body space-y-4">
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="label">Sale Date *</label>
-                <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
-              </div>
-              <div className="form-group">
-                <label className="label">Buyer Name</label>
-                <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="label">Revenue Account *</label>
-              <AccountSelect
-                value={form.accountId}
-                onChange={(id) => setForm((f) => ({ ...f, accountId: id }))}
-                accounts={accounts.filter((a) => a.accountType === 'REVENUE')}
-                placeholder="-- select revenue account --"
-              />
-            </div>
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="label">VAT Code</label>
-                <select className="input" value={form.vatCode} onChange={set('vatCode')}>
-                  {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="label">Payment Method *</label>
-                <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
-                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="label">Notes</label>
-              <textarea className="input resize-none" rows={2} value={form.notes} onChange={set('notes')} />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="label mb-0">Items</label>
-                <button type="button" onClick={addLine} className="text-xs font-medium text-green-700 hover:text-green-800 flex items-center gap-1">
-                  <Plus className="w-3.5 h-3.5" /> Add Line
-                </button>
-              </div>
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                    <tr>
-                      <th className="text-left px-3 py-2">Item / Description</th>
-                      <th className="text-center px-3 py-2 w-32">Qty</th>
-                      <th className="text-right px-3 py-2 w-28">Price</th>
-                      <th className="text-right px-3 py-2 w-28">Total</th>
-                      <th className="w-10" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cart.length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-6 text-gray-400">No items yet — click "+ Add Line" to get started.</td></tr>
-                    ) : cart.map((l) => (
-                      <tr key={l.key} className="border-t border-gray-100">
-                        <td className="px-3 py-2">
-                          <input className="input" list="cash-sale-items" placeholder="Type to search items, or enter free text"
-                            value={l.description} onChange={(e) => setLineDescription(l.key, e.target.value)} />
-                          {l.itemId && (
-                            <p className="text-[10px] text-gray-400 mt-0.5">
-                              {items.find((it) => it.id === l.itemId)?.sku} · {l.stockCap} in stock
-                            </p>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-center border border-gray-300 rounded-lg overflow-hidden w-fit mx-auto">
-                            <button type="button" onClick={() => changeQty(l.key, l.quantity - 1)} className="px-2 py-1 text-gray-600 hover:bg-gray-100">−</button>
-                            <span className="px-2 text-sm font-semibold">{l.quantity}</span>
-                            <button type="button" onClick={() => changeQty(l.key, l.quantity + 1)} className="px-2 py-1 text-gray-600 hover:bg-gray-100">+</button>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <NumberInput className="input text-right" value={String(l.unitPrice)}
-                            onChange={(v) => updateLine(l.key, { unitPrice: Number(v) || 0 })} />
-                        </td>
-                        <td className="px-3 py-2 text-right font-semibold">{formatCurrency(lineTotal(l))}</td>
-                        <td className="px-3 py-2">
-                          <button type="button" onClick={() => removeLine(l.key)} className="text-gray-400 hover:text-red-600">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {cart.length > 0 && (
-                <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-end gap-6 mt-2">
-                  <span className="text-gray-500">Subtotal: {formatCurrency(subtotal)}</span>
-                  <span className="text-gray-500">VAT: {formatCurrency(vat)}</span>
-                  <span className="font-semibold">Total: {formatCurrency(total)}</span>
+          <div className="modal-body">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="label">Sale Date *</label>
+                    <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Buyer Name</label>
+                    <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
+                  </div>
                 </div>
-              )}
+                <div className="form-group">
+                  <label className="label">Revenue Account *</label>
+                  <AccountSelect
+                    value={form.accountId}
+                    onChange={(id) => setForm((f) => ({ ...f, accountId: id }))}
+                    accounts={accounts.filter((a) => a.accountType === 'REVENUE')}
+                    placeholder="-- select revenue account --"
+                  />
+                </div>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="label">VAT Code</label>
+                    <select className="input" value={form.vatCode} onChange={set('vatCode')}>
+                      {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Payment Method *</label>
+                    <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
+                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="label">Notes</label>
+                  <textarea className="input resize-none" rows={2} value={form.notes} onChange={set('notes')} />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label mb-0">Items</label>
+                  <button type="button" onClick={addLine} className="text-xs font-medium text-green-700 hover:text-green-800 flex items-center gap-1">
+                    <Plus className="w-3.5 h-3.5" /> Add Line
+                  </button>
+                </div>
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th className="text-left px-3 py-2">Item / Description</th>
+                        <th className="text-center px-3 py-2 w-28">Qty</th>
+                        <th className="text-right px-3 py-2 w-24">Price</th>
+                        <th className="text-right px-3 py-2 w-24">Total</th>
+                        <th className="w-10" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cart.length === 0 ? (
+                        <tr><td colSpan={5} className="text-center py-6 text-gray-400">No items yet — click "+ Add Line" to get started.</td></tr>
+                      ) : cart.map((l) => (
+                        <tr key={l.key} className="border-t border-gray-100">
+                          <td className="px-3 py-2">
+                            <input className="input" list="cash-sale-items" placeholder="Type to search items, or enter free text"
+                              value={l.description} onChange={(e) => setLineDescription(l.key, e.target.value)} />
+                            {l.itemId && (
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                {items.find((it) => it.id === l.itemId)?.sku} · {l.stockCap} in stock
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center justify-center border border-gray-300 rounded-lg overflow-hidden w-fit mx-auto">
+                              <button type="button" onClick={() => changeQty(l.key, l.quantity - 1)} className="px-2 py-1 text-gray-600 hover:bg-gray-100">−</button>
+                              <span className="px-2 text-sm font-semibold">{l.quantity}</span>
+                              <button type="button" onClick={() => changeQty(l.key, l.quantity + 1)} className="px-2 py-1 text-gray-600 hover:bg-gray-100">+</button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <NumberInput className="input text-right" value={String(l.unitPrice)}
+                              onChange={(v) => updateLine(l.key, { unitPrice: Number(v) || 0 })} />
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(lineTotal(l))}</td>
+                          <td className="px-3 py-2">
+                            <button type="button" onClick={() => removeLine(l.key)} className="text-gray-400 hover:text-red-600">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {cart.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-end gap-6 mt-2">
+                    <span className="text-gray-500">Subtotal: {formatCurrency(subtotal)}</span>
+                    <span className="text-gray-500">VAT: {formatCurrency(vat)}</span>
+                    <span className="font-semibold">Total: {formatCurrency(total)}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="modal-footer">
