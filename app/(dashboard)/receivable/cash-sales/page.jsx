@@ -21,77 +21,38 @@ function emptyForm() {
 }
 
 // ─── New Cash Sale Modal ────────────────────────────────────────
-const CATEGORY_ALL = 'All';
-
-function StockBadge({ item }) {
-  if (item.isOutOfStock) return <span className="badge badge-gray text-xs">Out of stock</span>;
-  if (item.isLowStock) return <span className="badge badge-yellow text-xs">Low stock</span>;
-  return <span className="badge badge-green text-xs">{Number(item.currentStock)} {item.unit}</span>;
-}
-
-function ItemTile({ item, selected, onSelect }) {
-  const disabled = item.isOutOfStock;
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onSelect(item)}
-      className={`text-left rounded-xl border p-3 transition ${
-        disabled ? 'opacity-50 cursor-not-allowed bg-gray-50'
-        : selected ? 'border-green-500 ring-2 ring-green-200 bg-green-50'
-        : 'border-gray-200 hover:border-green-400'
-      }`}
-    >
-      <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
-      <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-sm font-semibold text-green-700">{formatCurrency(item.sellingPrice)}</span>
-        <StockBadge item={item} />
-      </div>
-    </button>
-  );
-}
-
 function NewSaleModal({ accounts, items, onClose, onSaved }) {
   const [form, setForm] = useState(emptyForm());
   const [cart, setCart] = useState([]);
-  const [itemSearch, setItemSearch] = useState('');
-  const [category, setCategory] = useState(CATEGORY_ALL);
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const categories = [CATEGORY_ALL, ...new Set(items.map((it) => it.category?.name).filter(Boolean))];
-
-  const filteredItems = items.filter((it) => {
-    if (category !== CATEGORY_ALL && it.category?.name !== category) return false;
-    if (!itemSearch.trim()) return true;
-    const q = itemSearch.toLowerCase();
-    return it.name.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q);
-  });
-
-  const addItem = (item) => {
-    setCart((c) => {
-      const existing = c.find((l) => l.itemId === item.id);
-      if (existing) {
-        const max = Math.max(1, Math.floor(Number(item.currentStock)) || 1);
-        return c.map((l) => l.itemId === item.id ? { ...l, quantity: Math.min(l.quantity + 1, max) } : l);
-      }
-      return [...c, {
-        key: `item-${item.id}`, itemId: item.id, description: item.name,
-        quantity: 1, unitPrice: Number(item.sellingPrice), stockCap: Number(item.currentStock),
-      }];
-    });
-  };
-
-  const addCustomLine = () => {
+  const addLine = () => {
     setCart((c) => [...c, {
-      key: `custom-${Date.now()}-${c.length}`, itemId: null, description: '',
+      key: `line-${Date.now()}-${c.length}`, itemId: null, description: '',
       quantity: 1, unitPrice: 0, stockCap: Infinity,
     }]);
   };
 
   const updateLine = (key, patch) => setCart((c) => c.map((l) => l.key === key ? { ...l, ...patch } : l));
   const removeLine = (key) => setCart((c) => c.filter((l) => l.key !== key));
+
+  // Typing is free-form; if the text exactly matches an Inventory item's name,
+  // link the row to it (auto-fill price, cap qty to its stock) — same
+  // datalist-driven match Quotations already uses. Editing the text away from
+  // a match reverts the row to a plain custom line.
+  const setLineDescription = (key, value) => {
+    const match = items.find((it) => it.name === value);
+    setCart((c) => c.map((l) => {
+      if (l.key !== key) return l;
+      if (!match) return { ...l, description: value, itemId: null, stockCap: Infinity };
+      const max = Math.max(1, Math.floor(Number(match.currentStock)) || 1);
+      return {
+        ...l, description: value, itemId: match.id, unitPrice: Number(match.sellingPrice),
+        stockCap: Number(match.currentStock), quantity: Math.min(l.quantity, max),
+      };
+    }));
+  };
 
   const changeQty = (key, next) => {
     setCart((c) => c.map((l) => {
@@ -141,83 +102,59 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-5xl">
+      <div className="modal max-w-3xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">New Cash Sale</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
         </div>
+        <datalist id="cash-sale-items">
+          {items.map((it) => <option key={it.id} value={it.name}>{it.sku}</option>)}
+        </datalist>
         <form onSubmit={submit}>
-          <div className="modal-body">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input className="input pl-9" placeholder="Search item name or SKU..."
-                    value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {categories.map((c) => (
-                    <button key={c} type="button" onClick={() => setCategory(c)}
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium ${category === c ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-                  {filteredItems.length === 0 ? (
-                    <p className="col-span-full text-center text-sm text-gray-400 py-6">No items match.</p>
-                  ) : filteredItems.map((it) => (
-                    <ItemTile key={it.id} item={it} selected={cart.some((l) => l.itemId === it.id)} onSelect={addItem} />
-                  ))}
-                </div>
+          <div className="modal-body space-y-4">
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="label">Sale Date *</label>
+                <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
               </div>
-
-              <div className="space-y-4">
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="label">Sale Date *</label>
-                    <input type="date" className="input" required value={form.saleDate} onChange={set('saleDate')} />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Buyer Name</label>
-                    <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="label">Revenue Account *</label>
-                  <AccountSelect
-                    value={form.accountId}
-                    onChange={(id) => setForm((f) => ({ ...f, accountId: id }))}
-                    accounts={accounts.filter((a) => a.accountType === 'REVENUE')}
-                    placeholder="-- select revenue account --"
-                  />
-                </div>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="label">VAT Code</label>
-                    <select className="input" value={form.vatCode} onChange={set('vatCode')}>
-                      {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Payment Method *</label>
-                    <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
-                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="label">Notes</label>
-                  <textarea className="input resize-none" rows={2} value={form.notes} onChange={set('notes')} />
-                </div>
+              <div className="form-group">
+                <label className="label">Buyer Name</label>
+                <input className="input" value={form.buyerName} onChange={set('buyerName')} placeholder="Walk-in" />
               </div>
             </div>
+            <div className="form-group">
+              <label className="label">Revenue Account *</label>
+              <AccountSelect
+                value={form.accountId}
+                onChange={(id) => setForm((f) => ({ ...f, accountId: id }))}
+                accounts={accounts.filter((a) => a.accountType === 'REVENUE')}
+                placeholder="-- select revenue account --"
+              />
+            </div>
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="label">VAT Code</label>
+                <select className="input" value={form.vatCode} onChange={set('vatCode')}>
+                  {VAT_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="label">Payment Method *</label>
+                <select className="input" value={form.paymentMethod} onChange={set('paymentMethod')}>
+                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="label">Notes</label>
+              <textarea className="input resize-none" rows={2} value={form.notes} onChange={set('notes')} />
+            </div>
 
-            <div className="mt-5">
+            <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="label mb-0">Items</label>
-                <button type="button" onClick={addCustomLine} className="text-xs font-medium text-green-700 hover:text-green-800 flex items-center gap-1">
-                  <Plus className="w-3.5 h-3.5" /> Add custom line
+                <button type="button" onClick={addLine} className="text-xs font-medium text-green-700 hover:text-green-800 flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> Add Line
                 </button>
               </div>
               <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -233,15 +170,16 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
                   </thead>
                   <tbody>
                     {cart.length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-6 text-gray-400">No items yet — tap a tile above or add a custom line.</td></tr>
+                      <tr><td colSpan={5} className="text-center py-6 text-gray-400">No items yet — click "+ Add Line" to get started.</td></tr>
                     ) : cart.map((l) => (
                       <tr key={l.key} className="border-t border-gray-100">
                         <td className="px-3 py-2">
-                          {l.itemId ? (
-                            <span className="font-medium text-gray-900">{l.description}</span>
-                          ) : (
-                            <input className="input" placeholder="Description" value={l.description}
-                              onChange={(e) => updateLine(l.key, { description: e.target.value })} />
+                          <input className="input" list="cash-sale-items" placeholder="Type to search items, or enter free text"
+                            value={l.description} onChange={(e) => setLineDescription(l.key, e.target.value)} />
+                          {l.itemId && (
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {items.find((it) => it.id === l.itemId)?.sku} · {l.stockCap} in stock
+                            </p>
                           )}
                         </td>
                         <td className="px-3 py-2">
