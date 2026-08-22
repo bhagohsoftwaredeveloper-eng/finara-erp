@@ -182,6 +182,33 @@ describe('cash sale multi-item cart — create', () => {
     expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
     expect(glPost.safePost).toHaveBeenCalledTimes(1);
   });
+
+  test('create rejects a cart with two lines referencing the same itemId', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+
+    await expect(run(ctrl.create, {
+      body: {
+        saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash',
+        items: [
+          { itemId: 9, description: 'Widget', quantity: 1, unitPrice: 100 },
+          { itemId: 9, description: 'Widget', quantity: 1, unitPrice: 100 },
+        ],
+      },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+    expect(prisma.inventoryItem.findFirst).not.toHaveBeenCalled();
+  });
+
+  test('create rejects a cart whose total is zero', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+
+    await expect(run(ctrl.create, {
+      body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [{ description: 'Free sample', quantity: 1, unitPrice: 0 }] },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('cash sale multi-item cart — void reverses stock', () => {
@@ -231,5 +258,18 @@ describe('cash sale multi-item cart — void reverses stock', () => {
 
     expect(prisma.inventoryItem.update).not.toHaveBeenCalled();
     expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
+  });
+
+  test('voidSale rejects rather than silently corrupting stock when two OUT transactions share the same itemId', async () => {
+    prisma.cashSale.findFirst.mockResolvedValue({ id: 7, businessId: 1, status: 'ACTIVE', journalEntryId: null, saleNo: 'CS-000007' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([
+      { id: 1, itemId: 9, quantity: 1, unitCost: 50, totalCost: 50, type: 'OUT', reference: 'CS-000007' },
+      { id: 2, itemId: 9, quantity: 1, unitCost: 50, totalCost: 50, type: 'OUT', reference: 'CS-000007' },
+    ]);
+    prisma.inventoryItem.findFirst.mockResolvedValue({ id: 9, currentStock: 8, name: 'Widget', sku: 'SKU-0001', cogsAccountId: null, inventoryAccountId: null });
+
+    await expect(run(ctrl.voidSale, { params: { id: '7' }, body: { reason: 'test reason' } })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.inventoryItem.update).not.toHaveBeenCalled();
   });
 });

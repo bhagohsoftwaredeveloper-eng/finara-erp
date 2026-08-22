@@ -113,6 +113,7 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
       return toast.error('Every line needs a description and a quantity greater than 0');
     }
     if (!form.accountId) return toast.error('Select a revenue account');
+    if (total <= 0) return toast.error('Total must be greater than 0');
     setSaving(true);
     try {
       const payload = {

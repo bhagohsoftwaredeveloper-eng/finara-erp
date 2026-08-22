@@ -65,6 +65,14 @@ exports.create = async (req, res, next) => {
       if (!Number.isFinite(Number(line.unitPrice)) || Number(line.unitPrice) < 0) throw createError('Every line needs a valid unitPrice', 400);
     }
 
+    const seenItemIds = new Set();
+    for (const line of items) {
+      if (!line.itemId) continue;
+      const id = Number(line.itemId);
+      if (seenItemIds.has(id)) throw createError('The same inventory item cannot appear on two lines', 400);
+      seenItemIds.add(id);
+    }
+
     const account = await prisma.account.findFirst({
       where: { id: Number(accountId), businessId: req.businessId, accountType: 'REVENUE', isActive: true },
     });
@@ -104,6 +112,7 @@ exports.create = async (req, res, next) => {
     const subtotal = v.base;
     const vatAmount = v.vat;
     const totalAmount = round2(subtotal + vatAmount);
+    if (totalAmount <= 0) throw createError('Sale total must be greater than 0', 400);
     const saleNo = await genSaleNo();
 
     const description = resolvedLines.length === 1
@@ -229,6 +238,12 @@ exports.voidSale = async (req, res, next) => {
     for (const outTxn of outTxns) {
       const item = await prisma.inventoryItem.findFirst({ where: { id: outTxn.itemId, businessId: req.businessId } });
       if (item) reversals.push({ outTxn, item });
+    }
+
+    const dupeCheck = new Set();
+    for (const { item } of reversals) {
+      if (dupeCheck.has(item.id)) throw createError('Cannot void: this sale has more than one inventory movement for the same item — investigate manually', 400);
+      dupeCheck.add(item.id);
     }
 
     await prisma.$transaction(async (tx) => {
