@@ -56,46 +56,60 @@ exports.getOne = async (req, res, next) => {
 // ─── Create ──────────────────────────────────────────────────────
 exports.create = async (req, res, next) => {
   try {
-    const { saleDate, buyerName, description, accountId, vatCode = 'VAT', amount, paymentMethod, notes, itemId, quantity } = req.body;
+    const { saleDate, buyerName, accountId, vatCode = 'VAT', paymentMethod, notes, items } = req.body;
     if (!accountId) throw createError('accountId is required', 400);
-    if (!description) throw createError('description is required', 400);
-    if (!Number(amount) || Number(amount) <= 0) throw createError('amount must be greater than 0', 400);
     if (!paymentMethod) throw createError('paymentMethod is required', 400);
+    if (!Array.isArray(items) || items.length === 0) throw createError('At least one item is required', 400);
+    for (const line of items) {
+      if (!line.description || !String(line.description).trim()) throw createError('Every line needs a description', 400);
+      if (!Number(line.quantity) || Number(line.quantity) <= 0) throw createError('Every line needs a quantity greater than 0', 400);
+      if (Number(line.unitPrice) < 0) throw createError('unitPrice cannot be negative', 400);
+    }
 
     const account = await prisma.account.findFirst({
       where: { id: Number(accountId), businessId: req.businessId, accountType: 'REVENUE', isActive: true },
     });
     if (!account) throw createError('accountId must be an active REVENUE account', 400);
 
-    let item = null;
-    let qty = 0;
-    if (itemId) {
-      qty = Number(quantity);
-      if (!qty || qty <= 0) throw createError('quantity must be greater than 0', 400);
-      item = await prisma.inventoryItem.findFirst({
-        where: { id: Number(itemId), businessId: req.businessId, isActive: true },
-      });
-      if (!item) throw createError('Inventory item not found', 404);
-      if (Number(item.currentStock) < qty) {
-        throw createError(`Insufficient stock — only ${item.currentStock} ${item.unit} available`, 400);
+    // Resolve each line — fetch and stock-check inventory-linked lines up
+    // front, outside the transaction, same as the single-item picker did.
+    // Lines sharing an itemId are NOT aggregated: the frontend cart never
+    // produces two rows for the same item (tapping an already-added tile
+    // increments that row instead), so each line is safe to check/deduct
+    // independently. See Global Constraints if that invariant ever changes.
+    const resolvedLines = [];
+    for (const line of items) {
+      const quantity = Number(line.quantity);
+      const unitPrice = Number(line.unitPrice);
+      if (line.itemId) {
+        const invItem = await prisma.inventoryItem.findFirst({
+          where: { id: Number(line.itemId), businessId: req.businessId, isActive: true },
+        });
+        if (!invItem) throw createError(`Inventory item not found for line "${line.description}"`, 404);
+        if (Number(invItem.currentStock) < quantity) {
+          throw createError(`Insufficient stock — only ${invItem.currentStock} ${invItem.unit} available for ${invItem.name}`, 400);
+        }
+        resolvedLines.push({ description: line.description, quantity, unitPrice, item: invItem });
+      } else {
+        resolvedLines.push({ description: line.description, quantity, unitPrice, item: null });
       }
     }
 
-    const cleanAmount = round2(Number(amount));
-    // Compute vat first (backed out of the VAT-inclusive total) and derive
-    // base as total - vat, so base + vat === total by construction. Using
-    // computeVAT()'s independently-rounded base + remainder vat can be off
-    // by a centavo (e.g. ₱24.50 → base 21.88 + vat 2.63 = 24.51 ≠ 24.50),
-    // which misbalances the GL entry built from these figures. Do not swap
-    // this back to computeVAT(cleanAmount, true) — see cash sale VAT rounding
-    // regression test in tests/cashSaleController.test.js.
-    const v = vatCode === 'VAT'
-      ? (() => {
-          const vat = round2(cleanAmount - cleanAmount / 1.12);
-          return { base: round2(cleanAmount - vat), vat, total: cleanAmount };
-        })()
-      : { base: cleanAmount, vat: 0, total: cleanAmount };
+    const lineAmounts = resolvedLines.map((l) => round2(l.quantity * l.unitPrice));
+    const subtotalRaw = round2(lineAmounts.reduce((s, a) => s + a, 0));
+    const v = vatCode === 'VAT' ? computeVAT(subtotalRaw) : { base: subtotalRaw, vat: 0 };
+    // totalAmount is derived from the two already-rounded parts (not
+    // computeVAT's own `total`) so subtotal + vatAmount === totalAmount is
+    // guaranteed by construction — same pattern receivableController.js's
+    // computeInvoiceTotals uses for invoices.
+    const subtotal = v.base;
+    const vatAmount = v.vat;
+    const totalAmount = round2(subtotal + vatAmount);
     const saleNo = await genSaleNo();
+
+    const description = resolvedLines.length === 1
+      ? resolvedLines[0].description
+      : `${resolvedLines[0].description} +${resolvedLines.length - 1} more`;
 
     const saleData = {
       businessId: req.businessId,
@@ -105,47 +119,61 @@ exports.create = async (req, res, next) => {
       description,
       accountId: Number(accountId),
       vatCode,
-      subtotal: v.base,
-      vatAmount: v.vat,
-      totalAmount: v.total,
+      subtotal,
+      vatAmount,
+      totalAmount,
       paymentMethod,
       notes: notes || null,
       createdBy: req.user?.id || null,
     };
 
-    let sale, totalCost = 0;
-    if (item) {
-      const newStock = round2(Number(item.currentStock) - qty);
-      const unitCost = Number(item.costPrice);
-      totalCost = round2(qty * unitCost);
-      const txnNo = await nextTxnNo();
+    const sale = await prisma.$transaction(async (tx) => {
+      const createdSale = await tx.cashSale.create({ data: saleData });
 
-      const [saleRow] = await prisma.$transaction([
-        prisma.cashSale.create({ data: saleData }),
-        prisma.inventoryItem.update({ where: { id: item.id }, data: { currentStock: newStock } }),
-        prisma.inventoryTransaction.create({
-          data: {
-            txnNo,
-            itemId: item.id,
-            type: 'OUT',
-            quantity: qty,
-            unitCost,
-            totalCost,
-            runningStock: newStock,
-            reference: saleNo,
-            notes: `Cash sale — ${saleNo}`,
-            txnDate: new Date(saleDate),
-          },
-        }),
-      ]);
-      sale = saleRow;
-    } else {
-      sale = await prisma.cashSale.create({ data: saleData });
-    }
+      await tx.cashSaleItem.createMany({
+        data: resolvedLines.map((l, i) => ({
+          cashSaleId: createdSale.id,
+          itemId: l.item?.id || null,
+          description: l.description,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          amount: lineAmounts[i],
+        })),
+      });
+
+      const inventoryLines = resolvedLines.filter((l) => l.item);
+      if (inventoryLines.length > 0) {
+        const lastTxn = await tx.inventoryTransaction.findFirst({ orderBy: { id: 'desc' } });
+        let txnSeq = lastTxn ? lastTxn.id + 1 : 1;
+        for (const l of inventoryLines) {
+          const newStock = round2(Number(l.item.currentStock) - l.quantity);
+          const unitCost = Number(l.item.costPrice);
+          const totalCost = round2(l.quantity * unitCost);
+          await tx.inventoryItem.update({ where: { id: l.item.id }, data: { currentStock: newStock } });
+          await tx.inventoryTransaction.create({
+            data: {
+              txnNo: `INV-TXN-${String(txnSeq++).padStart(6, '0')}`,
+              itemId: l.item.id,
+              type: 'OUT',
+              quantity: l.quantity,
+              unitCost,
+              totalCost,
+              runningStock: newStock,
+              reference: createdSale.saleNo,
+              notes: `Cash sale — ${createdSale.saleNo}`,
+              txnDate: new Date(saleDate),
+            },
+          });
+          l.totalCost = totalCost; // stashed on the same object for the post-commit COGS entry below
+        }
+      }
+
+      return createdSale;
+    });
 
     const { lines } = buildCashSaleEntry({
       saleNo, accountId: Number(accountId),
-      subtotal: v.base, vatAmount: v.vat, totalAmount: v.total, paymentMethod,
+      subtotal, vatAmount, totalAmount, paymentMethod,
     });
     const entry = await glPost.safePost({
       entryDate: sale.saleDate,
@@ -160,18 +188,21 @@ exports.create = async (req, res, next) => {
       await prisma.cashSale.update({ where: { id: sale.id }, data: { journalEntryId: entry.id } });
     }
 
-    if (item && totalCost > 0) {
-      const cogsLine = item.cogsAccountId
-        ? { accountId: item.cogsAccountId, debit: totalCost, description: `COGS — ${item.sku} ×${qty}` }
-        : { accountCode: '5010', debit: totalCost, description: `COGS — ${item.sku} ×${qty}` };
-      const invLine = item.inventoryAccountId
-        ? { accountId: item.inventoryAccountId, credit: totalCost, description: `Inventory out — ${item.name}` }
-        : { accountCode: '1210', credit: totalCost, description: `Inventory out — ${item.name}` };
+    const inventoryLines = resolvedLines.filter((l) => l.item && l.totalCost > 0);
+    if (inventoryLines.length > 0) {
+      const cogsLines = inventoryLines.flatMap((l) => ([
+        l.item.cogsAccountId
+          ? { accountId: l.item.cogsAccountId, debit: l.totalCost, description: `COGS — ${l.item.sku} ×${l.quantity}` }
+          : { accountCode: '5010', debit: l.totalCost, description: `COGS — ${l.item.sku} ×${l.quantity}` },
+        l.item.inventoryAccountId
+          ? { accountId: l.item.inventoryAccountId, credit: l.totalCost, description: `Inventory out — ${l.item.name}` }
+          : { accountCode: '1210', credit: l.totalCost, description: `Inventory out — ${l.item.name}` },
+      ]));
       await glPost.safePost({
         entryDate: sale.saleDate,
-        description: `Inventory OUT — ${item.name} (${saleNo})`,
+        description: `Inventory OUT — ${saleNo}`,
         reference: saleNo,
-        lines: [cogsLine, invLine],
+        lines: cogsLines,
         userId: req.user?.id || 1,
         businessId: req.businessId,
       });
