@@ -6,9 +6,10 @@ jest.mock('../server/config/database', () => ({
     create: jest.fn(),
     update: jest.fn(),
   },
+  cashSaleItem: { createMany: jest.fn() },
   account: { findFirst: jest.fn() },
   inventoryItem: { findFirst: jest.fn(), update: jest.fn() },
-  inventoryTransaction: { findFirst: jest.fn(), create: jest.fn() },
+  inventoryTransaction: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
   journalEntry: { update: jest.fn() },
   $transaction: jest.fn(),
 }));
@@ -44,8 +45,9 @@ describe('cashSaleController tenant isolation', () => {
 
   test('voidSale only looks up a sale scoped to the current business', async () => {
     prisma.cashSale.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'ACTIVE', journalEntryId: null, saleNo: 'CS-000005' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([]);
     prisma.cashSale.update = jest.fn().mockResolvedValue({});
-    prisma.$transaction = jest.fn().mockResolvedValue([{}]);
+    prisma.$transaction = jest.fn().mockImplementation((cb) => cb(prisma));
 
     await run(ctrl.voidSale, { params: { id: '5' }, body: { reason: 'test reason' } });
 
@@ -62,128 +64,212 @@ describe('cashSaleController tenant isolation', () => {
 });
 
 describe('cash sale VAT split always sums back to the total', () => {
-  test.each([1.26, 24.50, 101.50, 500.22, 1000.50])('amount %s produces subtotal + vatAmount === totalAmount', async (amount) => {
+  test.each([1.26, 24.50, 101.50, 500.22, 1000.50])('unitPrice %s produces subtotal + vatAmount === totalAmount', async (unitPrice) => {
     prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
     prisma.cashSale.findFirst.mockResolvedValue(null); // genSaleNo: no prior sale
     let created;
     prisma.cashSale.create.mockImplementation(({ data }) => { created = data; return Promise.resolve({ id: 1, ...data }); });
+    prisma.cashSaleItem.createMany.mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
     glPost.safePost.mockResolvedValue({ id: 99 });
     prisma.cashSale.update.mockResolvedValue({});
 
     await run(ctrl.create, {
-      body: { saleDate: '2026-08-10', description: 'test', accountId: 1, vatCode: 'VAT', amount, paymentMethod: 'Cash' },
+      body: { saleDate: '2026-08-10', accountId: 1, vatCode: 'VAT', paymentMethod: 'Cash', items: [{ description: 'test', quantity: 1, unitPrice }] },
     });
 
     expect(Number(created.subtotal) + Number(created.vatAmount)).toBeCloseTo(Number(created.totalAmount), 2);
   });
 });
 
-describe('cash sale item picker — stock deduction on create', () => {
-  test('create with itemId deducts stock and links an OUT inventory transaction via saleNo reference', async () => {
+describe('cash sale multi-item cart — create', () => {
+  test('create with mixed inventory + custom lines deducts stock per line and posts one combined COGS entry', async () => {
     prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
     prisma.cashSale.findFirst.mockResolvedValue(null); // genSaleNo: no prior sale
-    prisma.inventoryItem.findFirst.mockResolvedValue({
-      id: 9, businessId: 1, isActive: true, name: 'Widget', sku: 'SKU-0001', unit: 'pcs',
-      currentStock: 10, costPrice: 50, sellingPrice: 100, cogsAccountId: null, inventoryAccountId: null,
-    });
-    prisma.inventoryTransaction.findFirst.mockResolvedValue(null); // nextTxnNo: no prior txn
-    let savedSale, savedItemUpdate, savedTxn;
-    prisma.cashSale.create.mockImplementation(({ data }) => {
-      savedSale = { id: 1, saleDate: new Date('2026-08-11'), ...data };
-      return Promise.resolve(savedSale);
-    });
-    prisma.inventoryItem.update.mockImplementation(({ data }) => { savedItemUpdate = data; return Promise.resolve({}); });
-    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { savedTxn = data; return Promise.resolve({ id: 1, ...data }); });
-    prisma.$transaction.mockImplementation((ops) => Promise.all(ops));
+    prisma.inventoryItem.findFirst
+      .mockResolvedValueOnce({ id: 9, businessId: 1, isActive: true, name: 'Widget', sku: 'SKU-0001', unit: 'pcs', currentStock: 10, costPrice: 50, sellingPrice: 100, cogsAccountId: null, inventoryAccountId: null })
+      .mockResolvedValueOnce({ id: 11, businessId: 1, isActive: true, name: 'Gadget', sku: 'SKU-0002', unit: 'pcs', currentStock: 5, costPrice: 20, sellingPrice: 60, cogsAccountId: null, inventoryAccountId: null });
+    prisma.inventoryTransaction.findFirst.mockResolvedValue(null); // txnSeq starts at 1
+    let savedSale, createdItems, stockUpdates = [], txns = [];
+    prisma.cashSale.create.mockImplementation(({ data }) => { savedSale = { id: 1, ...data }; return Promise.resolve(savedSale); });
+    prisma.cashSaleItem.createMany.mockImplementation(({ data }) => { createdItems = data; return Promise.resolve({ count: data.length }); });
+    prisma.inventoryItem.update.mockImplementation(({ where, data }) => { stockUpdates.push({ id: where.id, ...data }); return Promise.resolve({}); });
+    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { txns.push(data); return Promise.resolve({ id: txns.length, ...data }); });
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
     glPost.safePost.mockResolvedValue({ id: 99 });
     prisma.cashSale.update.mockResolvedValue({});
 
     await run(ctrl.create, {
       body: {
-        saleDate: '2026-08-11', description: 'Widget x2', accountId: 1, vatCode: 'VAT',
-        amount: 224, paymentMethod: 'Cash', itemId: 9, quantity: 2,
+        saleDate: '2026-08-22', accountId: 1, vatCode: 'VAT', paymentMethod: 'Cash',
+        items: [
+          { itemId: 9, description: 'Widget', quantity: 2, unitPrice: 100 },
+          { itemId: 11, description: 'Gadget', quantity: 1, unitPrice: 60 },
+          { description: 'Gift wrap', quantity: 1, unitPrice: 20 },
+        ],
       },
     });
 
-    expect(savedItemUpdate.currentStock).toBe(8); // 10 - 2
-    expect(savedTxn).toMatchObject({ itemId: 9, type: 'OUT', quantity: 2, reference: savedSale.saleNo });
-    expect(glPost.safePost).toHaveBeenCalledTimes(2); // cash-sale entry + COGS entry
+    expect(createdItems).toHaveLength(3);
+    expect(createdItems[0]).toMatchObject({ cashSaleId: savedSale.id, itemId: 9, quantity: 2, unitPrice: 100, amount: 200 });
+    expect(createdItems[2]).toMatchObject({ itemId: null, description: 'Gift wrap', amount: 20 });
 
+    expect(stockUpdates).toEqual(expect.arrayContaining([
+      { id: 9, currentStock: 8 },
+      { id: 11, currentStock: 4 },
+    ]));
+    expect(txns).toHaveLength(2);
+    expect(txns.map((t) => t.txnNo)).toEqual(['INV-TXN-000001', 'INV-TXN-000002']);
+
+    expect(savedSale.description).toBe('Widget +2 more');
+    expect(Number(savedSale.subtotal)).toBeCloseTo(280, 2); // 200 + 60 + 20
+
+    expect(glPost.safePost).toHaveBeenCalledTimes(2); // cash-sale entry + one combined COGS entry
     const cogsCall = glPost.safePost.mock.calls.find((c) => c[0].description.includes('Inventory OUT'));
     expect(cogsCall).toBeTruthy();
-    const lines = cogsCall[0].lines;
-    expect(lines.find((l) => l.accountCode === '5010').debit).toBeCloseTo(100, 2);  // 2 * costPrice 50
-    expect(lines.find((l) => l.accountCode === '1210').credit).toBeCloseTo(100, 2);
+    expect(cogsCall[0].lines).toHaveLength(4); // 2 DR/CR pairs, one per inventory-linked line
+    const cogsDebits = cogsCall[0].lines.filter((l) => l.accountCode === '5010').reduce((s, l) => s + l.debit, 0);
+    expect(cogsDebits).toBeCloseTo(120, 2); // 2*50 + 1*20
   });
 
-  test('create rejects when quantity exceeds current stock, without creating anything', async () => {
+  test('create rejects when any line exceeds current stock, without creating anything', async () => {
     prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
     prisma.inventoryItem.findFirst.mockResolvedValue({
       id: 9, isActive: true, currentStock: 1, unit: 'pcs', name: 'Widget', sku: 'SKU-0001', costPrice: 50, sellingPrice: 100,
     });
 
     await expect(run(ctrl.create, {
-      body: { saleDate: '2026-08-11', description: 'Widget x5', accountId: 1, amount: 560, paymentMethod: 'Cash', itemId: 9, quantity: 5 },
+      body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [{ itemId: 9, description: 'Widget', quantity: 5, unitPrice: 100 }] },
     })).rejects.toMatchObject({ statusCode: 400 });
 
     expect(prisma.cashSale.create).not.toHaveBeenCalled();
   });
 
-  test('create without itemId does not touch inventory at all', async () => {
+  test('create rejects an empty items array', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+
+    await expect(run(ctrl.create, {
+      body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [] },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+  });
+
+  test('create rejects a line with a missing or non-numeric unitPrice, without creating anything', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+
+    await expect(run(ctrl.create, {
+      body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [{ description: 'Widget', quantity: 1 }] },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+  });
+
+  test('create with only custom lines does not touch inventory at all', async () => {
     prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
     prisma.cashSale.findFirst.mockResolvedValue(null);
-    prisma.cashSale.create.mockResolvedValue({ id: 1, saleDate: new Date('2026-08-11'), saleNo: 'CS-000001' });
+    prisma.cashSale.create.mockImplementation(({ data }) => Promise.resolve({ id: 1, saleNo: 'CS-000001', ...data }));
+    prisma.cashSaleItem.createMany.mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
     glPost.safePost.mockResolvedValue({ id: 99 });
     prisma.cashSale.update.mockResolvedValue({});
 
     await run(ctrl.create, {
-      body: { saleDate: '2026-08-11', description: 'Service fee', accountId: 1, amount: 100, paymentMethod: 'Cash' },
+      body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [{ description: 'Service fee', quantity: 1, unitPrice: 100 }] },
     });
 
     expect(prisma.inventoryItem.findFirst).not.toHaveBeenCalled();
     expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
     expect(glPost.safePost).toHaveBeenCalledTimes(1);
   });
+
+  test('create rejects a cart with two lines referencing the same itemId', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+
+    await expect(run(ctrl.create, {
+      body: {
+        saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash',
+        items: [
+          { itemId: 9, description: 'Widget', quantity: 1, unitPrice: 100 },
+          { itemId: 9, description: 'Widget', quantity: 1, unitPrice: 100 },
+        ],
+      },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+    expect(prisma.inventoryItem.findFirst).not.toHaveBeenCalled();
+  });
+
+  test('create rejects a cart whose total is zero', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+
+    await expect(run(ctrl.create, {
+      body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [{ description: 'Free sample', quantity: 1, unitPrice: 0 }] },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+  });
 });
 
-describe('cash sale item picker — void reverses stock', () => {
-  test('voidSale restocks the item and posts a reversing GL entry when linked to an OUT inventory transaction', async () => {
+describe('cash sale multi-item cart — void reverses stock', () => {
+  test('voidSale restocks every inventory-linked line and posts one combined reversing GL entry', async () => {
     prisma.cashSale.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'ACTIVE', journalEntryId: 40, saleNo: 'CS-000005' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([
+      { id: 1, itemId: 9, quantity: 2, unitCost: 50, totalCost: 100, type: 'OUT', reference: 'CS-000005' },
+      { id: 2, itemId: 11, quantity: 1, unitCost: 20, totalCost: 20, type: 'OUT', reference: 'CS-000005' },
+    ]);
+    prisma.inventoryItem.findFirst
+      .mockResolvedValueOnce({ id: 9, currentStock: 8, name: 'Widget', sku: 'SKU-0001', cogsAccountId: null, inventoryAccountId: null })
+      .mockResolvedValueOnce({ id: 11, currentStock: 4, name: 'Gadget', sku: 'SKU-0002', cogsAccountId: null, inventoryAccountId: null });
+    prisma.inventoryTransaction.findFirst.mockResolvedValue(null); // txnSeq starts at 1 inside the void transaction
     prisma.cashSale.update = jest.fn().mockResolvedValue({});
     prisma.journalEntry.update = jest.fn().mockResolvedValue({});
-    prisma.$transaction = jest.fn().mockImplementation((ops) => Promise.all(ops));
-    prisma.inventoryTransaction.findFirst.mockResolvedValue({
-      id: 1, itemId: 9, quantity: 2, unitCost: 50, totalCost: 100, type: 'OUT', reference: 'CS-000005',
-    });
-    prisma.inventoryItem.findFirst.mockResolvedValue({
-      id: 9, currentStock: 8, name: 'Widget', sku: 'SKU-0001', cogsAccountId: null, inventoryAccountId: null,
-    });
-    let restockedTo, reversalTxn;
-    prisma.inventoryItem.update.mockImplementation(({ data }) => { restockedTo = data.currentStock; return Promise.resolve({}); });
-    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { reversalTxn = data; return Promise.resolve({ id: 2, ...data }); });
+    prisma.$transaction = jest.fn().mockImplementation((cb) => cb(prisma));
+    let stockUpdates = [], reversalTxns = [];
+    prisma.inventoryItem.update.mockImplementation(({ where, data }) => { stockUpdates.push({ id: where.id, ...data }); return Promise.resolve({}); });
+    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { reversalTxns.push(data); return Promise.resolve({ id: reversalTxns.length, ...data }); });
     glPost.safePost.mockResolvedValue({ id: 100 });
 
     await run(ctrl.voidSale, { params: { id: '5' }, body: { reason: 'test reason' } });
 
-    expect(restockedTo).toBe(10); // 8 + 2
-    expect(reversalTxn).toMatchObject({ itemId: 9, type: 'RETURN_IN', quantity: 2, reference: 'CS-000005' });
+    expect(stockUpdates).toEqual(expect.arrayContaining([
+      { id: 9, currentStock: 10 },
+      { id: 11, currentStock: 5 },
+    ]));
+    expect(reversalTxns).toHaveLength(2);
+    expect(reversalTxns.every((t) => t.type === 'RETURN_IN')).toBe(true);
     expect(glPost.safePost).toHaveBeenCalledWith(expect.objectContaining({
       lines: expect.arrayContaining([
         expect.objectContaining({ accountCode: '1210', debit: 100 }),
         expect.objectContaining({ accountCode: '5010', credit: 100 }),
+        expect.objectContaining({ accountCode: '1210', debit: 20 }),
+        expect.objectContaining({ accountCode: '5010', credit: 20 }),
       ]),
     }));
   });
 
-  test('voidSale does not touch inventory when the sale has no linked OUT transaction', async () => {
+  test('voidSale does not touch inventory when the sale has no linked OUT transactions', async () => {
     prisma.cashSale.findFirst.mockResolvedValue({ id: 6, businessId: 1, status: 'ACTIVE', journalEntryId: null, saleNo: 'CS-000006' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([]);
     prisma.cashSale.update = jest.fn().mockResolvedValue({});
-    prisma.$transaction = jest.fn().mockResolvedValue([{}]);
-    prisma.inventoryTransaction.findFirst.mockResolvedValue(null);
+    prisma.$transaction = jest.fn().mockImplementation((cb) => cb(prisma));
 
     await run(ctrl.voidSale, { params: { id: '6' }, body: { reason: 'test reason' } });
 
     expect(prisma.inventoryItem.update).not.toHaveBeenCalled();
     expect(prisma.inventoryTransaction.create).not.toHaveBeenCalled();
+  });
+
+  test('voidSale rejects rather than silently corrupting stock when two OUT transactions share the same itemId', async () => {
+    prisma.cashSale.findFirst.mockResolvedValue({ id: 7, businessId: 1, status: 'ACTIVE', journalEntryId: null, saleNo: 'CS-000007' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([
+      { id: 1, itemId: 9, quantity: 1, unitCost: 50, totalCost: 50, type: 'OUT', reference: 'CS-000007' },
+      { id: 2, itemId: 9, quantity: 1, unitCost: 50, totalCost: 50, type: 'OUT', reference: 'CS-000007' },
+    ]);
+    prisma.inventoryItem.findFirst.mockResolvedValue({ id: 9, currentStock: 8, name: 'Widget', sku: 'SKU-0001', cogsAccountId: null, inventoryAccountId: null });
+
+    await expect(run(ctrl.voidSale, { params: { id: '7' }, body: { reason: 'test reason' } })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.inventoryItem.update).not.toHaveBeenCalled();
   });
 });
