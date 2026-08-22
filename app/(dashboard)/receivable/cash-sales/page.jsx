@@ -203,15 +203,15 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
                     </tbody>
                   </table>
                 </div>
-                {cart.length > 0 && (
-                  <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-end gap-6 mt-2">
-                    <span className="text-gray-500">Subtotal: {formatCurrency(subtotal)}</span>
-                    <span className="text-gray-500">VAT: {formatCurrency(vat)}</span>
-                    <span className="font-semibold">Total: {formatCurrency(total)}</span>
-                  </div>
-                )}
               </div>
             </div>
+            {cart.length > 0 && (
+              <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-end gap-6 mt-4">
+                <span className="text-gray-500">Subtotal: {formatCurrency(subtotal)}</span>
+                <span className="text-gray-500">VAT: {formatCurrency(vat)}</span>
+                <span className="font-semibold">Total: {formatCurrency(total)}</span>
+              </div>
+            )}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
