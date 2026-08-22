@@ -609,6 +609,7 @@ model InventoryItem {
   isActive            Boolean                @default(true)
   transactions        InventoryTransaction[]
   quotationLines      QuotationLine[]
+  cashSaleItems       CashSaleItem[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -1195,8 +1196,26 @@ model CashSale {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
+  items          CashSaleItem[]
+
   @@index([businessId])
   @@index([saleDate])
   @@index([status])
   @@map("cash_sales")
+}
+
+model CashSaleItem {
+  id          Int            @id @default(autoincrement())
+  cashSaleId  Int
+  cashSale    CashSale       @relation(fields: [cashSaleId], references: [id])
+  itemId      Int?
+  item        InventoryItem? @relation(fields: [itemId], references: [id])
+  description String         @db.VarChar(255)
+  quantity    Decimal        @default(1) @db.Decimal(12, 3)
+  unitPrice   Decimal        @default(0) @db.Decimal(15, 2)
+  amount      Decimal        @default(0) @db.Decimal(15, 2)
+
+  @@index([cashSaleId])
+  @@index([itemId])
+  @@map("cash_sale_items")
 }
