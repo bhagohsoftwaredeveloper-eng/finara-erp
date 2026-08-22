@@ -80,10 +80,9 @@ exports.create = async (req, res, next) => {
 
     // Resolve each line — fetch and stock-check inventory-linked lines up
     // front, outside the transaction, same as the single-item picker did.
-    // Lines sharing an itemId are NOT aggregated: the frontend cart never
-    // produces two rows for the same item (tapping an already-added tile
-    // increments that row instead), so each line is safe to check/deduct
-    // independently. See Global Constraints if that invariant ever changes.
+    // Lines are NOT aggregated by itemId: the duplicate-itemId guard above
+    // already rejects a cart with two lines for the same item, so every
+    // line reaching this point is safe to check/deduct independently.
     const resolvedLines = [];
     for (const line of items) {
       const quantity = Number(line.quantity);
