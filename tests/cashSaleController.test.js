@@ -9,7 +9,7 @@ jest.mock('../server/config/database', () => ({
   cashSaleItem: { createMany: jest.fn() },
   account: { findFirst: jest.fn() },
   inventoryItem: { findFirst: jest.fn(), update: jest.fn() },
-  inventoryTransaction: { findFirst: jest.fn(), create: jest.fn() },
+  inventoryTransaction: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
   journalEntry: { update: jest.fn() },
   $transaction: jest.fn(),
 }));
@@ -45,8 +45,9 @@ describe('cashSaleController tenant isolation', () => {
 
   test('voidSale only looks up a sale scoped to the current business', async () => {
     prisma.cashSale.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'ACTIVE', journalEntryId: null, saleNo: 'CS-000005' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([]);
     prisma.cashSale.update = jest.fn().mockResolvedValue({});
-    prisma.$transaction = jest.fn().mockResolvedValue([{}]);
+    prisma.$transaction = jest.fn().mockImplementation((cb) => cb(prisma));
 
     await run(ctrl.voidSale, { params: { id: '5' }, body: { reason: 'test reason' } });
 
@@ -183,40 +184,48 @@ describe('cash sale multi-item cart — create', () => {
   });
 });
 
-describe('cash sale item picker — void reverses stock', () => {
-  test('voidSale restocks the item and posts a reversing GL entry when linked to an OUT inventory transaction', async () => {
+describe('cash sale multi-item cart — void reverses stock', () => {
+  test('voidSale restocks every inventory-linked line and posts one combined reversing GL entry', async () => {
     prisma.cashSale.findFirst.mockResolvedValue({ id: 5, businessId: 1, status: 'ACTIVE', journalEntryId: 40, saleNo: 'CS-000005' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([
+      { id: 1, itemId: 9, quantity: 2, unitCost: 50, totalCost: 100, type: 'OUT', reference: 'CS-000005' },
+      { id: 2, itemId: 11, quantity: 1, unitCost: 20, totalCost: 20, type: 'OUT', reference: 'CS-000005' },
+    ]);
+    prisma.inventoryItem.findFirst
+      .mockResolvedValueOnce({ id: 9, currentStock: 8, name: 'Widget', sku: 'SKU-0001', cogsAccountId: null, inventoryAccountId: null })
+      .mockResolvedValueOnce({ id: 11, currentStock: 4, name: 'Gadget', sku: 'SKU-0002', cogsAccountId: null, inventoryAccountId: null });
+    prisma.inventoryTransaction.findFirst.mockResolvedValue(null); // txnSeq starts at 1 inside the void transaction
     prisma.cashSale.update = jest.fn().mockResolvedValue({});
     prisma.journalEntry.update = jest.fn().mockResolvedValue({});
-    prisma.$transaction = jest.fn().mockImplementation((ops) => Promise.all(ops));
-    prisma.inventoryTransaction.findFirst.mockResolvedValue({
-      id: 1, itemId: 9, quantity: 2, unitCost: 50, totalCost: 100, type: 'OUT', reference: 'CS-000005',
-    });
-    prisma.inventoryItem.findFirst.mockResolvedValue({
-      id: 9, currentStock: 8, name: 'Widget', sku: 'SKU-0001', cogsAccountId: null, inventoryAccountId: null,
-    });
-    let restockedTo, reversalTxn;
-    prisma.inventoryItem.update.mockImplementation(({ data }) => { restockedTo = data.currentStock; return Promise.resolve({}); });
-    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { reversalTxn = data; return Promise.resolve({ id: 2, ...data }); });
+    prisma.$transaction = jest.fn().mockImplementation((cb) => cb(prisma));
+    let stockUpdates = [], reversalTxns = [];
+    prisma.inventoryItem.update.mockImplementation(({ where, data }) => { stockUpdates.push({ id: where.id, ...data }); return Promise.resolve({}); });
+    prisma.inventoryTransaction.create.mockImplementation(({ data }) => { reversalTxns.push(data); return Promise.resolve({ id: reversalTxns.length, ...data }); });
     glPost.safePost.mockResolvedValue({ id: 100 });
 
     await run(ctrl.voidSale, { params: { id: '5' }, body: { reason: 'test reason' } });
 
-    expect(restockedTo).toBe(10); // 8 + 2
-    expect(reversalTxn).toMatchObject({ itemId: 9, type: 'RETURN_IN', quantity: 2, reference: 'CS-000005' });
+    expect(stockUpdates).toEqual(expect.arrayContaining([
+      { id: 9, currentStock: 10 },
+      { id: 11, currentStock: 5 },
+    ]));
+    expect(reversalTxns).toHaveLength(2);
+    expect(reversalTxns.every((t) => t.type === 'RETURN_IN')).toBe(true);
     expect(glPost.safePost).toHaveBeenCalledWith(expect.objectContaining({
       lines: expect.arrayContaining([
         expect.objectContaining({ accountCode: '1210', debit: 100 }),
         expect.objectContaining({ accountCode: '5010', credit: 100 }),
+        expect.objectContaining({ accountCode: '1210', debit: 20 }),
+        expect.objectContaining({ accountCode: '5010', credit: 20 }),
       ]),
     }));
   });
 
-  test('voidSale does not touch inventory when the sale has no linked OUT transaction', async () => {
+  test('voidSale does not touch inventory when the sale has no linked OUT transactions', async () => {
     prisma.cashSale.findFirst.mockResolvedValue({ id: 6, businessId: 1, status: 'ACTIVE', journalEntryId: null, saleNo: 'CS-000006' });
+    prisma.inventoryTransaction.findMany.mockResolvedValue([]);
     prisma.cashSale.update = jest.fn().mockResolvedValue({});
-    prisma.$transaction = jest.fn().mockResolvedValue([{}]);
-    prisma.inventoryTransaction.findFirst.mockResolvedValue(null);
+    prisma.$transaction = jest.fn().mockImplementation((cb) => cb(prisma));
 
     await run(ctrl.voidSale, { params: { id: '6' }, body: { reason: 'test reason' } });
 

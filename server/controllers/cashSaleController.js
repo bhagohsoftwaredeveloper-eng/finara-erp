@@ -3,7 +3,6 @@ const { createError } = require('../middleware/errorHandler');
 const { computeVAT, round2 } = require('../utils/phCompliance');
 const { nextDocNumber } = require('../utils/docNumber');
 const { buildCashSaleEntry } = require('../utils/cashSale');
-const { nextTxnNo } = require('./inventoryController');
 const glPost = require('../utils/glPost');
 
 const genSaleNo = async () => {
@@ -30,7 +29,7 @@ exports.list = async (req, res, next) => {
     const [rows, total] = await Promise.all([
       prisma.cashSale.findMany({
         where,
-        include: { account: { select: { accountCode: true, accountName: true } } },
+        include: { account: { select: { accountCode: true, accountName: true } }, items: true },
         orderBy: [{ saleDate: 'desc' }, { id: 'desc' }],
         skip: (Number(page) - 1) * Number(limit),
         take: Number(limit),
@@ -46,7 +45,7 @@ exports.getOne = async (req, res, next) => {
   try {
     const sale = await prisma.cashSale.findFirst({
       where: { id: Number(req.params.id), businessId: req.businessId },
-      include: { account: true, journalEntry: { include: { lines: true } } },
+      include: { account: true, journalEntry: { include: { lines: true } }, items: true },
     });
     if (!sale) throw createError('Cash sale not found', 404);
     res.json(sale);
@@ -223,58 +222,66 @@ exports.voidSale = async (req, res, next) => {
     if (!sale) throw createError('Cash sale not found', 404);
     if (sale.status === 'VOID') throw createError('Cash sale is already voided', 400);
 
-    const outTxn = await prisma.inventoryTransaction.findFirst({
+    const outTxns = await prisma.inventoryTransaction.findMany({
       where: { reference: sale.saleNo, type: 'OUT', item: { businessId: req.businessId } },
     });
-    const item = outTxn ? await prisma.inventoryItem.findFirst({ where: { id: outTxn.itemId, businessId: req.businessId } }) : null;
-
-    let newStock, txnNo;
-    if (item) {
-      newStock = round2(Number(item.currentStock) + Number(outTxn.quantity));
-      txnNo = await nextTxnNo();
+    const reversals = [];
+    for (const outTxn of outTxns) {
+      const item = await prisma.inventoryItem.findFirst({ where: { id: outTxn.itemId, businessId: req.businessId } });
+      if (item) reversals.push({ outTxn, item });
     }
 
-    await prisma.$transaction([
-      prisma.cashSale.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.cashSale.update({
         where: { id },
         data: { status: 'VOID', voidedReason: reason, voidedAt: new Date() },
-      }),
-      ...(sale.journalEntryId
-        ? [prisma.journalEntry.update({ where: { id: sale.journalEntryId }, data: { status: 'VOIDED' } })]
-        : []),
-      ...(item ? [
-        prisma.inventoryItem.update({ where: { id: item.id }, data: { currentStock: newStock } }),
-        prisma.inventoryTransaction.create({
-          data: {
-            txnNo,
-            itemId: item.id,
-            type: 'RETURN_IN',
-            quantity: outTxn.quantity,
-            unitCost: outTxn.unitCost,
-            totalCost: outTxn.totalCost,
-            runningStock: newStock,
-            reference: sale.saleNo,
-            notes: `Void reversal — ${sale.saleNo}`,
-            txnDate: new Date(),
-          },
-        }),
-      ] : []),
-    ]);
+      });
+      if (sale.journalEntryId) {
+        await tx.journalEntry.update({ where: { id: sale.journalEntryId }, data: { status: 'VOIDED' } });
+      }
+      if (reversals.length > 0) {
+        const lastTxn = await tx.inventoryTransaction.findFirst({ orderBy: { id: 'desc' } });
+        let txnSeq = lastTxn ? lastTxn.id + 1 : 1;
+        for (const { outTxn, item } of reversals) {
+          const newStock = round2(Number(item.currentStock) + Number(outTxn.quantity));
+          await tx.inventoryItem.update({ where: { id: item.id }, data: { currentStock: newStock } });
+          await tx.inventoryTransaction.create({
+            data: {
+              txnNo: `INV-TXN-${String(txnSeq++).padStart(6, '0')}`,
+              itemId: item.id,
+              type: 'RETURN_IN',
+              quantity: outTxn.quantity,
+              unitCost: outTxn.unitCost,
+              totalCost: outTxn.totalCost,
+              runningStock: newStock,
+              reference: sale.saleNo,
+              notes: `Void reversal — ${sale.saleNo}`,
+              txnDate: new Date(),
+            },
+          });
+        }
+      }
+    });
 
-    if (item) {
-      const totalCost = Number(outTxn.totalCost);
-      if (totalCost > 0) {
-        const invLine = item.inventoryAccountId
-          ? { accountId: item.inventoryAccountId, debit: totalCost, description: `Inventory in — ${item.name} (void)` }
-          : { accountCode: '1210', debit: totalCost, description: `Inventory in — ${item.name} (void)` };
-        const cogsLine = item.cogsAccountId
-          ? { accountId: item.cogsAccountId, credit: totalCost, description: `COGS reversal — ${item.sku} (void)` }
-          : { accountCode: '5010', credit: totalCost, description: `COGS reversal — ${item.sku} (void)` };
+    if (reversals.length > 0) {
+      const cogsLines = reversals.flatMap(({ outTxn, item }) => {
+        const totalCost = Number(outTxn.totalCost);
+        if (totalCost <= 0) return [];
+        return [
+          item.inventoryAccountId
+            ? { accountId: item.inventoryAccountId, debit: totalCost, description: `Inventory in — ${item.name} (void)` }
+            : { accountCode: '1210', debit: totalCost, description: `Inventory in — ${item.name} (void)` },
+          item.cogsAccountId
+            ? { accountId: item.cogsAccountId, credit: totalCost, description: `COGS reversal — ${item.sku} (void)` }
+            : { accountCode: '5010', credit: totalCost, description: `COGS reversal — ${item.sku} (void)` },
+        ];
+      });
+      if (cogsLines.length > 0) {
         await glPost.safePost({
           entryDate: new Date(),
-          description: `Cash sale void — ${item.name} (${sale.saleNo})`,
+          description: `Cash sale void — ${sale.saleNo}`,
           reference: sale.saleNo,
-          lines: [invLine, cogsLine],
+          lines: cogsLines,
           userId: req.user?.id || 1,
           businessId: req.businessId,
         });
