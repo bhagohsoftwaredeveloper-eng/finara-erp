@@ -63,7 +63,7 @@ exports.create = async (req, res, next) => {
     for (const line of items) {
       if (!line.description || !String(line.description).trim()) throw createError('Every line needs a description', 400);
       if (!Number(line.quantity) || Number(line.quantity) <= 0) throw createError('Every line needs a quantity greater than 0', 400);
-      if (Number(line.unitPrice) < 0) throw createError('unitPrice cannot be negative', 400);
+      if (!Number.isFinite(Number(line.unitPrice)) || Number(line.unitPrice) < 0) throw createError('Every line needs a valid unitPrice', 400);
     }
 
     const account = await prisma.account.findFirst({

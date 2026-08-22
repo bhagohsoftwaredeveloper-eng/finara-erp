@@ -154,6 +154,16 @@ describe('cash sale multi-item cart — create', () => {
     expect(prisma.cashSale.create).not.toHaveBeenCalled();
   });
 
+  test('create rejects a line with a missing or non-numeric unitPrice, without creating anything', async () => {
+    prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
+
+    await expect(run(ctrl.create, {
+      body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [{ description: 'Widget', quantity: 1 }] },
+    })).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+  });
+
   test('create with only custom lines does not touch inventory at all', async () => {
     prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
     prisma.cashSale.findFirst.mockResolvedValue(null);
