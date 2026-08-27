@@ -60,4 +60,37 @@ describe('agingReport — due-date buckets', () => {
       '1-30 days', '31-60 days', '61-90 days', 'Over 90 days',
     ]);
   });
+
+  test('a bill due late the previous local day is overdue, not "This Week" — regression for daysOverdue/classifyUpcomingBucket calendar-day mismatch', async () => {
+    jest.setSystemTime(new Date(2026, 7, 27, 1, 0, 0)); // Aug 27, 1:00 AM local
+    prisma.bill.findMany.mockResolvedValue([
+      // Due late the previous local day — only 2 real hours before "now", but a
+      // different calendar day. A raw millisecond diff of <24h would wrongly
+      // report daysOverdue === 0, but this bill is 1 calendar day overdue.
+      { billNo: 'BILL-G', vendorId: 1, dueDate: new Date(2026, 7, 26, 23, 0, 0), totalAmount: 750, paidAmount: 0 },
+    ]);
+    prisma.vendor.findMany.mockResolvedValue([{ id: 1, name: 'Acme' }]);
+
+    const result = await run(ctrl.agingReport, {});
+
+    expect(result.items[0].daysOverdue).toBe(1);
+    expect(result.items[0].bucket).toBe('1-30 days');
+  });
+
+  test('summary values sum to total across a mix of upcoming and overdue bills', async () => {
+    jest.setSystemTime(new Date('2026-08-03T00:00:00')); // Monday, matches other tests
+    prisma.bill.findMany.mockResolvedValue([
+      { billNo: 'BILL-H', vendorId: 1, dueDate: new Date('2026-08-03'), totalAmount: 100, paidAmount: 0 },  // Due Today
+      { billNo: 'BILL-I', vendorId: 1, dueDate: new Date('2026-09-15'), totalAmount: 250, paidAmount: 0 },  // Later
+      { billNo: 'BILL-J', vendorId: 1, dueDate: new Date('2026-07-01'), totalAmount: 400, paidAmount: 0 },  // overdue, 31-60 days
+      { billNo: 'BILL-K', vendorId: 1, dueDate: new Date('2026-05-01'), totalAmount: 900, paidAmount: 0 },  // overdue, Over 90 days
+    ]);
+    prisma.vendor.findMany.mockResolvedValue([{ id: 1, name: 'Acme' }]);
+
+    const result = await run(ctrl.agingReport, {});
+
+    const summedSummary = Object.values(result.summary).reduce((sum, v) => sum + v, 0);
+    expect(summedSummary).toBe(result.total);
+    expect(result.total).toBe(100 + 250 + 400 + 900);
+  });
 });

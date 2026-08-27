@@ -77,7 +77,7 @@ function BucketFilterDropdown({ hidden, onToggle }) {
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)} className="btn-secondary text-sm py-1.5">
-        <ListFilter className="w-3.5 h-3.5" /> Buckets
+        <ListFilter className="w-3.5 h-3.5" /> Buckets{hidden.size > 0 ? ` (${hidden.size} hidden)` : ''}
       </button>
       {open && (
         <div className="absolute right-0 mt-1 w-52 card p-2 z-10 shadow-lg">
@@ -452,6 +452,7 @@ export default function APAgingPage() {
 
         <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
           Aging calculated as of today · Only Open and Partial bills are included · Void and Paid bills are excluded
+          {hiddenOptional.size > 0 && ' · Some overdue buckets are hidden by the filter — Total still includes every bill.'}
         </div>
       </div>
     </div>

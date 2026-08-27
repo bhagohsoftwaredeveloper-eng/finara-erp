@@ -5,6 +5,7 @@ const glPost = require('../utils/glPost');
 const logger = require('../utils/logger');
 const { recordAudit } = require('../utils/audit');
 const { AGING_BUCKETS, classifyUpcomingBucket } = require('../utils/apAgingBuckets');
+const { differenceInCalendarDays } = require('date-fns');
 
 const genBillNo = async () => {
   const count = await prisma.bill.count();
@@ -254,7 +255,7 @@ exports.agingReport = async (req, res, next) => {
 
     const report = bills.map((b) => {
       const due = new Date(b.dueDate);
-      const daysOverdue = Math.max(0, Math.floor((today - due) / 86400000));
+      const daysOverdue = Math.max(0, differenceInCalendarDays(today, due));
       const outstanding = Number(b.totalAmount) - Number(b.paidAmount);
       return {
         billNo: b.billNo, vendor: vendorNames[b.vendorId] || 'Unknown vendor',
