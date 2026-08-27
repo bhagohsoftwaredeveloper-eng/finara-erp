@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { payable as pApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   RefreshCw, AlertCircle, CheckCircle2, Clock, TrendingDown,
-  Building2, ChevronDown, ChevronUp, Download, Filter
+  Building2, ChevronDown, ChevronUp, Download, Filter, ListFilter
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import {
@@ -13,10 +13,20 @@ import {
 } from 'recharts';
 
 // ─── Constants ────────────────────────────────────────────────
-const BUCKETS = ['Current', '1-30 days', '31-60 days', '61-90 days', 'Over 90 days'];
+const BUCKETS = [
+  'Due Today', 'This Week', 'Next Week', 'This Month', 'Later',
+  '1-30 days', '31-60 days', '61-90 days', 'Over 90 days',
+];
+const NOT_YET_DUE_BUCKETS = ['Due Today', 'This Week', 'Next Week', 'This Month', 'Later'];
+const OVERDUE_BUCKETS = ['1-30 days', '31-60 days', '61-90 days', 'Over 90 days'];
+const OPTIONAL_BUCKETS = ['31-60 days', '61-90 days', 'Over 90 days'];
 
 const BUCKET_COLORS = {
-  'Current':       '#22c55e',
+  'Due Today':     '#0ea5e9',
+  'This Week':     '#16a34a',
+  'Next Week':     '#4ade80',
+  'This Month':    '#a3e635',
+  'Later':         '#94a3b8',
   '1-30 days':     '#eab308',
   '31-60 days':    '#f97316',
   '61-90 days':    '#ef4444',
@@ -24,7 +34,11 @@ const BUCKET_COLORS = {
 };
 
 const BUCKET_BADGE = {
-  'Current':       'badge-green',
+  'Due Today':     'badge-blue',
+  'This Week':     'badge-green',
+  'Next Week':     'text-lime-700 bg-lime-100 badge',
+  'This Month':    'text-yellow-700 bg-yellow-100 badge',
+  'Later':         'badge-gray',
   '1-30 days':     'badge-yellow',
   '31-60 days':    'text-orange-700 bg-orange-100 badge',
   '61-90 days':    'badge-red',
@@ -47,8 +61,44 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
+// ─── Bucket Filter Dropdown ─────────────────────────────────────
+function BucketFilterDropdown({ hidden, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="btn-secondary text-sm py-1.5">
+        <ListFilter className="w-3.5 h-3.5" /> Buckets
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-52 card p-2 z-10 shadow-lg">
+          {OPTIONAL_BUCKETS.map((bucket) => (
+            <label key={bucket} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-gray-50 rounded-lg">
+              <input
+                type="checkbox"
+                checked={!hidden.has(bucket)}
+                onChange={() => onToggle(bucket)}
+              />
+              <span style={{ color: BUCKET_COLORS[bucket] }}>{bucket}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Vendor Group Row ─────────────────────────────────────────
-function VendorRow({ vendorName, items }) {
+function VendorRow({ vendorName, items, buckets }) {
   const [expanded, setExpanded] = useState(false);
   const total = items.reduce((s, i) => s + i.outstanding, 0);
   const bucketTotals = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
@@ -71,7 +121,7 @@ function VendorRow({ vendorName, items }) {
             <span className="badge-gray text-xs">{items.length} bill{items.length !== 1 ? 's' : ''}</span>
           </div>
         </td>
-        {BUCKETS.map((bucket) => (
+        {buckets.map((bucket) => (
           <td key={bucket} className="text-right py-3">
             {bucketTotals[bucket] > 0 ? (
               <span style={{ color: BUCKET_COLORS[bucket] }} className="font-medium text-sm">
@@ -100,7 +150,7 @@ function VendorRow({ vendorName, items }) {
               <span className="text-xs text-gray-400 ml-2">Due: {formatDate(item.dueDate)}</span>
             </div>
           </td>
-          {BUCKETS.map((bucket) => (
+          {buckets.map((bucket) => (
             <td key={bucket} className="text-right py-2">
               {item.bucket === bucket ? (
                 <span style={{ color: BUCKET_COLORS[bucket] }} className="font-medium text-sm">
@@ -115,7 +165,7 @@ function VendorRow({ vendorName, items }) {
             <span className="text-sm font-medium">{formatCurrency(item.outstanding)}</span>
           </td>
           <td className="py-2 pr-2 text-center">
-            <span className={`${BUCKET_BADGE[item.bucket]} text-xs`}>{item.daysOverdue === 0 ? 'Current' : `${item.daysOverdue}d`}</span>
+            <span className={`${BUCKET_BADGE[item.bucket]} text-xs`}>{item.daysOverdue > 0 ? `${item.daysOverdue}d` : item.bucket}</span>
           </td>
         </tr>
       ))}
@@ -129,6 +179,15 @@ export default function APAgingPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState('');
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [hiddenOptional, setHiddenOptional] = useState(() => new Set());
+
+  const toggleOptionalBucket = (bucket) => {
+    setHiddenOptional((prev) => {
+      const next = new Set(prev);
+      if (next.has(bucket)) next.delete(bucket); else next.add(bucket);
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,6 +213,8 @@ export default function APAgingPage() {
 
   if (!data) return null;
 
+  const visibleBuckets = BUCKETS.filter((b) => !OPTIONAL_BUCKETS.includes(b) || !hiddenOptional.has(b));
+
   // Group items by vendor
   const grouped = {};
   const filtered = data.items.filter((i) =>
@@ -165,15 +226,17 @@ export default function APAgingPage() {
   });
 
   // Chart data
-  const chartData = BUCKETS.map((bucket) => ({
+  const chartData = visibleBuckets.map((bucket) => ({
     name: bucket,
     amount: data.summary[bucket] || 0,
     count: data.items.filter((i) => i.bucket === bucket).length,
   }));
 
   const totalOutstanding = data.total;
-  const overdueTotal = BUCKETS.slice(1).reduce((s, b) => s + (data.summary[b] || 0), 0);
-  const overdueCount = data.items.filter((i) => i.bucket !== 'Current').length;
+  const overdueTotal = OVERDUE_BUCKETS.reduce((s, b) => s + (data.summary[b] || 0), 0);
+  const overdueCount = data.items.filter((i) => OVERDUE_BUCKETS.includes(i.bucket)).length;
+  const notYetDueTotal = NOT_YET_DUE_BUCKETS.reduce((s, b) => s + (data.summary[b] || 0), 0);
+  const notYetDueCount = data.items.filter((i) => NOT_YET_DUE_BUCKETS.includes(i.bucket)).length;
 
   // Worst bucket by amount
   const worstBucket = [...BUCKETS].reverse().find((b) => data.summary[b] > 0) || 'Current';
@@ -202,9 +265,9 @@ export default function APAgingPage() {
           <p className="text-xs text-gray-400 mt-1">{data.items.length} open bill{data.items.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="card p-5 border-l-4 border-l-green-500">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Current (Not Due)</p>
-          <p className="text-2xl font-bold text-green-600">{formatCurrency(data.summary['Current'] || 0)}</p>
-          <p className="text-xs text-gray-400 mt-1">{data.items.filter(i => i.bucket === 'Current').length} bills</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Not Yet Due</p>
+          <p className="text-2xl font-bold text-green-600">{formatCurrency(notYetDueTotal)}</p>
+          <p className="text-xs text-gray-400 mt-1">{notYetDueCount} bills</p>
         </div>
         <div className="card p-5 border-l-4 border-l-red-500">
           <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Overdue</p>
@@ -261,7 +324,7 @@ export default function APAgingPage() {
             <h3 className="font-semibold text-gray-900">Bucket Summary</h3>
           </div>
           <div className="divide-y divide-gray-100">
-            {BUCKETS.map((bucket) => {
+            {visibleBuckets.map((bucket) => {
               const amount = data.summary[bucket] || 0;
               const count  = data.items.filter((i) => i.bucket === bucket).length;
               const pct    = totalOutstanding > 0 ? (amount / totalOutstanding) * 100 : 0;
@@ -325,6 +388,7 @@ export default function APAgingPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
+            <BucketFilterDropdown hidden={hiddenOptional} onToggle={toggleOptionalBucket} />
           </div>
         </div>
 
@@ -333,7 +397,7 @@ export default function APAgingPage() {
             <thead>
               <tr>
                 <th className="pl-4 min-w-48">Vendor</th>
-                {BUCKETS.map((b) => (
+                {visibleBuckets.map((b) => (
                   <th key={b} className="text-right whitespace-nowrap">
                     <span style={{ color: BUCKET_COLORS[b] }}>{b}</span>
                   </th>
@@ -345,7 +409,7 @@ export default function APAgingPage() {
             <tbody>
               {Object.keys(grouped).length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-gray-400">
+                  <td colSpan={visibleBuckets.length + 3} className="text-center py-12 text-gray-400">
                     {search ? 'No vendors match your search.' : 'No outstanding payables. You are all caught up! 🎉'}
                   </td>
                 </tr>
@@ -355,7 +419,7 @@ export default function APAgingPage() {
                 const bWorst = [...BUCKETS].reverse().findIndex((bucket) => b.some(i => i.bucket === bucket));
                 return bWorst - aWorst;
               }).map(([vendorName, items]) => (
-                <VendorRow key={vendorName} vendorName={vendorName} items={items} />
+                <VendorRow key={vendorName} vendorName={vendorName} items={items} buckets={visibleBuckets} />
               ))}
             </tbody>
 
@@ -364,7 +428,7 @@ export default function APAgingPage() {
               <tfoot>
                 <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
                   <td className="py-3 pl-4 text-gray-700">TOTAL</td>
-                  {BUCKETS.map((bucket) => {
+                  {visibleBuckets.map((bucket) => {
                     const filteredTotal = filtered
                       .filter((i) => i.bucket === bucket)
                       .reduce((s, i) => s + i.outstanding, 0);
