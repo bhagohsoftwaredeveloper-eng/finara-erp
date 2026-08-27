@@ -242,15 +242,21 @@ exports.agingReport = async (req, res, next) => {
     const today = new Date();
     const bills = await prisma.bill.findMany({
       where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
-      include: { vendor: { select: { name: true } } },
     });
+
+    // Fetch vendor names separately (not via `include`) so a bill whose vendor
+    // was deleted out from under it (orphaned FK) can't crash the whole report —
+    // Prisma throws on `include` when a required relation resolves to null.
+    const vendorIds = [...new Set(bills.map((b) => b.vendorId))];
+    const vendors = await prisma.vendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, name: true } });
+    const vendorNames = Object.fromEntries(vendors.map((v) => [v.id, v.name]));
 
     const report = bills.map((b) => {
       const due = new Date(b.dueDate);
       const daysOverdue = Math.max(0, Math.floor((today - due) / 86400000));
       const outstanding = Number(b.totalAmount) - Number(b.paidAmount);
       return {
-        billNo: b.billNo, vendor: b.vendor.name,
+        billNo: b.billNo, vendor: vendorNames[b.vendorId] || 'Unknown vendor',
         dueDate: b.dueDate, outstanding, daysOverdue,
         bucket: daysOverdue === 0 ? 'Current'
           : daysOverdue <= 30  ? '1-30 days'

@@ -363,14 +363,22 @@ exports.agingReport = async (req, res, next) => {
     const today = new Date();
     const invoices = await prisma.invoice.findMany({
       where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
-      include: { customer: { select: { name: true } } },
     });
+
+    // Fetch customer names separately (not via `include`) so an invoice whose
+    // customer was deleted out from under it (orphaned FK) can't crash the
+    // whole report — Prisma throws on `include` when a required relation
+    // resolves to null.
+    const customerIds = [...new Set(invoices.map((inv) => inv.customerId))];
+    const customers = await prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, name: true } });
+    const customerNames = Object.fromEntries(customers.map((c) => [c.id, c.name]));
+
     const report = invoices.map((inv) => {
       const due = new Date(inv.dueDate);
       const daysOverdue = Math.max(0, Math.floor((today - due) / 86400000));
       const outstanding = Number(inv.totalAmount) - Number(inv.paidAmount);
       return {
-        invoiceNo: inv.invoiceNo, customer: inv.customer.name, customerId: inv.customerId,
+        invoiceNo: inv.invoiceNo, customer: customerNames[inv.customerId] || 'Unknown customer', customerId: inv.customerId,
         dueDate: inv.dueDate, outstanding, daysOverdue, notes: inv.notes,
         bucket: daysOverdue === 0 ? 'Current'
           : daysOverdue <= 30 ? '1-30 days'
