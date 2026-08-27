@@ -4,6 +4,7 @@ const { computeVAT } = require('../utils/phCompliance');
 const glPost = require('../utils/glPost');
 const logger = require('../utils/logger');
 const { recordAudit } = require('../utils/audit');
+const { AGING_BUCKETS, classifyUpcomingBucket } = require('../utils/apAgingBuckets');
 
 const genBillNo = async () => {
   const count = await prisma.bill.count();
@@ -258,7 +259,7 @@ exports.agingReport = async (req, res, next) => {
       return {
         billNo: b.billNo, vendor: vendorNames[b.vendorId] || 'Unknown vendor',
         dueDate: b.dueDate, outstanding, daysOverdue,
-        bucket: daysOverdue === 0 ? 'Current'
+        bucket: daysOverdue === 0 ? classifyUpcomingBucket(due, today)
           : daysOverdue <= 30  ? '1-30 days'
           : daysOverdue <= 60  ? '31-60 days'
           : daysOverdue <= 90  ? '61-90 days'
@@ -266,7 +267,7 @@ exports.agingReport = async (req, res, next) => {
       };
     });
 
-    const buckets = ['Current','1-30 days','31-60 days','61-90 days','Over 90 days'];
+    const buckets = AGING_BUCKETS;
     const summary = Object.fromEntries(buckets.map((b) => [b, report.filter((r) => r.bucket === b).reduce((s, r) => s + r.outstanding, 0)]));
     res.json({ items: report, summary, total: report.reduce((s, r) => s + r.outstanding, 0) });
   } catch (err) { next(err); }
