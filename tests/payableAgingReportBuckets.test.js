@@ -93,4 +93,15 @@ describe('agingReport — due-date buckets', () => {
     expect(summedSummary).toBe(result.total);
     expect(result.total).toBe(100 + 250 + 400 + 900);
   });
+
+  test('includes vendorId and notes on every item', async () => {
+    prisma.bill.findMany.mockResolvedValue([
+      { billNo: 'BILL-L', vendorId: 7, dueDate: new Date('2026-08-03'), totalAmount: 500, paidAmount: 0, notes: 'Rush order' },
+    ]);
+    prisma.vendor.findMany.mockResolvedValue([{ id: 7, name: 'Acme Supply' }]);
+
+    const result = await run(ctrl.agingReport, {});
+
+    expect(result.items[0]).toMatchObject({ vendorId: 7, notes: 'Rush order' });
+  });
 });

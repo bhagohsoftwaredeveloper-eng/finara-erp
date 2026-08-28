@@ -127,13 +127,22 @@ exports.listBills = async (req, res, next) => {
     const [bills, total] = await Promise.all([
       prisma.bill.findMany({
         where,
-        include: { vendor: { select: { name: true, vendorCode: true } }, lines: true },
+        include: { lines: true, payments: { orderBy: { paymentDate: 'asc' } } },
         orderBy: { billDate: 'desc' },
         skip: (Number(page)-1)*Number(limit), take: Number(limit),
       }),
       prisma.bill.count({ where }),
     ]);
-    res.json({ data: bills, total, page: Number(page), pages: Math.ceil(total/Number(limit)) });
+
+    // Fetch vendors separately (not via `include`) so a bill whose vendor was
+    // deleted out from under it (orphaned FK) can't crash the whole list —
+    // Prisma throws on `include` when a required relation resolves to null.
+    const vendorIds = [...new Set(bills.map((b) => b.vendorId))];
+    const vendors = await prisma.vendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, name: true, vendorCode: true } });
+    const vendorById = Object.fromEntries(vendors.map((v) => [v.id, v]));
+    const billsWithVendor = bills.map((b) => ({ ...b, vendor: vendorById[b.vendorId] || null }));
+
+    res.json({ data: billsWithVendor, total, page: Number(page), pages: Math.ceil(total/Number(limit)) });
   } catch (err) { next(err); }
 };
 
@@ -142,13 +151,16 @@ exports.getBill = async (req, res, next) => {
     const bill = await prisma.bill.findUnique({
       where: { id: Number(req.params.id) },
       include: {
-        vendor: true,
         lines: { include: { account: { select: { accountCode: true, accountName: true } } } },
         payments: true,
       },
     });
     if (!bill) throw createError('Bill not found', 404);
-    res.json(bill);
+
+    // Fetch vendor separately — same orphaned-FK protection as listBills, so
+    // a bill whose vendor was deleted is still viewable/voidable/editable.
+    const vendor = await prisma.vendor.findUnique({ where: { id: bill.vendorId } });
+    res.json({ ...bill, vendor });
   } catch (err) { next(err); }
 };
 
@@ -353,8 +365,8 @@ exports.agingReport = async (req, res, next) => {
       const daysOverdue = Math.max(0, differenceInCalendarDays(today, due));
       const outstanding = Number(b.totalAmount) - Number(b.paidAmount);
       return {
-        billNo: b.billNo, vendor: vendorNames[b.vendorId] || 'Unknown vendor',
-        dueDate: b.dueDate, outstanding, daysOverdue,
+        billNo: b.billNo, vendor: vendorNames[b.vendorId] || 'Unknown vendor', vendorId: b.vendorId,
+        dueDate: b.dueDate, outstanding, daysOverdue, notes: b.notes,
         bucket: daysOverdue === 0 ? classifyUpcomingBucket(due, today)
           : daysOverdue <= 30  ? '1-30 days'
           : daysOverdue <= 60  ? '31-60 days'
