@@ -4,10 +4,11 @@ jest.mock('../server/config/database', () => ({
     update: jest.fn(),
   },
   journalEntry: {
-    findFirst: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
   },
 }));
+jest.mock('../server/utils/audit', () => ({ recordAudit: jest.fn() }));
 
 const prisma = require('../server/config/database');
 const ctrl = require('../server/controllers/payableController');
@@ -31,29 +32,52 @@ describe('voidBill — GL correction', () => {
     expect(prisma.bill.update).not.toHaveBeenCalled();
   });
 
-  test('voids the existing POSTED journal entry (scoped to businessId) when voiding a bill', async () => {
+  test('voids every POSTED journal entry sharing the bill\'s reference (scoped to businessId)', async () => {
     prisma.bill.findUnique.mockResolvedValue({ ...baseBill, paidAmount: 0 });
     prisma.bill.update.mockResolvedValue({ ...baseBill, status: 'VOID' });
-    prisma.journalEntry.findFirst.mockResolvedValue({ id: 88, entryNo: 'JE-1-000088' });
+    prisma.journalEntry.findMany.mockResolvedValue([
+      { id: 88, entryNo: 'JE-1-000088' },
+      { id: 91, entryNo: 'JE-1-000091' },
+    ]);
     prisma.journalEntry.update.mockResolvedValue({});
 
     await run(ctrl.voidBill, { params: { id: '7' } });
 
-    expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith(
+    expect(prisma.journalEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ businessId: 1, reference: 'BILL-000007', status: 'POSTED' }) })
     );
+    expect(prisma.journalEntry.update).toHaveBeenCalledTimes(2);
     expect(prisma.journalEntry.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 88 }, data: { status: 'VOIDED' } })
+    );
+    expect(prisma.journalEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 91 }, data: { status: 'VOIDED' } })
     );
   });
 
   test('proceeds without voiding anything when no prior POSTED entry is found', async () => {
     prisma.bill.findUnique.mockResolvedValue({ ...baseBill, paidAmount: 0 });
     prisma.bill.update.mockResolvedValue({ ...baseBill, status: 'VOID' });
-    prisma.journalEntry.findFirst.mockResolvedValue(null);
+    prisma.journalEntry.findMany.mockResolvedValue([]);
 
     await run(ctrl.voidBill, { params: { id: '7' } });
 
     expect(prisma.journalEntry.update).not.toHaveBeenCalled();
+  });
+
+  test('one entry failing to void does not stop the others', async () => {
+    prisma.bill.findUnique.mockResolvedValue({ ...baseBill, paidAmount: 0 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, status: 'VOID' });
+    prisma.journalEntry.findMany.mockResolvedValue([
+      { id: 88, entryNo: 'JE-1-000088' },
+      { id: 91, entryNo: 'JE-1-000091' },
+    ]);
+    prisma.journalEntry.update
+      .mockRejectedValueOnce(new Error('db hiccup'))
+      .mockResolvedValueOnce({});
+
+    await run(ctrl.voidBill, { params: { id: '7' } });
+
+    expect(prisma.journalEntry.update).toHaveBeenCalledTimes(2);
   });
 });
