@@ -30,6 +30,52 @@ async function nextVendorCode(businessId) {
   return 'VEN-' + String(max + 1).padStart(3, '0');
 }
 
+// Shared by createBill/updateBill: recompute per-line VAT + running totals.
+// Contra-expense accounts (e.g. Purchase Discounts, Purchase Returns &
+// Allowances — EXPENSE type but normalBalance CREDIT) reduce the subtotal
+// instead of adding to it, so their line amount is negated before VAT is
+// applied.
+async function computeBillTotals(lines) {
+  const accountIds = [...new Set(lines.map((l) => Number(l.accountId)))];
+  const accounts = await prisma.account.findMany({
+    where: { id: { in: accountIds } },
+    select: { id: true, normalBalance: true },
+  });
+  const normalBalanceById = new Map(accounts.map((a) => [a.id, a.normalBalance]));
+
+  let subtotal = 0, vatAmount = 0;
+  const processedLines = lines.map((l) => {
+    const sign = normalBalanceById.get(Number(l.accountId)) === 'CREDIT' ? -1 : 1;
+    const amt = sign * Number(l.quantity) * Number(l.unitPrice);
+    const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
+    subtotal += v.base; vatAmount += v.vat;
+    return { ...l, amount: v.base };
+  });
+  return { subtotal, vatAmount, totalAmount: subtotal + vatAmount, processedLines };
+}
+
+// Shared by createBill/updateBill: DR each expense/cost line (or CR for a
+// contra-expense line, since l.amount is already negative for those,
+// matching their CREDIT normal balance) / DR Input VAT / CR Accounts
+// Payable — Trade.
+function buildBillGLLines(bill) {
+  return [
+    ...bill.lines.map((l) => {
+      const amt = Number(l.amount);
+      return amt < 0
+        ? { accountId: l.accountId, credit: -amt, description: l.description }
+        : { accountId: l.accountId, debit: amt, description: l.description };
+    }),
+    ...(Number(bill.vatAmount) > 0 ? [{
+      accountCode: '1330', debit: Number(bill.vatAmount), description: 'Input VAT',
+    }] : []),
+    {
+      accountCode: '2010', credit: Number(bill.totalAmount),
+      description: `AP — ${bill.vendor.name} (${bill.billNo})`,
+    },
+  ];
+}
+
 exports.listVendors = async (req, res, next) => {
   try {
     const { search, active } = req.query;
@@ -109,15 +155,7 @@ exports.getBill = async (req, res, next) => {
 exports.createBill = async (req, res, next) => {
   try {
     const { vendorId, billDate, dueDate, description, notes, lines } = req.body;
-
-    let subtotal = 0, vatAmount = 0;
-    const processedLines = lines.map((l) => {
-      const amt = Number(l.quantity) * Number(l.unitPrice);
-      const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
-      subtotal  += v.base;
-      vatAmount += v.vat;
-      return { ...l, amount: v.base };
-    });
+    const { subtotal, vatAmount, totalAmount, processedLines } = await computeBillTotals(lines);
 
     const billNo = await genBillNo();
     const bill = await prisma.bill.create({
@@ -125,7 +163,7 @@ exports.createBill = async (req, res, next) => {
         businessId: req.businessId,
         billNo, vendorId: Number(vendorId),
         billDate: new Date(billDate), dueDate: new Date(dueDate),
-        description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
+        description, notes, subtotal, vatAmount, totalAmount,
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
@@ -135,31 +173,11 @@ exports.createBill = async (req, res, next) => {
     });
 
     // ── Auto-post to GL ──────────────────────────────────────────────────────
-    const glLines = [
-      // DR each expense / cost line
-      ...bill.lines.map((l) => ({
-        accountId:   l.accountId,
-        debit:       Number(l.amount),
-        description: l.description,
-      })),
-      // DR Input VAT (if any)
-      ...(Number(bill.vatAmount) > 0 ? [{
-        accountCode: '1330',
-        debit:       Number(bill.vatAmount),
-        description: 'Input VAT',
-      }] : []),
-      // CR Accounts Payable — Trade
-      {
-        accountCode: '2010',
-        credit:      Number(bill.totalAmount),
-        description: `AP — ${bill.vendor.name} (${bill.billNo})`,
-      },
-    ];
     await glPost.safePost({
       entryDate:   bill.billDate,
       description: `AP Bill — ${bill.vendor.name} (${bill.billNo})`,
       reference:   bill.billNo,
-      lines:       glLines,
+      lines:       buildBillGLLines(bill),
       userId:      req.user?.id || 1,
       businessId:  req.businessId,
     });
