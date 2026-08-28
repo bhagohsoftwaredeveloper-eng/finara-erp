@@ -236,6 +236,7 @@ model Bill {
   status      BillStatus @default(OPEN)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+  lastEditedAt DateTime? @db.DateTime(0)
 
   lines       BillLine[]
   payments    PaymentAP[]
