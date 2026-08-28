@@ -222,63 +222,52 @@ exports.recordPayment = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-exports.addBillItems = async (req, res, next) => {
+exports.updateBill = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { editDate, lines } = req.body;
-    const bill = await prisma.bill.findUnique({ where: { id }, include: { vendor: true } });
-    if (!bill || bill.businessId !== req.businessId) throw createError('Bill not found', 404);
-    if (bill.status === 'PAID') throw createError('Cannot add items to a fully paid bill.', 400);
-    if (bill.status === 'VOID') throw createError('Cannot add items to a voided bill.', 400);
+    const bill = await prisma.bill.findFirst({ where: { id, businessId: req.businessId } });
+    if (!bill) throw createError('Bill not found', 404);
+    if (bill.status === 'PAID') throw createError('Cannot edit a fully paid bill.', 400);
+    if (bill.status === 'VOID') throw createError('Cannot edit a voided bill.', 400);
 
-    let incSubtotal = 0, incVat = 0;
-    const processedLines = lines.map((l) => {
-      const amt = Number(l.quantity) * Number(l.unitPrice);
-      const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
-      incSubtotal += v.base;
-      incVat += v.vat;
-      return { ...l, amount: v.base };
-    });
-    const incTotal = incSubtotal + incVat;
+    const { vendorId, billDate, dueDate, description, notes, lines } = req.body;
+    const { subtotal, vatAmount, totalAmount, processedLines } = await computeBillTotals(lines);
+
+    if (totalAmount < Number(bill.paidAmount) - 0.01) {
+      throw createError(
+        `New total (₱${totalAmount.toFixed(2)}) is less than the amount already paid (₱${Number(bill.paidAmount).toFixed(2)}). Adjust line items so the total covers what's been paid.`,
+        400
+      );
+    }
+
+    const remaining = totalAmount - Number(bill.paidAmount);
+    const status = remaining <= 0.01 ? 'PAID' : (Number(bill.paidAmount) > 0 ? 'PARTIAL' : bill.status);
 
     const updated = await prisma.bill.update({
       where: { id },
       data: {
-        subtotal: { increment: incSubtotal },
-        vatAmount: { increment: incVat },
-        totalAmount: { increment: incTotal },
-        lastEditedAt: new Date(editDate),
-        lines: { create: processedLines.map((l) => ({
-          accountId: Number(l.accountId), description: l.description,
-          quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
-        })) },
+        vendorId: Number(vendorId),
+        billDate: new Date(billDate),
+        dueDate: new Date(dueDate),
+        description, notes, subtotal, vatAmount, totalAmount, status,
+        lines: {
+          deleteMany: {},
+          create: processedLines.map((l) => ({
+            accountId: Number(l.accountId), description: l.description,
+            quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+          })),
+        },
       },
-      include: { vendor: true, lines: { include: { account: { select: { accountCode: true, accountName: true } } } } },
+      include: { vendor: true, lines: { include: { account: { select: { accountCode: true, accountName: true } } } }, payments: true },
     });
 
-    // ── Auto-post incremental GL entry ────────────────────────────────────────
-    const glLines = [
-      ...processedLines.map((l) => ({
-        accountId:   Number(l.accountId),
-        debit:       Number(l.amount),
-        description: l.description,
-      })),
-      ...(incVat > 0 ? [{
-        accountCode: '1330',
-        debit:       incVat,
-        description: 'Input VAT',
-      }] : []),
-      {
-        accountCode: '2010',
-        credit:      incTotal,
-        description: `AP — ${bill.vendor.name} (${bill.billNo}) — item added`,
-      },
-    ];
+    // ── GL correction: void every prior posted entry, post a fresh one ───────
+    await voidPostedEntriesByReference(bill.businessId, bill.billNo, req, 'BILL EDIT');
     await glPost.safePost({
-      entryDate:   editDate,
-      description: `AP Bill Edit — ${bill.vendor.name} (${bill.billNo})`,
-      reference:   bill.billNo,
-      lines:       glLines,
+      entryDate:   updated.billDate,
+      description: `AP Bill (Edited) — ${updated.vendor.name} (${updated.billNo})`,
+      reference:   updated.billNo,
+      lines:       buildBillGLLines(updated),
       userId:      req.user?.id || 1,
       businessId:  req.businessId,
     });

@@ -37,10 +37,12 @@ router.post('/:id/payment',
     body('paymentMethod').notEmpty(),
   ],
   validate, ctrl.recordPayment);
-router.post('/:id/lines',
+router.put('/:id',
   [
     param('id').isInt(),
-    body('editDate').isISO8601(),
+    body('vendorId').isInt(),
+    body('billDate').isISO8601(),
+    body('dueDate').isISO8601(),
     body('lines').isArray({ min: 1 }),
     body('lines.*.accountId').isInt(),
     body('lines.*.description').notEmpty(),
@@ -48,7 +50,7 @@ router.post('/:id/lines',
     body('lines.*.unitPrice').isFloat({ min: 0 }),
     body('lines.*.vatCode').isIn(['VAT','EXEMPT','ZERO']),
   ],
-  validate, ctrl.addBillItems);
+  validate, ctrl.updateBill);
 router.post('/:id/void', authorize('ADMIN','MANAGER'), param('id').isInt(), validate, ctrl.voidBill);
 
 module.exports = router;
