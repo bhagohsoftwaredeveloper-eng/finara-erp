@@ -204,4 +204,24 @@ describe('updateBill — GL correction', () => {
     expect(prisma.journalEntry.update).not.toHaveBeenCalled();
     expect(glPost.safePost).toHaveBeenCalledTimes(1);
   });
+
+  test('records a GL_POST_FAILED audit entry when the GL correction is skipped rather than posted', async () => {
+    const { recordAudit } = require('../server/utils/audit');
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'OPEN', paidAmount: 0 });
+    prisma.bill.update.mockResolvedValue({
+      id: 7, billNo: 'BILL-000007', billDate: new Date('2026-08-11'),
+      totalAmount: 1120, vatAmount: 120, vendor: { name: 'Triplekenn Supply' },
+      lines: [{ accountId: 10, amount: 1000, description: 'Item A' }],
+    });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ skipped: 'PRE_CUTOVER' });
+
+    await run(ctrl.updateBill, { params: { id: '7' }, body: editBody });
+
+    expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'GL_POST_FAILED',
+      entity: 'JournalEntry',
+      entityId: 'BILL-000007',
+    }));
+  });
 });

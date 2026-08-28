@@ -263,7 +263,7 @@ exports.updateBill = async (req, res, next) => {
 
     // ── GL correction: void every prior posted entry, post a fresh one ───────
     await voidPostedEntriesByReference(bill.businessId, bill.billNo, req, 'BILL EDIT');
-    await glPost.safePost({
+    const glResult = await glPost.safePost({
       entryDate:   updated.billDate,
       description: `AP Bill (Edited) — ${updated.vendor.name} (${updated.billNo})`,
       reference:   updated.billNo,
@@ -271,6 +271,23 @@ exports.updateBill = async (req, res, next) => {
       userId:      req.user?.id || 1,
       businessId:  req.businessId,
     });
+    // safePost never throws — a null result means it already caught and
+    // audited a real failure, but a `.skipped` result (e.g. pre-cutover)
+    // posts nothing AND audits nothing on its own. Either way the prior
+    // entry is already voided, so staying silent here would drop the
+    // bill's GL impact from the ledger with no way to find it again.
+    if (!glResult || glResult.skipped) {
+      try {
+        await recordAudit({
+          action:     'GL_POST_FAILED',
+          entity:     'JournalEntry',
+          entityId:   updated.billNo,
+          summary:    `Bill ${updated.billNo} was edited but its corrected GL entry did not post (${glResult?.skipped ? `skipped: ${glResult.skipped}` : 'failed'}) — its expense/AP impact may be missing from the ledger.`,
+          user:       req.user?.id ? { id: req.user.id } : undefined,
+          businessId: req.businessId,
+        });
+      } catch { /* auditing must never break anything either */ }
+    }
 
     res.json(updated);
   } catch (err) { next(err); }
