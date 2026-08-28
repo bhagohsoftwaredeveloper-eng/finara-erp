@@ -54,14 +54,6 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
     }));
   };
 
-  const changeQty = (key, next) => {
-    setCart((c) => c.map((l) => {
-      if (l.key !== key) return l;
-      const max = l.stockCap === Infinity ? Infinity : Math.max(1, Math.floor(l.stockCap) || 1);
-      return { ...l, quantity: Math.max(1, Math.min(next, max)) };
-    }));
-  };
-
   const lineTotal = (l) => Math.round(Number(l.quantity) * Number(l.unitPrice) * 100) / 100;
   const subtotal = cart.reduce((s, l) => s + lineTotal(l), 0);
   const vat = form.vatCode === 'VAT' ? Math.round(subtotal * 0.12 * 100) / 100 : 0;
@@ -182,11 +174,8 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            <div className="flex items-center justify-center border border-gray-300 rounded-lg overflow-hidden w-fit mx-auto">
-                              <button type="button" onClick={() => changeQty(l.key, l.quantity - 1)} className="px-2 py-1 text-gray-600 hover:bg-gray-100">−</button>
-                              <span className="px-2 text-sm font-semibold">{l.quantity}</span>
-                              <button type="button" onClick={() => changeQty(l.key, l.quantity + 1)} className="px-2 py-1 text-gray-600 hover:bg-gray-100">+</button>
-                            </div>
+                            <NumberInput decimals={3} className="input text-center" value={String(l.quantity)}
+                              onChange={(v) => updateLine(l.key, { quantity: Number(v) || 0 })} />
                           </td>
                           <td className="px-3 py-2">
                             <NumberInput className="input text-right" value={String(l.unitPrice)}
