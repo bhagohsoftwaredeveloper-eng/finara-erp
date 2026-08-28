@@ -209,7 +209,7 @@ exports.addBillItems = async (req, res, next) => {
     const id = Number(req.params.id);
     const { editDate, lines } = req.body;
     const bill = await prisma.bill.findUnique({ where: { id }, include: { vendor: true } });
-    if (!bill) throw createError('Bill not found', 404);
+    if (!bill || bill.businessId !== req.businessId) throw createError('Bill not found', 404);
     if (bill.status === 'PAID') throw createError('Cannot add items to a fully paid bill.', 400);
     if (bill.status === 'VOID') throw createError('Cannot add items to a voided bill.', 400);
 

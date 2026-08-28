@@ -22,6 +22,16 @@ const baseBill = {
 };
 
 describe('addBillItems', () => {
+  test('rejects adding items to a bill owned by a different business', async () => {
+    prisma.bill.findUnique.mockResolvedValue({ ...baseBill, businessId: 2 });
+
+    await expect(run(ctrl.addBillItems, {
+      params: { id: '7' },
+      body: { editDate: '2026-08-28', lines: [{ accountId: 1, description: 'Extra item', quantity: 1, unitPrice: 100, vatCode: 'EXEMPT' }] },
+    })).rejects.toMatchObject({ statusCode: 404 });
+    expect(prisma.bill.update).not.toHaveBeenCalled();
+  });
+
   test('rejects adding items to a fully paid bill', async () => {
     prisma.bill.findUnique.mockResolvedValue({ ...baseBill, status: 'PAID' });
 
