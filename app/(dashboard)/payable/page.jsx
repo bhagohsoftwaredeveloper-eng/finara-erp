@@ -658,9 +658,10 @@ export default function BillsPage() {
         </tr>`;
       }).join('');
 
-      const totalAmt     = all.reduce((s, b) => s + Number(b.totalAmount), 0);
-      const totalPaid    = all.reduce((s, b) => s + Number(b.paidAmount), 0);
-      const totalBalance = totalAmt - totalPaid;
+      const nonVoid       = all.filter((b) => b.status !== 'VOID');
+      const totalAmt      = nonVoid.reduce((s, b) => s + Number(b.totalAmount), 0);
+      const totalPaid     = nonVoid.reduce((s, b) => s + Number(b.paidAmount), 0);
+      const totalBalance  = totalAmt - totalPaid;
 
       const subtitle = [
         filter.status   && `Status: ${filter.status}`,
@@ -680,7 +681,7 @@ export default function BillsPage() {
           <tbody>${rows}</tbody>
           <tfoot>
             <tr>
-              <td colspan="4" class="right">TOTAL (${all.length} bill${all.length !== 1 ? 's' : ''})</td>
+              <td colspan="4" class="right">TOTAL (${nonVoid.length} bill${nonVoid.length !== 1 ? 's' : ''})</td>
               <td class="right mono">${phpFmt(totalAmt)}</td>
               <td class="right mono">${phpFmt(totalPaid)}</td>
               <td class="right mono">${phpFmt(totalBalance)}</td>
@@ -718,8 +719,8 @@ export default function BillsPage() {
         {[
           { label: 'Open Payables',    value: formatCurrency(summary.open),    sub: `${summary.openCount} bills`,   color: 'bg-blue-100 text-blue-600',   icon: <Clock className="w-5 h-5" /> },
           { label: 'Overdue',          value: formatCurrency(summary.overdue),  sub: 'Past due date',                color: 'bg-red-100 text-red-600',     icon: <AlertCircle className="w-5 h-5" /> },
-          { label: 'Page Subtotal',    value: formatCurrency(bills.reduce((s,b) => s+Number(b.totalAmount),0)), sub: 'shown records', color: 'bg-gray-100 text-gray-600', icon: <FileText className="w-5 h-5" /> },
-          { label: 'Page Paid',        value: formatCurrency(bills.reduce((s,b) => s+Number(b.paidAmount),0)),  sub: 'collected',    color: 'bg-green-100 text-green-600', icon: <CheckCircle2 className="w-5 h-5" /> },
+          { label: 'Page Subtotal',    value: formatCurrency(bills.filter((b) => b.status !== 'VOID').reduce((s,b) => s+Number(b.totalAmount),0)), sub: 'shown records', color: 'bg-gray-100 text-gray-600', icon: <FileText className="w-5 h-5" /> },
+          { label: 'Page Paid',        value: formatCurrency(bills.filter((b) => b.status !== 'VOID').reduce((s,b) => s+Number(b.paidAmount),0)),  sub: 'collected',    color: 'bg-green-100 text-green-600', icon: <CheckCircle2 className="w-5 h-5" /> },
         ].map((s) => (
           <div key={s.label} className="card p-4 flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${s.color}`}>{s.icon}</div>
