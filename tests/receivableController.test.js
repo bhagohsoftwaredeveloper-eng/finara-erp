@@ -4,6 +4,9 @@ jest.mock('../server/config/database', () => ({
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  account: {
+    findMany: jest.fn(),
+  },
   journalEntry: {
     findFirst: jest.fn(),
     update: jest.fn(),
@@ -20,7 +23,10 @@ const run = (fn, req) => new Promise((resolve, reject) => {
   fn({ businessId: 1, params: {}, query: {}, body: {}, ...req }, { json: resolve, status: () => ({ json: resolve }) }, reject);
 });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  prisma.account.findMany.mockResolvedValue([{ id: 10, normalBalance: 'CREDIT' }]);
+});
 
 const baseInvoice = {
   id: 5, businessId: 1, invoiceNo: 'INV-000005', status: 'OPEN',
