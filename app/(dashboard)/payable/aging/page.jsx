@@ -4,9 +4,12 @@ import { payable as pApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   RefreshCw, AlertCircle, CheckCircle2, Clock, TrendingDown,
-  Building2, ChevronDown, ChevronUp, Download, Filter, ListFilter
+  Building2, ChevronDown, ChevronUp, Download, Filter, ListFilter,
+  Printer, FileSpreadsheet
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { printDocument, phpFmt, dateFmt } from '@/lib/print';
+import { exportToExcel } from '@/lib/export';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Cell, Legend
@@ -44,6 +47,193 @@ const BUCKET_BADGE = {
   '61-90 days':    'badge-red',
   'Over 90 days':  'bg-red-900 text-white badge',
 };
+
+// ─── Print a per-vendor Statement of Account (outstanding bills only) ──────
+// Each bill row is followed by its payment history (if any were recorded
+// against it) so the reader can see exactly what was paid and when.
+async function printVendorStatement(vendorName, outstandingItems) {
+  const total = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rows = outstandingItems
+    .slice()
+    .sort((a, b) => b.daysOverdue - a.daysOverdue)
+    .map((i) => {
+      // `payments` is undefined when the source list didn't fetch payment history at
+      // all (e.g. the main aging table) — omit the section rather than claim "none".
+      const paymentRows = !Array.isArray(i.payments) ? '' : i.payments.length
+        ? i.payments.map((p) => `
+          <tr>
+            <td class="small gray" style="padding-left:20px;">↳ ${esc(p.paymentNo)}</td>
+            <td class="small gray">${dateFmt(p.paymentDate)}</td>
+            <td class="small gray">${esc(p.paymentMethod)}${p.reference ? ` · Ref: ${esc(p.reference)}` : ''}</td>
+            <td class="right small gray">${phpFmt(p.amount)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="4" class="small gray" style="padding-left:20px;font-style:italic;">No payments recorded yet</td></tr>`;
+      return `
+      <tr>
+        <td class="mono">${i.billNo}</td>
+        <td>${dateFmt(i.dueDate)}</td>
+        <td><span class="badge" style="background:${BUCKET_COLORS[i.bucket]}22;color:${BUCKET_COLORS[i.bucket]}">${i.bucket}</span></td>
+        <td class="right bold">${phpFmt(i.outstanding)}</td>
+      </tr>
+      ${i.notes ? `<tr><td colspan="4" class="small gray" style="padding-top:0;">Note: ${esc(i.notes)}</td></tr>` : ''}
+      ${paymentRows}`;
+    })
+    .join('');
+
+  const body = `
+    <div class="info-grid" style="grid-template-columns:1fr;">
+      <div class="info-box"><div class="info-lbl">Vendor</div><div class="info-val">${vendorName}</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Bill #</th><th>Due Date</th><th>Aging</th><th class="right">Outstanding</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="3">TOTAL OUTSTANDING</td><td class="right">${phpFmt(total)}</td></tr></tfoot>
+    </table>
+    <p class="small gray" style="margin-top:10px;">This statement reflects open and partially paid bills only, with their payment history, as of the print date above.</p>`;
+
+  await printDocument('Statement of Account', vendorName, body);
+}
+
+// ─── Print ALL vendors, alphabetically, each with their full bill history ──
+async function printAllVendorsSummary(vendorGroups) {
+  const alphabetical = vendorGroups.slice().sort(([a], [b]) => a.localeCompare(b));
+
+  const grandTotals = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
+  let grandTotal = 0;
+  let billCount = 0;
+
+  const sections = alphabetical.map(([vendorName, items]) => {
+    const bucketTotals = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
+    items.forEach((i) => { bucketTotals[i.bucket] = (bucketTotals[i.bucket] || 0) + i.outstanding; });
+    const total = items.reduce((s, i) => s + i.outstanding, 0);
+    BUCKETS.forEach((b) => { grandTotals[b] += bucketTotals[b]; });
+    grandTotal += total;
+    billCount += items.length;
+
+    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const vendorRow = `
+      <tr style="background:#f9fafb;">
+        <td class="bold">${esc(vendorName)} <span class="small gray">(${items.length} bill${items.length !== 1 ? 's' : ''})</span></td>
+        ${BUCKETS.map((b) => `<td class="right mono bold">${bucketTotals[b] > 0 ? phpFmt(bucketTotals[b]) : '—'}</td>`).join('')}
+        <td class="right mono bold">${phpFmt(total)}</td>
+      </tr>`;
+
+    const billRows = items
+      .slice()
+      .sort((a, b) => b.daysOverdue - a.daysOverdue)
+      .map((i) => `
+        <tr>
+          <td class="small gray" style="padding-left:20px;">
+            <span class="mono">${i.billNo}</span> · Due ${dateFmt(i.dueDate)}${i.daysOverdue > 0 ? ` · ${i.daysOverdue}d overdue` : ''}
+          </td>
+          ${BUCKETS.map((b) => `<td class="right mono small">${i.bucket === b ? phpFmt(i.outstanding) : ''}</td>`).join('')}
+          <td class="right mono small">${phpFmt(i.outstanding)}</td>
+        </tr>`)
+      .join('');
+
+    return vendorRow + billRows;
+  }).join('');
+
+  const body = `
+    <table>
+      <thead>
+        <tr>
+          <th>Vendor / Bill</th>
+          ${BUCKETS.map((b) => `<th class="right">${b}</th>`).join('')}
+          <th class="right">Total</th>
+        </tr>
+      </thead>
+      <tbody>${sections}</tbody>
+      <tfoot>
+        <tr>
+          <td class="bold">GRAND TOTAL (${alphabetical.length} vendor${alphabetical.length !== 1 ? 's' : ''}, ${billCount} bill${billCount !== 1 ? 's' : ''})</td>
+          ${BUCKETS.map((b) => `<td class="right mono bold">${phpFmt(grandTotals[b])}</td>`).join('')}
+          <td class="right mono bold">${phpFmt(grandTotal)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <p class="small gray" style="margin-top:10px;">Vendors listed alphabetically, each with their full outstanding bill history. Reflects open and partially paid bills only, as of the print date above.</p>`;
+
+  await printDocument('AP Aging — Detail by Vendor', `${alphabetical.length} vendor${alphabetical.length !== 1 ? 's' : ''} · ${billCount} bill${billCount !== 1 ? 's' : ''}`, body);
+}
+
+// ─── Export a per-vendor Statement of Account to Excel ─────────────────────
+function exportVendorStatement(vendorName, outstandingItems) {
+  const total = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+  const rows = [];
+  outstandingItems
+    .slice()
+    .sort((a, b) => b.daysOverdue - a.daysOverdue)
+    .forEach((i) => {
+      rows.push({ type: 'Bill', billNo: i.billNo, dueDate: i.dueDate, bucket: i.bucket, outstanding: i.outstanding, amount: '', notes: i.notes });
+      // `payments` is undefined when the source list didn't fetch payment history at
+      // all (e.g. the main aging table) — omit the rows rather than claim "none".
+      if (Array.isArray(i.payments)) {
+        if (i.payments.length) {
+          i.payments.forEach((p) => rows.push({
+            type: 'Payment', billNo: `  ↳ ${p.paymentNo}`, dueDate: p.paymentDate, bucket: p.paymentMethod,
+            outstanding: '', amount: Number(p.amount), notes: p.reference || '',
+          }));
+        } else {
+          rows.push({ type: 'Payment', billNo: '  ↳ (none)', dueDate: '', bucket: '', outstanding: '', amount: '', notes: 'No payments recorded yet' });
+        }
+      }
+    });
+  rows.push({ type: '', billNo: '', dueDate: '', bucket: 'TOTAL OUTSTANDING', outstanding: total, amount: '', notes: '' });
+
+  const safeName = vendorName.replace(/[^a-z0-9]+/gi, '-');
+  exportToExcel(
+    rows,
+    [
+      { key: 'billNo', label: 'Bill # / Payment #' },
+      { key: 'dueDate', label: 'Due / Payment Date', format: (v) => (v ? dateFmt(v) : '') },
+      { key: 'bucket', label: 'Aging / Method' },
+      { key: 'outstanding', label: 'Outstanding', format: (v) => (v === '' ? '' : phpFmt(v)) },
+      { key: 'amount', label: 'Amount Paid', format: (v) => (v === '' ? '' : phpFmt(v)) },
+      { key: 'notes', label: 'Notes / Reference' },
+    ],
+    `Statement-${safeName}`,
+    vendorName.slice(0, 31)
+  );
+}
+
+// ─── Print / Export dropdown, used per vendor row ───────────────────────────
+function ExportMenu({ onPrint, onExcel, disabled, label }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title={`Export statement — ${label}`}
+        className="text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-30"
+      >
+        <Printer className="w-4 h-4" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-6 z-20 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-left">
+            <button
+              onClick={() => { setOpen(false); onPrint(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Printer className="w-3.5 h-3.5 text-gray-400" /> Print / Save as PDF
+            </button>
+            <button
+              onClick={() => { setOpen(false); onExcel(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-gray-400" /> Export to Excel
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Custom Tooltip ───────────────────────────────────────────
 const CustomTooltip = ({ active, payload, label }) => {
@@ -136,9 +326,16 @@ function VendorRow({ vendorName, items, buckets }) {
           <span className="font-bold text-gray-900">{formatCurrency(total)}</span>
         </td>
         <td className="py-3 pr-2 text-center">
-          {expanded
-            ? <ChevronUp className="w-4 h-4 text-gray-400 inline" />
-            : <ChevronDown className="w-4 h-4 text-gray-400 inline" />}
+          <div className="flex items-center justify-center gap-2">
+            <ExportMenu
+              label={vendorName}
+              onPrint={() => printVendorStatement(vendorName, items)}
+              onExcel={() => exportVendorStatement(vendorName, items)}
+            />
+            {expanded
+              ? <ChevronUp className="w-4 h-4 text-gray-400" />
+              : <ChevronDown className="w-4 h-4 text-gray-400" />}
+          </div>
         </td>
       </tr>
 
@@ -223,6 +420,13 @@ export default function APAgingPage() {
   filtered.forEach((item) => {
     if (!grouped[item.vendor]) grouped[item.vendor] = [];
     grouped[item.vendor].push(item);
+  });
+
+  // Sort vendors: worst bucket first
+  const sortedVendors = Object.entries(grouped).sort(([, a], [, b]) => {
+    const aWorst = [...BUCKETS].reverse().findIndex((bucket) => a.some((i) => i.bucket === bucket));
+    const bWorst = [...BUCKETS].reverse().findIndex((bucket) => b.some((i) => i.bucket === bucket));
+    return bWorst - aWorst;
   });
 
   // Chart data
@@ -379,6 +583,14 @@ export default function APAgingPage() {
         <div className="card-header">
           <h3 className="font-semibold text-gray-900">Detail by Vendor</h3>
           <div className="flex items-center gap-2">
+            <button
+              className="btn-secondary btn-sm"
+              disabled={sortedVendors.length === 0}
+              onClick={() => printAllVendorsSummary(sortedVendors)}
+              title="Print all vendors, alphabetically, each with their full bill history"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print All
+            </button>
             <div className="relative">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
               <input
@@ -413,12 +625,7 @@ export default function APAgingPage() {
                     {search ? 'No vendors match your search.' : 'No outstanding payables. You are all caught up! 🎉'}
                   </td>
                 </tr>
-              ) : Object.entries(grouped).sort(([, a], [, b]) => {
-                // Sort by worst bucket
-                const aWorst = [...BUCKETS].reverse().findIndex((bucket) => a.some(i => i.bucket === bucket));
-                const bWorst = [...BUCKETS].reverse().findIndex((bucket) => b.some(i => i.bucket === bucket));
-                return bWorst - aWorst;
-              }).map(([vendorName, items]) => (
+              ) : sortedVendors.map(([vendorName, items]) => (
                 <VendorRow key={vendorName} vendorName={vendorName} items={items} buckets={visibleBuckets} />
               ))}
             </tbody>
