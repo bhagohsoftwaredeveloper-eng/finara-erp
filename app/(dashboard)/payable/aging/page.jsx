@@ -24,6 +24,11 @@ const NOT_YET_DUE_BUCKETS = ['Due Today', 'This Week', 'Next Week', 'This Month'
 const OVERDUE_BUCKETS = ['1-30 days', '31-60 days', '61-90 days', 'Over 90 days'];
 const OPTIONAL_BUCKETS = ['31-60 days', '61-90 days', 'Over 90 days'];
 
+// Vendor history (search results / drawer) fetch cap — a vendor with more
+// bills than this shows a truncation notice rather than silently omitting
+// older ones from its outstanding total.
+const HISTORY_FETCH_LIMIT = 500;
+
 const BUCKET_COLORS = {
   'Due Today':     '#0ea5e9',
   'This Week':     '#16a34a',
@@ -109,7 +114,7 @@ async function printVendorStatement(vendorName, outstandingItems) {
         : `<tr><td colspan="4" class="small gray" style="padding-left:20px;font-style:italic;">No payments recorded yet</td></tr>`;
       return `
       <tr>
-        <td class="mono">${i.billNo}</td>
+        <td class="mono">${esc(i.billNo)}</td>
         <td>${dateFmt(i.dueDate)}</td>
         <td><span class="badge" style="background:${BUCKET_COLORS[i.bucket]}22;color:${BUCKET_COLORS[i.bucket]}">${i.bucket}</span></td>
         <td class="right bold">${phpFmt(i.outstanding)}</td>
@@ -121,7 +126,7 @@ async function printVendorStatement(vendorName, outstandingItems) {
 
   const body = `
     <div class="info-grid" style="grid-template-columns:1fr;">
-      <div class="info-box"><div class="info-lbl">Vendor</div><div class="info-val">${vendorName}</div></div>
+      <div class="info-box"><div class="info-lbl">Vendor</div><div class="info-val">${esc(vendorName)}</div></div>
     </div>
     <table>
       <thead><tr><th>Bill #</th><th>Due Date</th><th>Aging</th><th class="right">Outstanding</th></tr></thead>
@@ -135,6 +140,7 @@ async function printVendorStatement(vendorName, outstandingItems) {
 
 // ─── Print ALL vendors, alphabetically, each with their full bill history ──
 async function printAllVendorsSummary(vendorGroups) {
+  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const alphabetical = vendorGroups.slice().sort(([a], [b]) => a.localeCompare(b));
 
   const grandTotals = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
@@ -149,7 +155,6 @@ async function printAllVendorsSummary(vendorGroups) {
     grandTotal += total;
     billCount += items.length;
 
-    const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const vendorRow = `
       <tr style="background:#f9fafb;">
         <td class="bold">${esc(vendorName)} <span class="small gray">(${items.length} bill${items.length !== 1 ? 's' : ''})</span></td>
@@ -163,7 +168,7 @@ async function printAllVendorsSummary(vendorGroups) {
       .map((i) => `
         <tr>
           <td class="small gray" style="padding-left:20px;">
-            <span class="mono">${i.billNo}</span> · Due ${dateFmt(i.dueDate)}${i.daysOverdue > 0 ? ` · ${i.daysOverdue}d overdue` : ''}
+            <span class="mono">${esc(i.billNo)}</span> · Due ${dateFmt(i.dueDate)}${i.daysOverdue > 0 ? ` · ${i.daysOverdue}d overdue` : ''}
           </td>
           ${BUCKETS.map((b) => `<td class="right mono small">${i.bucket === b ? phpFmt(i.outstanding) : ''}</td>`).join('')}
           <td class="right mono small">${phpFmt(i.outstanding)}</td>
@@ -386,11 +391,12 @@ function HistoryTable({ bills }) {
 }
 
 // ─── Full bill history for one matched vendor (search mode) ────────────────
-function HistoryVendorBlock({ vendor, bills }) {
+function HistoryVendorBlock({ vendor, bills, total }) {
   const [expanded, setExpanded] = useState(true);
 
   const outstandingItems = outstandingItemsFrom(bills);
   const outstandingTotal = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+  const truncated = total > bills.length;
 
   return (
     <div className="card">
@@ -421,15 +427,22 @@ function HistoryVendorBlock({ vendor, bills }) {
         </div>
       </div>
 
+      {truncated && (
+        <div className="px-5 py-2 bg-yellow-50 border-t border-yellow-100 text-xs text-yellow-700">
+          Showing the latest {bills.length} of {total} bills — older bills, and any outstanding balance on them, aren't included here or in the printed total.
+        </div>
+      )}
+
       {expanded && <HistoryTable bills={bills} />}
     </div>
   );
 }
 
 // ─── Slide-out drawer: one vendor's full transaction history ──────────────
-function VendorHistoryDrawer({ vendorName, bills, loading, onClose }) {
+function VendorHistoryDrawer({ vendorName, bills, total, loading, onClose }) {
   const outstandingItems = outstandingItemsFrom(bills);
   const outstandingTotal = outstandingItems.reduce((s, i) => s + i.outstanding, 0);
+  const truncated = !loading && total > bills.length;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -477,6 +490,11 @@ function VendorHistoryDrawer({ vendorName, bills, loading, onClose }) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
+          {truncated && (
+            <div className="px-6 py-2 bg-yellow-50 border-b border-yellow-100 text-xs text-yellow-700">
+              Showing the latest {bills.length} of {total} bills — older bills, and any outstanding balance on them, aren't included here or in the printed total.
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-16 text-gray-400">
               <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-3" />
@@ -641,21 +659,26 @@ export default function APAgingPage() {
   const [search, setSearch]   = useState('');
   const [lastRefresh, setLastRefresh] = useState(null);
   const [hiddenOptional, setHiddenOptional] = useState(() => new Set());
-  const [historyResults, setHistoryResults] = useState([]); // [{ vendor, bills }] — full history for search
+  const [historyResults, setHistoryResults] = useState([]); // [{ vendor, bills, total }] — full history for search
   const [historyLoading, setHistoryLoading] = useState(false);
   const [viewVendor, setViewVendor] = useState(null); // { vendorId, vendorName } — drawer target
   const [viewBills, setViewBills]   = useState([]);
+  const [viewTotal, setViewTotal]   = useState(0);
   const [viewLoading, setViewLoading] = useState(false);
 
   const openHistoryDrawer = async (vendorId, vendorName) => {
     setViewVendor({ vendorId, vendorName });
+    setViewBills([]);
+    setViewTotal(0);
     setViewLoading(true);
     try {
-      const { data: billRes } = await pApi.bills.list({ vendorId, limit: 100 });
+      const { data: billRes } = await pApi.bills.list({ vendorId, limit: HISTORY_FETCH_LIMIT });
       setViewBills(billRes.data);
+      setViewTotal(billRes.total);
     } catch {
       toast.error('Failed to load vendor history');
       setViewBills([]);
+      setViewTotal(0);
     } finally {
       setViewLoading(false);
     }
@@ -696,10 +719,10 @@ export default function APAgingPage() {
         const results = await Promise.all(
           vendors.map(async (vendor) => {
             try {
-              const { data: billRes } = await pApi.bills.list({ vendorId: vendor.id, limit: 100 });
-              return { vendor, bills: billRes.data };
+              const { data: billRes } = await pApi.bills.list({ vendorId: vendor.id, limit: HISTORY_FETCH_LIMIT });
+              return { vendor, bills: billRes.data, total: billRes.total };
             } catch {
-              return { vendor, bills: [] };
+              return { vendor, bills: [], total: 0 };
             }
           })
         );
@@ -731,7 +754,7 @@ export default function APAgingPage() {
   // Group items by vendor
   const grouped = {};
   const filtered = data.items.filter((i) =>
-    !search || i.vendor.toLowerCase().includes(search.toLowerCase())
+    !search.trim() || i.vendor.toLowerCase().includes(search.toLowerCase())
   );
   filtered.forEach((item) => {
     if (!grouped[item.vendor]) grouped[item.vendor] = [];
@@ -1003,8 +1026,8 @@ export default function APAgingPage() {
               <p>No vendors match "{search}".</p>
             </div>
           ) : (
-            historyResults.map(({ vendor, bills }) => (
-              <HistoryVendorBlock key={vendor.id} vendor={vendor} bills={bills} />
+            historyResults.map(({ vendor, bills, total }) => (
+              <HistoryVendorBlock key={vendor.id} vendor={vendor} bills={bills} total={total} />
             ))
           )}
         </div>
@@ -1015,6 +1038,7 @@ export default function APAgingPage() {
         <VendorHistoryDrawer
           vendorName={viewVendor.vendorName}
           bills={viewBills}
+          total={viewTotal}
           loading={viewLoading}
           onClose={() => setViewVendor(null)}
         />
