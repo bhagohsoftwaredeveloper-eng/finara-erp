@@ -55,10 +55,25 @@
       "Bash(\"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 9.4\\\\bin\\\\mysql.exe\" -uroot -p123700 -D ph_erp_db -e \"DESCRIBE purchase_order_lines;\")",
       "Bash(\"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 9.4\\\\bin\\\\mysql.exe\" -uroot -p123700 -D ph_erp_db -e \"SELECT id, poId, description, quantity, unitPrice, amount, accountId FROM purchase_order_lines WHERE poId=16;\")",
       "Bash(\"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 9.4\\\\bin\\\\mysql.exe\" -uroot -p123700 -D ph_erp_db -e \"UPDATE purchase_orders SET status='RECEIVED', billId=NULL WHERE id=16;\")",
-      "Bash(\"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 9.4\\\\bin\\\\mysql.exe\" -uroot -p123700 -D ph_erp_db -e \"SELECT id, poNumber, status, billId FROM purchase_orders WHERE id=16;\")"
+      "Bash(\"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 9.4\\\\bin\\\\mysql.exe\" -uroot -p123700 -D ph_erp_db -e \"SELECT id, poNumber, status, billId FROM purchase_orders WHERE id=16;\")",
+      "Bash(bash \"C:\\\\Users\\\\AGREX\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.0.3\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" db4df32118f439ba578d944a9159e1dc925c1675 HEAD)",
+      "Bash(bash \"C:\\\\Users\\\\AGREX\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.0.3\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" docs/superpowers/plans/2026-08-28-ap-aging-print-export.md 2)",
+      "Bash(npx --no-install eslint \"app/\\(dashboard\\)/payable/aging/page.jsx\")",
+      "Bash(bash \"C:\\\\Users\\\\AGREX\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.0.3\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" f5c38577ba1520aca749c4c50579513ff30352f1 4ed035d)",
+      "Bash(sed -i 's/- \\\\[ \\\\] Task 2: Frontend — print\\\\/export/- [x] Task 2: Frontend — print\\\\/export/' .superpowers/sdd/progress.md)",
+      "Bash(echo \"Task 2 \\(AP aging print\\): complete \\(commits f5c3857..4ed035d, review clean\\)\")",
+      "Bash(bash \"C:\\\\Users\\\\AGREX\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.0.3\\\\skills\\\\subagent-driven-development\\\\scripts\\\\task-brief\" docs/superpowers/plans/2026-08-28-ap-aging-print-export.md 3)",
+      "Bash(npx eslint *)",
+      "Bash(grep -i \"^@babel$\" -A0)",
+      "Bash(bash \"C:\\\\Users\\\\AGREX\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.0.3\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" 4ed035dac087c6e4e5eb914d19a1c9d102849d79 09b194c)",
+      "Bash(sed -i 's#require\\('\\\\''@babel/parser'\\\\''\\)#require\\('\\\\''D:/Accounting System ERP/node_modules/@babel/parser'\\\\''\\)#; s#require\\('\\\\''@babel/traverse'\\\\''\\)#require\\('\\\\''D:/Accounting System ERP/node_modules/@babel/traverse'\\\\''\\)#' __TRACKED_VAR__/tree.js)",
+      "Bash(node __TRACKED_VAR__/tree.js)",
+      "Bash(grep -n \"async function printVendorStatement\\\\|async function printAllVendorsSummary\\\\|const esc = \\\\|info-val\\\\\">.\\\\{0,5\\\\}vendorName\\\\|<td class=\\\\\"mono\\\\\">\" \"app/\\(dashboard\\)/payable/aging/page.jsx\")",
+      "Bash(node \"C:\\\\Users\\\\AGREX\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Accounting-System-ERP\\\\1fdfa66b-8eb8-4834-a1bf-05a96a78beb4\\\\scratchpad\\\\parse_check.js\")"
     ],
     "additionalDirectories": [
-      "D:\\Accounting System ERP\\.playwright-mcp"
+      "D:\\Accounting System ERP\\.playwright-mcp",
+      "D:\\Accounting System ERP\\.superpowers\\sdd"
     ]
   },
   "enabledPlugins": {
