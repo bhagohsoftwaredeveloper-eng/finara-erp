@@ -287,6 +287,33 @@ exports.addBillItems = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Shared by voidBill/updateBill: void every POSTED journal entry sharing a
+// reference — a bill can carry more than one after being edited before (or
+// from the retired add-items flow, on older data), so this can't stop at
+// the first match. Continues past any single entry's failure.
+async function voidPostedEntriesByReference(businessId, reference, req, contextLabel) {
+  const entries = await prisma.journalEntry.findMany({
+    where: { businessId, reference, status: 'POSTED' },
+  });
+  for (const entry of entries) {
+    try {
+      await prisma.journalEntry.update({ where: { id: entry.id }, data: { status: 'VOIDED' } });
+    } catch (err) {
+      logger.error(`[${contextLabel} — GL VOID FAILED] reference=${reference} biz=${businessId} entryId=${entry.id} — ${err.message}`);
+      try {
+        await recordAudit({
+          action:     'GL_POST_FAILED',
+          entity:     'JournalEntry',
+          entityId:   String(entry.id),
+          summary:    `Failed to void GL entry for ${contextLabel.toLowerCase()} ${reference} — ${err.message}`,
+          user:       req.user?.id ? { id: req.user.id } : undefined,
+          businessId,
+        });
+      } catch { /* auditing must never break anything either */ }
+    }
+  }
+}
+
 exports.voidBill = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -295,30 +322,7 @@ exports.voidBill = async (req, res, next) => {
     if (bill.paidAmount > 0) throw createError('Cannot void a bill with payments. Reverse payments first.', 400);
     const updated = await prisma.bill.update({ where: { id }, data: { status: 'VOID' } });
 
-    // Void every posted GL entry tied to this bill — a bill with items added
-    // after creation (see addBillItems) can have more than one, all sharing
-    // the same reference — otherwise a voided bill's expense/AP impact keeps
-    // showing up in the Income Statement, Trial Balance, and Balance Sheet.
-    const entries = await prisma.journalEntry.findMany({
-      where: { businessId: bill.businessId, reference: bill.billNo, status: 'POSTED' },
-    });
-    for (const entry of entries) {
-      try {
-        await prisma.journalEntry.update({ where: { id: entry.id }, data: { status: 'VOIDED' } });
-      } catch (err) {
-        logger.error(`[BILL VOID — GL VOID FAILED] billNo=${bill.billNo} biz=${bill.businessId} entryId=${entry.id} — ${err.message}`);
-        try {
-          await recordAudit({
-            action:     'GL_POST_FAILED',
-            entity:     'JournalEntry',
-            entityId:   String(entry.id),
-            summary:    `Failed to void GL entry for voided bill ${bill.billNo} — ${err.message}`,
-            user:       req.user?.id ? { id: req.user.id } : undefined,
-            businessId: bill.businessId,
-          });
-        } catch { /* auditing must never break anything either */ }
-      }
-    }
+    await voidPostedEntriesByReference(bill.businessId, bill.billNo, req, 'BILL VOID');
 
     res.json(updated);
   } catch (err) { next(err); }
