@@ -225,6 +225,12 @@ function BillDetailModal({ bill, accounts, onClose, onPayment, onVoid, onItemsAd
                     <input type="date" className="input" required value={editDate} onChange={(e) => setEditDate(e.target.value)} />
                   </div>
 
+                  {editDate && bill.billDate && editDate.slice(0, 7) !== new Date(bill.billDate).toISOString().slice(0, 7) && (
+                    <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                      ⚠ This edit date is in a different month than the Bill Date ({formatDate(bill.billDate)}). The added VAT will post to the GL under this later date, but BIR purchase-book reports still group this bill under its original Bill Date — double-check this won't conflict with an already-filed return for that period.
+                    </p>
+                  )}
+
                   <div className="border border-gray-200 rounded-xl overflow-hidden">
                     <table className="table table-compact">
                       <thead>
