@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, CreditCard, Ban, ChevronDown, ChevronUp,
   Filter, X, Check, AlertCircle, Clock, CheckCircle2, FileText,
-  Printer, Download
+  Printer, Download, Pencil
 } from 'lucide-react';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
@@ -39,52 +39,9 @@ const computeVAT = (amount, code) =>
                  : { base: amount, vat: 0, total: amount };
 
 // ─── Bill Detail Modal ────────────────────────────────────────
-function BillDetailModal({ bill, accounts, onClose, onPayment, onVoid, onItemsAdded }) {
+function BillDetailModal({ bill, onClose, onPayment, onVoid, onEdit }) {
   const balance = Number(bill.totalAmount) - Number(bill.paidAmount);
   const pct = bill.totalAmount > 0 ? (Number(bill.paidAmount) / Number(bill.totalAmount)) * 100 : 0;
-  const expenseAccounts = accounts.filter((a) => ['EXPENSE', 'ASSET'].includes(a.accountType));
-
-  const [addingItems, setAddingItems] = useState(false);
-  const [editDate, setEditDate] = useState(new Date().toISOString().split('T')[0]);
-  const [newLines, setNewLines] = useState([{ accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }]);
-  const [savingItems, setSavingItems] = useState(false);
-
-  const setNewLine = (i, k, v) => setNewLines((ls) => ls.map((l, idx) => idx === i ? { ...l, [k]: v } : l));
-  const addNewLine = () => setNewLines((ls) => [...ls, { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }]);
-  const removeNewLine = (i) => setNewLines((ls) => ls.filter((_, idx) => idx !== i));
-
-  const newItemsTotal = newLines.reduce((s, l) => {
-    const amt = (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0);
-    return s + computeVAT(amt, l.vatCode).total;
-  }, 0);
-
-  const handleSaveItems = async () => {
-    const validLines = newLines.filter((l) => l.accountId && l.description && l.unitPrice);
-    if (validLines.length === 0) { toast.error('Add at least one line item'); return; }
-    if (!editDate) { toast.error('Enter the edit date'); return; }
-    validLines.forEach((l) => rememberDescription(l.description));
-    setSavingItems(true);
-    try {
-      await pApi.bills.addItems(bill.id, {
-        editDate,
-        lines: validLines.map((l) => ({
-          accountId: Number(l.accountId),
-          description: l.description,
-          quantity: Number(l.quantity),
-          unitPrice: Number(l.unitPrice),
-          vatCode: l.vatCode,
-        })),
-      });
-      toast.success('Items added to bill');
-      setAddingItems(false);
-      setNewLines([{ accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }]);
-      await onItemsAdded();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to add items');
-    } finally {
-      setSavingItems(false);
-    }
-  };
 
   const handlePrint = () => {
     const linesHTML = (bill.lines || []).map((l) => `
@@ -166,9 +123,6 @@ function BillDetailModal({ bill, accounts, onClose, onPayment, onVoid, onItemsAd
             </div>
             <div><span className="text-gray-500 block">TIN</span><span className="font-mono text-xs">{bill.vendor?.tin || '—'}</span></div>
           </div>
-          {bill.lastEditedAt && (
-            <p className="text-xs text-gray-400">Last edited: {formatDate(bill.lastEditedAt)}</p>
-          )}
 
           {bill.description && (
             <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">{bill.description}</div>
@@ -200,116 +154,6 @@ function BillDetailModal({ bill, accounts, onClose, onPayment, onVoid, onItemsAd
               </table>
             </div>
           </div>
-
-          {(bill.status === 'OPEN' || bill.status === 'PARTIAL') && (
-            <div>
-              {!addingItems ? (
-                <button type="button" onClick={() => setAddingItems(true)} className="btn-secondary btn-sm">
-                  <Plus className="w-3 h-3" /> Add Items
-                </button>
-              ) : (
-                <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-gray-700">Add Items</h4>
-                    <button
-                      type="button"
-                      onClick={() => { setAddingItems(false); setNewLines([{ accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' }]); }}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="form-group max-w-xs">
-                    <label className="label">Edit Date *</label>
-                    <input type="date" className="input" required value={editDate} onChange={(e) => setEditDate(e.target.value)} />
-                  </div>
-
-                  {editDate && bill.billDate && editDate.slice(0, 7) !== new Date(bill.billDate).toISOString().slice(0, 7) && (
-                    <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
-                      ⚠ This edit date is in a different month than the Bill Date ({formatDate(bill.billDate)}). The added VAT will post to the GL under this later date, but BIR purchase-book reports still group this bill under its original Bill Date — double-check this won't conflict with an already-filed return for that period.
-                    </p>
-                  )}
-
-                  <div className="border border-gray-200 rounded-xl overflow-hidden">
-                    <table className="table table-compact">
-                      <thead>
-                        <tr>
-                          <th className="w-56">Account (Expense)</th>
-                          <th>Description</th>
-                          <th className="w-28">VAT</th>
-                          <th className="w-32 text-right">Qty</th>
-                          <th className="w-40 text-right">Unit Price (₱)</th>
-                          <th className="w-44 text-right">Amount (₱)</th>
-                          <th className="w-10" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {newLines.map((line, i) => {
-                          const amt = (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
-                          const v = computeVAT(amt, line.vatCode);
-                          return (
-                            <tr key={i} className="align-top">
-                              <td>
-                                <select className="select text-xs" value={line.accountId} onChange={(e) => setNewLine(i, 'accountId', e.target.value)}>
-                                  <option value="">Select...</option>
-                                  {expenseAccounts.map((a) => (
-                                    <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td>
-                                <DescriptionInput
-                                  className="input text-xs"
-                                  value={line.description}
-                                  onChange={(v) => setNewLine(i, 'description', v)}
-                                  placeholder="Item description"
-                                />
-                              </td>
-                              <td>
-                                <select className="select text-xs" value={line.vatCode} onChange={(e) => setNewLine(i, 'vatCode', e.target.value)}>
-                                  {VAT_CODES.map((c) => <option key={c}>{c}</option>)}
-                                </select>
-                              </td>
-                              <td>
-                                <NumberInput decimals={3} className="input text-xs text-right" value={line.quantity} onChange={(v) => setNewLine(i, 'quantity', v)} />
-                              </td>
-                              <td>
-                                <NumberInput className="input text-xs text-right" value={line.unitPrice} onChange={(v) => setNewLine(i, 'unitPrice', v)} placeholder="0.00" />
-                              </td>
-                              <td>
-                                <div className="text-right text-sm font-medium text-gray-700 py-1.5">{formatCurrency(v.total)}</div>
-                              </td>
-                              <td>
-                                {newLines.length > 1 && (
-                                  <button type="button" onClick={() => removeNewLine(i)} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <button type="button" onClick={addNewLine} className="btn-secondary btn-sm">
-                      <Plus className="w-3 h-3" /> Add Line
-                    </button>
-                    <div className="text-sm font-semibold text-gray-700">New items total: {formatCurrency(newItemsTotal)}</div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button type="button" disabled={savingItems} onClick={handleSaveItems} className="btn-primary btn-sm">
-                      {savingItems ? 'Saving...' : 'Save Items'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Totals */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
@@ -362,6 +206,11 @@ function BillDetailModal({ bill, accounts, onClose, onPayment, onVoid, onItemsAd
               {bill.paidAmount === 0 && (
                 <button onClick={onVoid} className="btn-danger btn-sm mr-auto">
                   <Ban className="w-4 h-4" /> Void Bill
+                </button>
+              )}
+              {bill.status !== 'PAID' && (
+                <button onClick={onEdit} className="btn-secondary">
+                  <Pencil className="w-4 h-4" /> Edit
                 </button>
               )}
               {bill.status !== 'PAID' && (
@@ -477,8 +326,18 @@ function PaymentModal({ bill, onClose, onPaid }) {
 }
 
 // ─── Create Bill Modal ────────────────────────────────────────
-function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded }) {
-  const [form, setForm] = useState({
+function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAdded }) {
+  const [form, setForm] = useState(() => bill ? {
+    vendorId:    String(bill.vendorId),
+    billDate:    bill.billDate.slice(0, 10),
+    dueDate:     bill.dueDate.slice(0, 10),
+    description: bill.description || '',
+    notes:       bill.notes || '',
+    lines: bill.lines.map((l) => ({
+      accountId: String(l.accountId), description: l.description,
+      quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
+    })),
+  } : {
     vendorId: '',
     billDate: new Date().toISOString().split('T')[0],
     dueDate: '',
@@ -530,7 +389,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
     validLines.forEach((l) => rememberDescription(l.description));
     setSaving(true);
     try {
-      await pApi.bills.create({
+      const payload = {
         ...form,
         vendorId: Number(form.vendorId),
         lines: validLines.map((l) => ({
@@ -540,11 +399,17 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
           unitPrice: Number(l.unitPrice),
           vatCode: l.vatCode,
         })),
-      });
-      toast.success('Bill created successfully');
+      };
+      if (bill) {
+        await pApi.bills.update(bill.id, payload);
+        toast.success('Bill updated successfully');
+      } else {
+        await pApi.bills.create(payload);
+        toast.success('Bill created successfully');
+      }
       onSaved();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to create bill');
+      toast.error(err.response?.data?.error || `Failed to ${bill ? 'update' : 'create'} bill`);
     } finally {
       setSaving(false);
     }
@@ -554,7 +419,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
     <div className="modal-overlay">
       <div className="modal max-w-6xl">
         <div className="modal-header">
-          <h3 className="text-lg font-semibold">New Bill / Purchase Invoice</h3>
+          <h3 className="text-lg font-semibold">{bill ? 'Edit Bill' : 'New Bill / Purchase Invoice'}</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -709,7 +574,7 @@ function CreateBillModal({ vendors, accounts, onClose, onSaved, onVendorAdded })
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               <FileText className="w-4 h-4" />
-              {saving ? 'Creating Bill...' : 'Create Bill'}
+              {saving ? (bill ? 'Saving...' : 'Creating Bill...') : (bill ? 'Save Changes' : 'Create Bill')}
             </button>
           </div>
         </form>
@@ -1021,6 +886,18 @@ export default function BillsPage() {
                           <button
                             onClick={async () => {
                               const { data } = await pApi.bills.get(bill.id);
+                              setModal({ type: 'edit', bill: data });
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit bill"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {bill.status !== 'PAID' && bill.status !== 'VOID' && (
+                          <button
+                            onClick={async () => {
+                              const { data } = await pApi.bills.get(bill.id);
                               setModal({ type: 'payment', bill: data });
                             }}
                             className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -1074,18 +951,23 @@ export default function BillsPage() {
           onVendorAdded={(v) => setVendors((prev) => [v, ...prev])}
         />
       )}
+      {modal?.type === 'edit' && (
+        <CreateBillModal
+          vendors={vendors}
+          accounts={accounts}
+          bill={modal.bill}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); load(); }}
+          onVendorAdded={(v) => setVendors((prev) => [v, ...prev])}
+        />
+      )}
       {modal?.type === 'detail' && (
         <BillDetailModal
           bill={modal.bill}
-          accounts={accounts}
           onClose={() => setModal(null)}
           onPayment={() => setModal({ type: 'payment', bill: modal.bill })}
           onVoid={() => { handleVoid(modal.bill); setModal(null); }}
-          onItemsAdded={async () => {
-            const { data } = await pApi.bills.get(modal.bill.id);
-            setModal({ type: 'detail', bill: data });
-            load();
-          }}
+          onEdit={() => setModal({ type: 'edit', bill: modal.bill })}
         />
       )}
       {modal?.type === 'payment' && (
