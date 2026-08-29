@@ -484,3 +484,47 @@ exports.agingReport = async (req, res, next) => {
     res.json({ items: report, summary, total: report.reduce((s, r) => s + r.outstanding, 0) });
   } catch (err) { next(err); }
 };
+
+// Bucketed on checkDate (the cheque's own maturity date), not paymentDate —
+// only meaningful for an OUTSTANDING cheque; a settled one has no "days
+// until due" story left to tell.
+function chequeAgingBucket(checkDate) {
+  const days = Math.floor((new Date(checkDate) - new Date()) / 86400000);
+  if (days < 0)   return 'Past Due';
+  if (days <= 7)  return '0-7 days';
+  if (days <= 14) return '8-14 days';
+  if (days <= 30) return '15-30 days';
+  return '30+ days';
+}
+
+exports.listCheques = async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    const payments = await prisma.paymentAP.findMany({
+      where: {
+        paymentMethod: 'Check',
+        bill: { businessId: req.businessId },
+        ...(status ? { clearingStatus: status } : {}),
+      },
+      include: { bill: { select: { billNo: true, vendor: { select: { name: true } } } } },
+      orderBy: { checkDate: 'asc' },
+    });
+
+    const result = payments.map((p) => ({
+      id: p.id,
+      paymentNo: p.paymentNo,
+      billId: p.billId,
+      billNo: p.bill.billNo,
+      vendorName: p.bill.vendor?.name,
+      amount: p.amount,
+      checkNo: p.reference,
+      checkDate: p.checkDate,
+      paymentDate: p.paymentDate,
+      clearingStatus: p.clearingStatus,
+      notes: p.notes,
+      bucket: p.clearingStatus === 'OUTSTANDING' ? chequeAgingBucket(p.checkDate) : null,
+    }));
+
+    res.json(result);
+  } catch (err) { next(err); }
+};

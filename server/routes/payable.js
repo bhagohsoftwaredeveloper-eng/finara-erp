@@ -15,6 +15,7 @@ router.put('/vendors/:id', authorize('ADMIN','MANAGER'), ctrl.updateVendor);
 // Bills
 router.get('/', ctrl.listBills);
 router.get('/aging', ctrl.agingReport);
+router.get('/cheques', ctrl.listCheques);
 router.get('/:id', param('id').isInt(), validate, ctrl.getBill);
 router.post('/',
   [
