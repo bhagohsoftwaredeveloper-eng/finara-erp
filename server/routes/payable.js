@@ -66,4 +66,18 @@ router.put('/:id/payment/:paymentId',
   validate, ctrl.editPayment);
 router.post('/:id/void', authorize('ADMIN','MANAGER'), param('id').isInt(), validate, ctrl.voidBill);
 
+// Cheques
+router.post('/cheques/:paymentId/clear',
+  authorize('ADMIN','MANAGER'),
+  [param('paymentId').isInt(), body('clearDate').isISO8601()],
+  validate, ctrl.clearCheque);
+router.post('/cheques/:paymentId/bounce',
+  authorize('ADMIN','MANAGER'),
+  [param('paymentId').isInt(), body('reason').notEmpty()],
+  validate, ctrl.bounceCheque);
+router.post('/cheques/:paymentId/cancel',
+  authorize('ADMIN','MANAGER'),
+  [param('paymentId').isInt(), body('reason').notEmpty()],
+  validate, ctrl.cancelCheque);
+
 module.exports = router;

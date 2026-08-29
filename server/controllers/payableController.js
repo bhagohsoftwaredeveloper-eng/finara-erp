@@ -536,3 +536,104 @@ exports.listCheques = async (req, res, next) => {
     res.json(result);
   } catch (err) { next(err); }
 };
+
+async function revertOutstandingCheque(req, res, next, targetStatus, contextLabel) {
+  try {
+    const paymentId = Number(req.params.paymentId);
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) throw createError('A reason is required.', 400);
+
+    const payment = await prisma.paymentAP.findFirst({
+      where: { id: paymentId, bill: { businessId: req.businessId } },
+      include: { bill: true },
+    });
+    if (!payment) throw createError('Cheque not found', 404);
+    if (payment.clearingStatus !== 'OUTSTANDING') {
+      throw createError(`This cheque is already ${payment.clearingStatus?.toLowerCase()}.`, 400);
+    }
+
+    const bill = payment.bill;
+    const otherPaid = Number(bill.paidAmount) - Number(payment.amount);
+    const remaining = Number(bill.totalAmount) - otherPaid;
+    const status = remaining <= 0.01 ? 'PAID' : (otherPaid > 0.01 ? 'PARTIAL' : 'OPEN');
+
+    await prisma.$transaction([
+      prisma.paymentAP.update({
+        where: { id: paymentId },
+        data: {
+          clearingStatus: targetStatus,
+          notes: `${payment.notes ? payment.notes + ' ' : ''}[${targetStatus}: ${reason.trim()}]`,
+        },
+      }),
+      prisma.bill.update({ where: { id: bill.id }, data: { paidAmount: otherPaid, status } }),
+    ]);
+
+    await recordAudit({
+      req,
+      action:   'UPDATE',
+      entity:   'PaymentAP',
+      entityId: payment.paymentNo,
+      summary:  `Cheque ${payment.paymentNo} on bill ${bill.billNo} marked ${targetStatus}: ${reason.trim()}`,
+    });
+
+    await voidPostedEntriesByReference(bill.businessId, payment.paymentNo, req, contextLabel);
+
+    res.json({ message: `Cheque marked ${targetStatus.toLowerCase()}` });
+  } catch (err) { next(err); }
+}
+
+exports.bounceCheque = (req, res, next) => revertOutstandingCheque(req, res, next, 'BOUNCED', 'CHEQUE BOUNCED');
+exports.cancelCheque = (req, res, next) => revertOutstandingCheque(req, res, next, 'CANCELLED', 'CHEQUE CANCELLED');
+
+exports.clearCheque = async (req, res, next) => {
+  try {
+    const paymentId = Number(req.params.paymentId);
+    const { clearDate } = req.body;
+    if (!clearDate) throw createError('Clear date is required.', 400);
+
+    const payment = await prisma.paymentAP.findFirst({
+      where: { id: paymentId, bill: { businessId: req.businessId } },
+      include: { bill: { include: { vendor: { select: { name: true } } } } },
+    });
+    if (!payment) throw createError('Cheque not found', 404);
+    if (payment.clearingStatus !== 'OUTSTANDING') {
+      throw createError(`This cheque is already ${payment.clearingStatus?.toLowerCase()}.`, 400);
+    }
+
+    await prisma.paymentAP.update({ where: { id: paymentId }, data: { clearingStatus: 'CLEARED' } });
+
+    await recordAudit({
+      req,
+      action:   'UPDATE',
+      entity:   'PaymentAP',
+      entityId: payment.paymentNo,
+      summary:  `Cheque ${payment.paymentNo} on bill ${payment.bill.billNo} marked cleared`,
+    });
+
+    const glResult = await glPost.safePost({
+      entryDate:   clearDate,
+      description: `Cheque Cleared — ${payment.bill.vendor?.name} (${payment.bill.billNo})`,
+      reference:   `${payment.paymentNo}-CLR`,
+      lines: [
+        { accountCode: '2015', debit:  Number(payment.amount), description: `Cheque cleared — ${payment.paymentNo}` },
+        { accountCode: '1020', credit: Number(payment.amount), description: `Cash out — ${payment.paymentNo}` },
+      ],
+      userId: req.user?.id || 1,
+      businessId: req.businessId,
+    });
+    if (!glResult || glResult.skipped) {
+      try {
+        await recordAudit({
+          action:     'GL_POST_FAILED',
+          entity:     'JournalEntry',
+          entityId:   `${payment.paymentNo}-CLR`,
+          summary:    `Cheque ${payment.paymentNo} was cleared but its GL entry did not post (${glResult?.skipped ? `skipped: ${glResult.skipped}` : 'failed'}) — its cash impact may be missing from the ledger.`,
+          user:       req.user?.id ? { id: req.user.id } : undefined,
+          businessId: req.businessId,
+        });
+      } catch { /* auditing must never break anything either */ }
+    }
+
+    res.json({ message: 'Cheque marked cleared' });
+  } catch (err) { next(err); }
+};
