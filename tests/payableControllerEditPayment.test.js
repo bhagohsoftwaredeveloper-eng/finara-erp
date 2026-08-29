@@ -6,6 +6,9 @@ jest.mock('../server/config/database', () => ({
   paymentAP: {
     update: jest.fn(),
   },
+  vendor: {
+    findUnique: jest.fn(),
+  },
   journalEntry: {
     findMany: jest.fn(),
     update: jest.fn(),
@@ -27,6 +30,7 @@ const run = (fn, req) => new Promise((resolve, reject) => {
 beforeEach(() => {
   jest.clearAllMocks();
   prisma.$transaction.mockImplementation((ops) => Promise.all(ops));
+  prisma.vendor.findUnique.mockResolvedValue({ name: 'Triplekenn Supply' });
 });
 
 const basePayment = {
@@ -206,6 +210,116 @@ describe('editPayment — GL correction', () => {
     prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
     prisma.journalEntry.findMany.mockResolvedValue([]);
     glPost.safePost.mockResolvedValue({ skipped: 'PRE_CUTOVER' });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody });
+
+    expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'GL_POST_FAILED',
+      entity: 'JournalEntry',
+      entityId: 'PAP-000055',
+    }));
+  });
+});
+
+describe('editPayment — additional coverage (post-review)', () => {
+  test('does not crash when the bill\'s vendor has been deleted (orphaned vendor)', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID' });
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 200 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.vendor.findUnique.mockResolvedValue(null); // vendor deleted
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody });
+
+    expect(glPost.safePost).toHaveBeenCalledTimes(1);
+    const call = glPost.safePost.mock.calls[0][0];
+    expect(call.description).toContain('undefined'); // vendor?.name is undefined, not a crash
+  });
+
+  test('allows correcting a payment down to exactly 0', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID', paidAmount: 1120, totalAmount: 1120 });
+    let billUpdateArgs;
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 0 });
+    prisma.bill.update.mockImplementation((args) => {
+      billUpdateArgs = args;
+      return Promise.resolve({ ...baseBill, paidAmount: 0, status: 'OPEN' });
+    });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: { ...editBody, amount: 0 } });
+
+    expect(billUpdateArgs.data.paidAmount).toBe(0);
+    expect(billUpdateArgs.data.status).toBe('OPEN');
+  });
+
+  test('records a PaymentAP UPDATE audit entry with before/after values', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID' });
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 200 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody });
+
+    expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'UPDATE',
+      entity: 'PaymentAP',
+      entityId: 'PAP-000055',
+      changes: expect.objectContaining({
+        before: expect.objectContaining({ amount: 1120 }),
+        after:  expect.objectContaining({ amount: 200 }),
+      }),
+    }));
+  });
+
+  test('voids the prior GL entry before posting the corrected one (ordering)', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID' });
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 200 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([{ id: 200, entryNo: 'JE-1-000200' }]);
+    prisma.journalEntry.update.mockResolvedValue({});
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody });
+
+    const voidOrder = prisma.journalEntry.update.mock.invocationCallOrder[0];
+    const repostOrder = glPost.safePost.mock.invocationCallOrder[0];
+    expect(voidOrder).toBeLessThan(repostOrder);
+  });
+
+  test('posts the corrected GL entry dated on the new paymentDate, not the original', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID' });
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 200 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody }); // editBody.paymentDate = '2026-08-02'
+
+    const call = glPost.safePost.mock.calls[0][0];
+    expect(call.entryDate).toBe('2026-08-02');
+  });
+
+  test('response body carries message and remainingBalance', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID', paidAmount: 1120, totalAmount: 1120 });
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 200 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    const result = await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: { ...editBody, amount: 200 } });
+
+    expect(result).toEqual({ message: 'Payment updated', remainingBalance: 920 });
+  });
+
+  test('records a GL_POST_FAILED audit entry when safePost hard-fails (returns null/undefined)', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID' });
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 200 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue(null);
 
     await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody });
 

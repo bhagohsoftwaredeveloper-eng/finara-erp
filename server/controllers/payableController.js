@@ -311,7 +311,7 @@ exports.editPayment = async (req, res, next) => {
     const paymentId = Number(req.params.paymentId);
     const bill = await prisma.bill.findFirst({
       where: { id, businessId: req.businessId },
-      include: { payments: true, vendor: true },
+      include: { payments: true },
     });
     if (!bill) throw createError('Bill not found', 404);
 
@@ -341,14 +341,27 @@ exports.editPayment = async (req, res, next) => {
       prisma.bill.update({ where: { id }, data: { paidAmount: newPaid, status } }),
     ]);
 
+    await recordAudit({
+      req,
+      action:   'UPDATE',
+      entity:   'PaymentAP',
+      entityId: payment.paymentNo,
+      summary:  `Edited payment ${payment.paymentNo} on bill ${bill.billNo}`,
+      changes: {
+        before: { amount: Number(payment.amount), paymentDate: payment.paymentDate, paymentMethod: payment.paymentMethod, reference: payment.reference, notes: payment.notes },
+        after:  { amount: Number(amount), paymentDate, paymentMethod, reference, notes },
+      },
+    });
+
     // ── GL correction: void the payment's own prior entry, post a fresh one ──
+    const vendor = await prisma.vendor.findUnique({ where: { id: bill.vendorId }, select: { name: true } });
     await voidPostedEntriesByReference(bill.businessId, payment.paymentNo, req, 'PAYMENT EDIT');
     const glResult = await glPost.safePost({
       entryDate:   paymentDate,
-      description: `AP Payment (Edited) — ${bill.vendor.name} (${bill.billNo})`,
+      description: `AP Payment (Edited) — ${vendor?.name} (${bill.billNo})`,
       reference:   payment.paymentNo,
       lines: [
-        { accountCode: '2010', debit:  Number(amount), description: `Clear AP — ${bill.vendor.name}` },
+        { accountCode: '2010', debit:  Number(amount), description: `Clear AP — ${vendor?.name}` },
         { accountCode: '1020', credit: Number(amount), description: `Cash out — ${payment.paymentNo}` },
       ],
       userId: req.user?.id || 1,

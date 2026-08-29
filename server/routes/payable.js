@@ -57,7 +57,7 @@ router.put('/:id/payment/:paymentId',
     param('id').isInt(),
     param('paymentId').isInt(),
     body('paymentDate').isISO8601(),
-    body('amount').isFloat({ min: 0.01 }),
+    body('amount').isFloat({ min: 0 }),
     body('paymentMethod').notEmpty(),
   ],
   validate, ctrl.editPayment);

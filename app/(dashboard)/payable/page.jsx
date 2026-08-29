@@ -348,8 +348,8 @@ function EditPaymentModal({ bill, payment, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!(Number(form.amount) > 0)) {
-      toast.error('Enter an amount greater than zero');
+    if (Number(form.amount) < 0) {
+      toast.error('Amount cannot be negative');
       return;
     }
     if (Number(form.amount) > balance + 0.01) {
