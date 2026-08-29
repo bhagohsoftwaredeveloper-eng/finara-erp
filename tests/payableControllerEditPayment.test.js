@@ -330,3 +330,74 @@ describe('editPayment — additional coverage (post-review)', () => {
     }));
   });
 });
+
+describe('editPayment — cheque-aware branching (new)', () => {
+  test('rejects switching a payment to Check with no checkDate', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID' });
+    await expect(run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: { ...editBody, paymentMethod: 'Check' } }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.bill.update).not.toHaveBeenCalled();
+  });
+
+  test('blocks editing a payment whose clearingStatus is no longer OUTSTANDING', async () => {
+    prisma.bill.findFirst.mockResolvedValue({
+      ...baseBill, status: 'PAID',
+      payments: [{ ...basePayment, clearingStatus: 'CLEARED' }],
+    });
+    await expect(run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.bill.update).not.toHaveBeenCalled();
+  });
+
+  test('allows editing a payment whose clearingStatus is OUTSTANDING', async () => {
+    prisma.bill.findFirst.mockResolvedValue({
+      ...baseBill, status: 'PAID',
+      payments: [{ ...basePayment, clearingStatus: 'OUTSTANDING', checkDate: new Date('2026-09-01') }],
+    });
+    prisma.paymentAP.update.mockResolvedValue({ ...basePayment, amount: 200 });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: editBody });
+
+    expect(prisma.bill.update).toHaveBeenCalled();
+  });
+
+  test('editing to Check stores checkDate/OUTSTANDING and posts to 2015, not 1020', async () => {
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PAID' });
+    let paymentUpdateArgs;
+    prisma.paymentAP.update.mockImplementation((args) => { paymentUpdateArgs = args; return Promise.resolve({ ...basePayment, ...args.data }); });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: { ...editBody, paymentMethod: 'Check', checkDate: '2026-09-15' } });
+
+    expect(paymentUpdateArgs.data.checkDate).toEqual(new Date('2026-09-15'));
+    expect(paymentUpdateArgs.data.clearingStatus).toBe('OUTSTANDING');
+    const call = glPost.safePost.mock.calls[0][0];
+    expect(call.lines.find((l) => l.accountCode === '1020')).toBeUndefined();
+    expect(call.lines.find((l) => l.accountCode === '2015').credit).toBeCloseTo(200, 2);
+  });
+
+  test('editing away from Check to Cash clears checkDate/clearingStatus and posts back to 1020', async () => {
+    prisma.bill.findFirst.mockResolvedValue({
+      ...baseBill, status: 'PAID',
+      payments: [{ ...basePayment, clearingStatus: 'OUTSTANDING', checkDate: new Date('2026-09-01') }],
+    });
+    let paymentUpdateArgs;
+    prisma.paymentAP.update.mockImplementation((args) => { paymentUpdateArgs = args; return Promise.resolve({ ...basePayment, ...args.data }); });
+    prisma.bill.update.mockResolvedValue({ ...baseBill, paidAmount: 200, status: 'PARTIAL' });
+    prisma.journalEntry.findMany.mockResolvedValue([]);
+    glPost.safePost.mockResolvedValue({ id: 99 });
+
+    await run(ctrl.editPayment, { params: { id: '7', paymentId: '55' }, body: { ...editBody, paymentMethod: 'Cash' } });
+
+    expect(paymentUpdateArgs.data.checkDate).toBeNull();
+    expect(paymentUpdateArgs.data.clearingStatus).toBeNull();
+    const call = glPost.safePost.mock.calls[0][0];
+    expect(call.lines.find((l) => l.accountCode === '2015')).toBeUndefined();
+    expect(call.lines.find((l) => l.accountCode === '1020').credit).toBeCloseTo(200, 2);
+  });
+});

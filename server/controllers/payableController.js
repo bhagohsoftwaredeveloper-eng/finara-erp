@@ -201,10 +201,12 @@ exports.createBill = async (req, res, next) => {
 exports.recordPayment = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { paymentDate, amount, paymentMethod, reference, notes } = req.body;
+    const { paymentDate, amount, paymentMethod, reference, notes, checkDate } = req.body;
     const bill = await prisma.bill.findUnique({ where: { id } });
     if (!bill) throw createError('Bill not found', 404);
     if (bill.status === 'VOID') throw createError('Cannot pay a voided bill', 400);
+    if (paymentMethod === 'Check' && !checkDate) throw createError('Check date is required for a Check payment.', 400);
+    const isCheque = paymentMethod === 'Check';
 
     const paymentNo = await genPayNo();
     const newPaid = Number(bill.paidAmount) + Number(amount);
@@ -212,7 +214,13 @@ exports.recordPayment = async (req, res, next) => {
     const status = remaining <= 0.01 ? 'PAID' : 'PARTIAL';
 
     await prisma.$transaction([
-      prisma.paymentAP.create({ data: { paymentNo, billId: id, paymentDate: new Date(paymentDate), amount: Number(amount), paymentMethod, reference, notes } }),
+      prisma.paymentAP.create({
+        data: {
+          paymentNo, billId: id, paymentDate: new Date(paymentDate), amount: Number(amount), paymentMethod, reference, notes,
+          checkDate: isCheque ? new Date(checkDate) : null,
+          clearingStatus: isCheque ? 'OUTSTANDING' : null,
+        },
+      }),
       prisma.bill.update({ where: { id }, data: { paidAmount: newPaid, status } }),
     ]);
 
@@ -220,11 +228,15 @@ exports.recordPayment = async (req, res, next) => {
     const vendor = await prisma.vendor.findUnique({ where: { id: bill.vendorId }, select: { name: true } });
     await glPost.safePost({
       entryDate:   paymentDate,
-      description: `AP Payment — ${vendor?.name} (${bill.billNo})`,
+      description: isCheque
+        ? `AP Payment (Check — Outstanding) — ${vendor?.name} (${bill.billNo})`
+        : `AP Payment — ${vendor?.name} (${bill.billNo})`,
       reference:   paymentNo,
       lines: [
         { accountCode: '2010', debit:  Number(amount), description: `Clear AP — ${vendor?.name}` },
-        { accountCode: '1020', credit: Number(amount), description: `Cash out — ${paymentNo}` },
+        isCheque
+          ? { accountCode: '2015', credit: Number(amount), description: `Post-dated check issued — ${paymentNo}` }
+          : { accountCode: '1020', credit: Number(amount), description: `Cash out — ${paymentNo}` },
       ],
       userId: req.user?.id || 1,
       businessId: req.businessId,
@@ -318,8 +330,13 @@ exports.editPayment = async (req, res, next) => {
     const payment = bill.payments.find((p) => p.id === paymentId);
     if (!payment) throw createError('Payment not found', 404);
     if (bill.status === 'VOID') throw createError('Cannot edit a payment on a voided bill.', 400);
+    if (payment.clearingStatus && payment.clearingStatus !== 'OUTSTANDING') {
+      throw createError(`This payment has already been ${payment.clearingStatus.toLowerCase()} and can no longer be edited here.`, 400);
+    }
 
-    const { paymentDate, amount, paymentMethod, reference, notes } = req.body;
+    const { paymentDate, amount, paymentMethod, reference, notes, checkDate } = req.body;
+    if (paymentMethod === 'Check' && !checkDate) throw createError('Check date is required for a Check payment.', 400);
+    const isCheque = paymentMethod === 'Check';
     const otherPaid = Number(bill.paidAmount) - Number(payment.amount);
     const newPaid = otherPaid + Number(amount);
 
@@ -336,7 +353,11 @@ exports.editPayment = async (req, res, next) => {
     await prisma.$transaction([
       prisma.paymentAP.update({
         where: { id: paymentId },
-        data: { paymentDate: new Date(paymentDate), amount: Number(amount), paymentMethod, reference, notes },
+        data: {
+          paymentDate: new Date(paymentDate), amount: Number(amount), paymentMethod, reference, notes,
+          checkDate: isCheque ? new Date(checkDate) : null,
+          clearingStatus: isCheque ? 'OUTSTANDING' : null,
+        },
       }),
       prisma.bill.update({ where: { id }, data: { paidAmount: newPaid, status } }),
     ]);
@@ -358,11 +379,15 @@ exports.editPayment = async (req, res, next) => {
     await voidPostedEntriesByReference(bill.businessId, payment.paymentNo, req, 'PAYMENT EDIT');
     const glResult = await glPost.safePost({
       entryDate:   paymentDate,
-      description: `AP Payment (Edited) — ${vendor?.name} (${bill.billNo})`,
+      description: isCheque
+        ? `AP Payment (Edited, Check — Outstanding) — ${vendor?.name} (${bill.billNo})`
+        : `AP Payment (Edited) — ${vendor?.name} (${bill.billNo})`,
       reference:   payment.paymentNo,
       lines: [
         { accountCode: '2010', debit:  Number(amount), description: `Clear AP — ${vendor?.name}` },
-        { accountCode: '1020', credit: Number(amount), description: `Cash out — ${payment.paymentNo}` },
+        isCheque
+          ? { accountCode: '2015', credit: Number(amount), description: `Post-dated check issued — ${payment.paymentNo}` }
+          : { accountCode: '1020', credit: Number(amount), description: `Cash out — ${payment.paymentNo}` },
       ],
       userId: req.user?.id || 1,
       businessId: req.businessId,
