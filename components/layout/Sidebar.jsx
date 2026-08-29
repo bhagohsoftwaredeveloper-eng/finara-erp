@@ -56,6 +56,7 @@ const NAV = [
           { label: 'Bills',    href: '/payable' },
           { label: 'Vendors',  href: '/payable/vendors' },
           { label: 'AP Aging', href: '/payable/aging' },
+          { label: 'Cheques',  href: '/payable/cheques' },
         ],
       },
       { label: 'Purchase Orders',  icon: ShoppingCart, href: '/purchase-orders' },
