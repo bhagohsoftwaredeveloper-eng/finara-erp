@@ -39,7 +39,7 @@ const computeVAT = (amount, code) =>
                  : { base: amount, vat: 0, total: amount };
 
 // ─── Bill Detail Modal ────────────────────────────────────────
-function BillDetailModal({ bill, onClose, onPayment, onVoid, onEdit }) {
+function BillDetailModal({ bill, onClose, onPayment, onVoid, onEdit, onEditPayment }) {
   const balance = Number(bill.totalAmount) - Number(bill.paidAmount);
   const pct = bill.totalAmount > 0 ? (Number(bill.paidAmount) / Number(bill.totalAmount)) * 100 : 0;
 
@@ -190,7 +190,14 @@ function BillDetailModal({ bill, onClose, onPayment, onVoid, onEdit }) {
                       <span className="text-gray-500 ml-2">via {p.paymentMethod}</span>
                       {p.reference && <span className="text-gray-400 ml-2 text-xs">Ref: {p.reference}</span>}
                     </div>
-                    <span className="text-gray-400 text-xs">{formatDate(p.paymentDate)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400 text-xs">{formatDate(p.paymentDate)}</span>
+                      {bill.status !== 'VOID' && (
+                        <button onClick={() => onEditPayment(p)} className="text-gray-400 hover:text-blue-600" title="Edit payment">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -317,6 +324,100 @@ function PaymentModal({ bill, onClose, onPaid }) {
             <button type="submit" disabled={saving} className="btn-success">
               <CreditCard className="w-4 h-4" />
               {saving ? 'Processing...' : 'Record Payment'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit Payment Modal ───────────────────────────────────────
+function EditPaymentModal({ bill, payment, onClose, onSaved }) {
+  const otherPaid = Number(bill.paidAmount) - Number(payment.amount);
+  const balance = Number(bill.totalAmount) - otherPaid;
+  const [form, setForm] = useState({
+    paymentDate: payment.paymentDate.slice(0, 10),
+    amount: String(payment.amount),
+    paymentMethod: payment.paymentMethod,
+    reference: payment.reference || '',
+    notes: payment.notes || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!(Number(form.amount) > 0)) {
+      toast.error('Enter an amount greater than zero');
+      return;
+    }
+    if (Number(form.amount) > balance + 0.01) {
+      toast.error(`Amount exceeds balance of ${formatCurrency(balance)}`);
+      return;
+    }
+    setSaving(true);
+    try {
+      await pApi.bills.editPayment(bill.id, payment.id, { ...form, amount: Number(form.amount) });
+      toast.success('Payment updated successfully');
+      onSaved();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Payment update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-md">
+        <div className="modal-header">
+          <h3 className="text-lg font-semibold">Edit Payment</h3>
+          <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body space-y-4">
+            <div className="bg-blue-50 rounded-xl p-4 text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-gray-600">Bill</span><span className="font-medium">{bill.billNo}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Vendor</span><span>{bill.vendor?.name}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Total Amount</span><span className="font-medium">{formatCurrency(bill.totalAmount)}</span></div>
+              <div className="flex justify-between font-bold border-t border-blue-200 pt-1 text-base"><span>Max for this payment</span><span className="text-red-600">{formatCurrency(balance)}</span></div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Payment Date *</label>
+              <input type="date" className="input" required value={form.paymentDate} onChange={set('paymentDate')} />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Amount (₱) *</label>
+              <NumberInput className="input" required placeholder="0.00"
+                value={form.amount} onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
+              <p className="text-xs text-gray-400 mt-1">Max: {formatCurrency(balance)}</p>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Payment Method *</label>
+              <select className="select" required value={form.paymentMethod} onChange={set('paymentMethod')}>
+                {PAY_METHODS.map((m) => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Reference No.</label>
+              <input className="input" value={form.reference} onChange={set('reference')} placeholder="Check no., transaction ID..." />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Notes</label>
+              <textarea className="input resize-none" rows={2} value={form.notes} onChange={set('notes')} />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-success">
+              <Pencil className="w-4 h-4" />
+              {saving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>
@@ -975,6 +1076,7 @@ export default function BillsPage() {
           onPayment={() => setModal({ type: 'payment', bill: modal.bill })}
           onVoid={() => { handleVoid(modal.bill); setModal(null); }}
           onEdit={() => setModal({ type: 'edit', bill: modal.bill })}
+          onEditPayment={(payment) => setModal({ type: 'editPayment', bill: modal.bill, payment })}
         />
       )}
       {modal?.type === 'payment' && (
@@ -982,6 +1084,14 @@ export default function BillsPage() {
           bill={modal.bill}
           onClose={() => setModal(null)}
           onPaid={() => { setModal(null); load(); }}
+        />
+      )}
+      {modal?.type === 'editPayment' && (
+        <EditPaymentModal
+          bill={modal.bill}
+          payment={modal.payment}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); load(); }}
         />
       )}
     </div>
