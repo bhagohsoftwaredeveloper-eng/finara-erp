@@ -189,10 +189,18 @@ function BillDetailModal({ bill, onClose, onPayment, onVoid, onEdit, onEditPayme
                       <span className="font-medium text-gray-800">{formatCurrency(p.amount)}</span>
                       <span className="text-gray-500 ml-2">via {p.paymentMethod}</span>
                       {p.reference && <span className="text-gray-400 ml-2 text-xs">Ref: {p.reference}</span>}
+                      {p.clearingStatus && (
+                        <span className={`badge ml-2 ${
+                          p.clearingStatus === 'OUTSTANDING' ? 'badge-yellow' :
+                          p.clearingStatus === 'CLEARED'     ? 'badge-green'  : 'badge-red'
+                        }`}>
+                          {p.clearingStatus}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-gray-400 text-xs">{formatDate(p.paymentDate)}</span>
-                      {bill.status !== 'VOID' && (
+                      {bill.status !== 'VOID' && (!p.clearingStatus || p.clearingStatus === 'OUTSTANDING') && (
                         <button onClick={() => onEditPayment(p)} className="text-gray-400 hover:text-blue-600" title="Edit payment">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -246,6 +254,7 @@ function PaymentModal({ bill, onClose, onPaid }) {
     paymentMethod: 'Bank Transfer',
     reference: '',
     notes: '',
+    checkDate: '',
   });
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -258,6 +267,10 @@ function PaymentModal({ bill, onClose, onPaid }) {
     }
     if (Number(form.amount) > balance + 0.01) {
       toast.error(`Amount exceeds balance of ${formatCurrency(balance)}`);
+      return;
+    }
+    if (form.paymentMethod === 'Check' && !form.checkDate) {
+      toast.error('Check date is required for a Check payment');
       return;
     }
     setSaving(true);
@@ -309,6 +322,14 @@ function PaymentModal({ bill, onClose, onPaid }) {
               </select>
             </div>
 
+            {form.paymentMethod === 'Check' && (
+              <div className="form-group">
+                <label className="label">Check Date *</label>
+                <input type="date" className="input" required value={form.checkDate} onChange={set('checkDate')} />
+                <p className="text-xs text-gray-400 mt-1">The date printed on the cheque — tracked separately on the new Cheques page until it clears.</p>
+              </div>
+            )}
+
             <div className="form-group">
               <label className="label">Reference No.</label>
               <input className="input" value={form.reference} onChange={set('reference')} placeholder="Check no., transaction ID..." />
@@ -342,6 +363,7 @@ function EditPaymentModal({ bill, payment, onClose, onSaved }) {
     paymentMethod: payment.paymentMethod,
     reference: payment.reference || '',
     notes: payment.notes || '',
+    checkDate: payment.checkDate ? payment.checkDate.slice(0, 10) : '',
   });
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -354,6 +376,10 @@ function EditPaymentModal({ bill, payment, onClose, onSaved }) {
     }
     if (Number(form.amount) > balance + 0.01) {
       toast.error(`Amount exceeds balance of ${formatCurrency(balance)}`);
+      return;
+    }
+    if (form.paymentMethod === 'Check' && !form.checkDate) {
+      toast.error('Check date is required for a Check payment');
       return;
     }
     setSaving(true);
@@ -402,6 +428,14 @@ function EditPaymentModal({ bill, payment, onClose, onSaved }) {
                 {PAY_METHODS.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
+
+            {form.paymentMethod === 'Check' && (
+              <div className="form-group">
+                <label className="label">Check Date *</label>
+                <input type="date" className="input" required value={form.checkDate} onChange={set('checkDate')} />
+                <p className="text-xs text-gray-400 mt-1">The date printed on the cheque — tracked separately on the new Cheques page until it clears.</p>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="label">Reference No.</label>
