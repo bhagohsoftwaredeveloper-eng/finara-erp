@@ -51,6 +51,16 @@ router.put('/:id',
     body('lines.*.vatCode').isIn(['VAT','EXEMPT','ZERO']),
   ],
   validate, ctrl.updateBill);
+router.put('/:id/payment/:paymentId',
+  authorize('ADMIN','MANAGER'),
+  [
+    param('id').isInt(),
+    param('paymentId').isInt(),
+    body('paymentDate').isISO8601(),
+    body('amount').isFloat({ min: 0.01 }),
+    body('paymentMethod').notEmpty(),
+  ],
+  validate, ctrl.editPayment);
 router.post('/:id/void', authorize('ADMIN','MANAGER'), param('id').isInt(), validate, ctrl.voidBill);
 
 module.exports = router;

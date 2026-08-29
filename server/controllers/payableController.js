@@ -305,6 +305,72 @@ exports.updateBill = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.editPayment = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const paymentId = Number(req.params.paymentId);
+    const bill = await prisma.bill.findFirst({
+      where: { id, businessId: req.businessId },
+      include: { payments: true, vendor: true },
+    });
+    if (!bill) throw createError('Bill not found', 404);
+
+    const payment = bill.payments.find((p) => p.id === paymentId);
+    if (!payment) throw createError('Payment not found', 404);
+    if (bill.status === 'VOID') throw createError('Cannot edit a payment on a voided bill.', 400);
+
+    const { paymentDate, amount, paymentMethod, reference, notes } = req.body;
+    const otherPaid = Number(bill.paidAmount) - Number(payment.amount);
+    const newPaid = otherPaid + Number(amount);
+
+    if (newPaid > Number(bill.totalAmount) + 0.01) {
+      throw createError(
+        `Amount exceeds bill total. Balance available for this payment: ₱${(Number(bill.totalAmount) - otherPaid).toFixed(2)}.`,
+        400
+      );
+    }
+
+    const remaining = Number(bill.totalAmount) - newPaid;
+    const status = remaining <= 0.01 ? 'PAID' : (newPaid > 0.01 ? 'PARTIAL' : 'OPEN');
+
+    await prisma.$transaction([
+      prisma.paymentAP.update({
+        where: { id: paymentId },
+        data: { paymentDate: new Date(paymentDate), amount: Number(amount), paymentMethod, reference, notes },
+      }),
+      prisma.bill.update({ where: { id }, data: { paidAmount: newPaid, status } }),
+    ]);
+
+    // ── GL correction: void the payment's own prior entry, post a fresh one ──
+    await voidPostedEntriesByReference(bill.businessId, payment.paymentNo, req, 'PAYMENT EDIT');
+    const glResult = await glPost.safePost({
+      entryDate:   paymentDate,
+      description: `AP Payment (Edited) — ${bill.vendor.name} (${bill.billNo})`,
+      reference:   payment.paymentNo,
+      lines: [
+        { accountCode: '2010', debit:  Number(amount), description: `Clear AP — ${bill.vendor.name}` },
+        { accountCode: '1020', credit: Number(amount), description: `Cash out — ${payment.paymentNo}` },
+      ],
+      userId: req.user?.id || 1,
+      businessId: req.businessId,
+    });
+    if (!glResult || glResult.skipped) {
+      try {
+        await recordAudit({
+          action:     'GL_POST_FAILED',
+          entity:     'JournalEntry',
+          entityId:   payment.paymentNo,
+          summary:    `Payment ${payment.paymentNo} was edited but its corrected GL entry did not post (${glResult?.skipped ? `skipped: ${glResult.skipped}` : 'failed'}) — its AP/cash impact may be missing from the ledger.`,
+          user:       req.user?.id ? { id: req.user.id } : undefined,
+          businessId: req.businessId,
+        });
+      } catch { /* auditing must never break anything either */ }
+    }
+
+    res.json({ message: 'Payment updated', remainingBalance: Math.max(0, remaining) });
+  } catch (err) { next(err); }
+};
+
 // Shared by voidBill/updateBill: void every POSTED journal entry sharing a
 // reference — a bill can carry more than one after being edited before (or
 // from the retired add-items flow, on older data), so this can't stop at
