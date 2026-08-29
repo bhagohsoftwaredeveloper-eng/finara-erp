@@ -108,6 +108,7 @@ async function main() {
     { accountCode:'2010', accountName:'Accounts Payable — Trade',            accountType:'LIABILITY', normalBalance:'CREDIT', parentCode:'2000' },
     { accountCode:'2011', accountName:'Accounts Payable — Media Suppliers',  accountType:'LIABILITY', normalBalance:'CREDIT', parentCode:'2000' },
     { accountCode:'2012', accountName:'Accounts Payable — Production',       accountType:'LIABILITY', normalBalance:'CREDIT', parentCode:'2000' },
+    { accountCode:'2015', accountName:'Post-Dated Checks Payable',           accountType:'LIABILITY', normalBalance:'CREDIT', parentCode:'2000' },
 
     // Accruals
     { accountCode:'2020', accountName:'Accrued Expenses',                    accountType:'LIABILITY', normalBalance:'CREDIT', parentCode:'2000' },

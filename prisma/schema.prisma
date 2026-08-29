@@ -275,8 +275,19 @@ model PaymentAP {
   notes         String?   @db.Text
   createdAt     DateTime  @default(now())
 
+  checkDate      DateTime?     @db.Date
+  clearingStatus ChequeStatus?
+
   @@index([billId])
+  @@index([clearingStatus])
   @@map("payments_ap")
+}
+
+enum ChequeStatus {
+  OUTSTANDING
+  CLEARED
+  BOUNCED
+  CANCELLED
 }
 
 enum BillStatus {
