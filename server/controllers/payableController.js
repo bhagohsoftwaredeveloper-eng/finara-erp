@@ -506,16 +506,24 @@ exports.listCheques = async (req, res, next) => {
         bill: { businessId: req.businessId },
         ...(status ? { clearingStatus: status } : {}),
       },
-      include: { bill: { select: { billNo: true, vendor: { select: { name: true } } } } },
+      include: { bill: { select: { billNo: true, vendorId: true } } },
       orderBy: { checkDate: 'asc' },
     });
+
+    // Fetch vendors separately (not via `include`) so a bill whose vendor was
+    // deleted out from under it (orphaned FK) can't crash this list — Prisma
+    // throws on `include` when a required relation resolves to null. Same
+    // protection as listBills/getBill.
+    const vendorIds = [...new Set(payments.map((p) => p.bill.vendorId))];
+    const vendors = await prisma.vendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, name: true } });
+    const vendorNameById = Object.fromEntries(vendors.map((v) => [v.id, v.name]));
 
     const result = payments.map((p) => ({
       id: p.id,
       paymentNo: p.paymentNo,
       billId: p.billId,
       billNo: p.bill.billNo,
-      vendorName: p.bill.vendor?.name,
+      vendorName: vendorNameById[p.bill.vendorId],
       amount: p.amount,
       checkNo: p.reference,
       checkDate: p.checkDate,
