@@ -513,25 +513,31 @@ function ShippingModal({ invoice, onClose, onShipped }) {
 
 // ─── Create Invoice Modal ─────────────────────────────────────
 function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, onCustomerAdded }) {
-  const [form, setForm] = useState(() => invoice ? {
-    customerId:  String(invoice.customerId),
-    invoiceDate: invoice.invoiceDate.slice(0, 10),
-    dueDate:     invoice.dueDate.slice(0, 10),
-    description: invoice.description || '',
-    notes:       invoice.notes || '',
-    lines: invoice.lines.map((l) => ({
-      accountId: String(l.accountId), description: l.description,
-      quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
-    })),
-  } : {
-    customerId:   '',
-    invoiceDate:  new Date().toISOString().split('T')[0],
-    dueDate:      '',
-    description:  '',
-    notes:        '',
-    lines: [
-      { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
-    ],
+  const [form, setForm] = useState(() => {
+    if (invoice) return {
+      customerId:  String(invoice.customerId),
+      invoiceDate: invoice.invoiceDate.slice(0, 10),
+      dueDate:     invoice.dueDate.slice(0, 10),
+      description: invoice.description || '',
+      notes:       invoice.notes || '',
+      lines: invoice.lines.map((l) => ({
+        accountId: String(l.accountId), description: l.description,
+        quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
+      })),
+    };
+    const invoiceDate = new Date().toISOString().split('T')[0];
+    const due = new Date(invoiceDate);
+    due.setDate(due.getDate() + 30);
+    return {
+      customerId:   '',
+      invoiceDate,
+      dueDate:      due.toISOString().split('T')[0],
+      description:  '',
+      notes:        '',
+      lines: [
+        { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
+      ],
+    };
   });
   const [saving, setSaving] = useState(false);
   const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : 'invoice:new');

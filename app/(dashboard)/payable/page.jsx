@@ -469,25 +469,31 @@ function EditPaymentModal({ bill, payment, onClose, onSaved }) {
 
 // ─── Create Bill Modal ────────────────────────────────────────
 function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAdded }) {
-  const [form, setForm] = useState(() => bill ? {
-    vendorId:    String(bill.vendorId),
-    billDate:    bill.billDate.slice(0, 10),
-    dueDate:     bill.dueDate.slice(0, 10),
-    description: bill.description || '',
-    notes:       bill.notes || '',
-    lines: bill.lines.map((l) => ({
-      accountId: String(l.accountId), description: l.description,
-      quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
-    })),
-  } : {
-    vendorId: '',
-    billDate: new Date().toISOString().split('T')[0],
-    dueDate: '',
-    description: '',
-    notes: '',
-    lines: [
-      { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
-    ],
+  const [form, setForm] = useState(() => {
+    if (bill) return {
+      vendorId:    String(bill.vendorId),
+      billDate:    bill.billDate.slice(0, 10),
+      dueDate:     bill.dueDate.slice(0, 10),
+      description: bill.description || '',
+      notes:       bill.notes || '',
+      lines: bill.lines.map((l) => ({
+        accountId: String(l.accountId), description: l.description,
+        quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
+      })),
+    };
+    const billDate = new Date().toISOString().split('T')[0];
+    const due = new Date(billDate);
+    due.setDate(due.getDate() + 30);
+    return {
+      vendorId: '',
+      billDate,
+      dueDate: due.toISOString().split('T')[0],
+      description: '',
+      notes: '',
+      lines: [
+        { accountId: '', description: '', quantity: '1', unitPrice: '', vatCode: 'EXEMPT' },
+      ],
+    };
   });
   const [saving, setSaving] = useState(false);
   const draftKey = scopedKey(bill?.id ? `bill:edit:${bill.id}` : 'bill:new');
