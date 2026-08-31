@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { expenses as expApi, accounts as accountsApi, audit as auditApi } from '@/lib/api';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
@@ -12,6 +12,7 @@ import {
   Banknote, AlertCircle, Edit2, Search, Wallet, ChevronDown,
   FileText, History,
 } from 'lucide-react';
+import { saveDraft, loadDraft, clearDraft, listDraftKeys } from '@/lib/draftStorage';
 
 const fmt = n => formatCurrency(Number(n || 0));
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -171,6 +172,26 @@ export default function ExpensesPage() {
 
   const fTotal = fItems.reduce((s, it) => s + Number(it.amount || 0), 0);
 
+  const draftKey = editing?.id ? `expense:edit:${editing.id}` : 'expense:new';
+  const autoOpenedRef = useRef(false);
+
+  const applyDraft = useCallback((d) => {
+    if (!d) return;
+    setFType(d.fType); setFDate(d.fDate); setFPayee(d.fPayee); setFCategory(d.fCategory);
+    setFPurpose(d.fPurpose); setFReceiptNo(d.fReceiptNo); setFRequestedBy(d.fRequestedBy);
+    setFNotes(d.fNotes); setFItems(d.fItems);
+  }, []);
+
+  useEffect(() => {
+    if (!drawerOpen || typeof window === 'undefined') return undefined;
+    const t = setTimeout(() => {
+      saveDraft(window.localStorage, draftKey, {
+        fType, fDate, fPayee, fCategory, fPurpose, fReceiptNo, fRequestedBy, fNotes, fItems,
+      });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [drawerOpen, draftKey, fType, fDate, fPayee, fCategory, fPurpose, fReceiptNo, fRequestedBy, fNotes, fItems]);
+
   // Load data
   const load = useCallback(async () => {
     setLoading(true);
@@ -210,6 +231,22 @@ export default function ExpensesPage() {
       .catch(() => toast.error('Could not load accounts — check server connection'));
   }, []);
 
+  useEffect(() => {
+    if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
+    autoOpenedRef.current = true;
+
+    if (loadDraft(window.localStorage, 'expense:new')) { openNew(); return; }
+
+    const editKeys = listDraftKeys(window.localStorage, 'expense:edit:');
+    if (!editKeys.length) return;
+    const id = Number(editKeys[0].split(':').pop());
+    if (!Number.isFinite(id)) { clearDraft(window.localStorage, editKeys[0]); return; }
+    expApi.get(id)
+      .then(({ data }) => openEdit(data))
+      .catch(() => clearDraft(window.localStorage, editKeys[0]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   // ── Form helpers ──────────────────────────────────────────────
   function resetForm() {
     setFType('PETTY_CASH'); setFDate(todayStr()); setFPayee(''); setFCategory('');
@@ -221,6 +258,8 @@ export default function ExpensesPage() {
     setEditing(null);
     resetForm();
     setDrawerOpen(true);
+    const d = loadDraft(window.localStorage, 'expense:new');
+    if (d) { applyDraft(d); toast('Draft restored from your last session', { icon: '📝' }); }
   }
 
   function openEdit(v) {
@@ -237,6 +276,8 @@ export default function ExpensesPage() {
       ? v.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
       : [{ description: '', accountId: null, amount: '', receiptNo: '' }]);
     setDrawerOpen(true);
+    const d = loadDraft(window.localStorage, `expense:edit:${v.id}`);
+    if (d) { applyDraft(d); toast('Draft restored from your last session', { icon: '📝' }); }
   }
 
   function addItem() {
@@ -268,6 +309,7 @@ export default function ExpensesPage() {
         await expApi.create(payload);
         toast.success('Expense voucher created');
       }
+      clearDraft(window.localStorage, draftKey);
       setDrawerOpen(false);
       load();
     } catch (e) { toast.error(e?.response?.data?.error || 'Save failed'); }
@@ -532,12 +574,12 @@ export default function ExpensesPage() {
       </div>
 
       {/* ── New / Edit Voucher Drawer ── */}
-      <Drawer wide open={drawerOpen} onClose={() => setDrawerOpen(false)}
+      <Drawer wide open={drawerOpen} onClose={() => { clearDraft(window.localStorage, draftKey); setDrawerOpen(false); }}
         title={editing ? `Edit — ${editing.voucherNo}` : 'New Expense Voucher'}
         subtitle={editing ? `${TYPE_OPTS.find(t=>t.value===editing.type)?.label || editing.type} · ${editing.status}` : 'Fill in the details below'}
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setDrawerOpen(false)}>Cancel</button>
+            <button className="btn-secondary" onClick={() => { clearDraft(window.localStorage, draftKey); setDrawerOpen(false); }}>Cancel</button>
             <button className="btn-primary" onClick={handleSave}>
               {editing ? 'Save Changes' : 'Create Voucher'}
             </button>
