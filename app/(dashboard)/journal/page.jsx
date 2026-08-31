@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { journal as jApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock, Printer, Search } from 'lucide-react';
@@ -7,6 +7,8 @@ import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import AccountSelect from '@/components/ui/AccountSelect';
 import NumberInput, { groupThousands } from '@/components/NumberInput';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { useDraftGuard } from '@/lib/useDraftGuard';
+import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
 const STATUS_BADGE = { DRAFT:'badge-yellow', POSTED:'badge-green', VOIDED:'badge-gray' };
 
@@ -246,6 +248,8 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
     notes: entry?.notes || '',
   });
   const [saving, setSaving] = useState(false);
+  const draftKey = entry?.id ? `journal:edit:${entry.id}` : 'journal:new';
+  const { clearDraft: clearJournalDraft } = useDraftGuard(draftKey, form, setForm);
 
   const totalDebit  = form.lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
   const totalCredit = form.lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
@@ -267,17 +271,20 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
       if (entry?.id) await jApi.update(entry.id, payload);
       else await jApi.create(payload);
       toast.success('Journal entry saved');
+      clearJournalDraft();
       onSaved();
     } catch (err) { toast.error(err.response?.data?.error || 'Save failed'); }
     finally { setSaving(false); }
   };
+
+  const handleClose = () => { clearJournalDraft(); onClose(); };
 
   return (
     <div className="modal-overlay">
       <div className="modal max-w-5xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">{entry?.id ? `Edit — ${entry.entryNo}` : 'New Journal Entry'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-4">
@@ -342,7 +349,7 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
               <input className="input" placeholder="Supporting details, approval remarks…"
                 value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleClose} className="btn-secondary">Cancel</button>
             {entry?.id && (
               <button type="button" onClick={() => printEntry(entry)} className="btn-secondary">
                 <Printer className="w-4 h-4" /> Print
@@ -365,6 +372,7 @@ export default function JournalPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [voidEntry, setVoidEntry] = useState(null);
+  const autoOpenedRef = useRef(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -373,6 +381,21 @@ export default function JournalPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { acctApi.list({ active: true }).then(r => setAccounts(r.data)); }, []);
+
+  useEffect(() => {
+    if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
+    autoOpenedRef.current = true;
+
+    if (loadDraft(window.localStorage, 'journal:new')) { setModal('new'); return; }
+
+    const editKeys = listDraftKeys(window.localStorage, 'journal:edit:');
+    if (!editKeys.length) return;
+    const id = Number(editKeys[0].split(':').pop());
+    if (!Number.isFinite(id)) { clearDraft(window.localStorage, editKeys[0]); return; }
+    jApi.get(id)
+      .then(({ data }) => setModal(data))
+      .catch(() => clearDraft(window.localStorage, editKeys[0]));
+  }, [loading]);
 
   const handlePost = async (id) => {
     try { await jApi.post(id); toast.success('Entry posted to GL'); load(); }
