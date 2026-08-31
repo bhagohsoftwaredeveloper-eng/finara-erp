@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { receivable as rApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
@@ -15,6 +15,8 @@ import NumberInput from '@/components/NumberInput';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import { useBusiness, isPreCutover } from '@/lib/businessContext';
+import { useDraftGuard } from '@/lib/useDraftGuard';
+import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
 // ─── Constants ────────────────────────────────────────────────
 const VAT_CODES   = ['VAT', 'ZERO', 'EXEMPT'];
@@ -313,6 +315,8 @@ function CollectionModal({ invoice, onClose, onCollected }) {
     notes:         '',
   });
   const [saving, setSaving] = useState(false);
+  const draftKey = `collection:new:${invoice.id}`;
+  const { clearDraft: clearCollectionDraft } = useDraftGuard(draftKey, form, setForm);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
@@ -329,6 +333,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
     try {
       await rApi.invoices.payment(invoice.id, { ...form, amount: Number(form.amount) });
       toast.success('Collection recorded successfully');
+      clearCollectionDraft();
       onCollected();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Collection failed');
@@ -337,12 +342,14 @@ function CollectionModal({ invoice, onClose, onCollected }) {
     }
   };
 
+  const handleClose = () => { clearCollectionDraft(); onClose(); };
+
   return (
     <div className="modal-overlay">
       <div className="modal max-w-md">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">Record Collection</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+          <button onClick={handleClose} className="text-gray-400 text-2xl leading-none">&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-4">
@@ -426,7 +433,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
             </div>
           </div>
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-success">
               <PesoSign className="w-4 h-4" />
               {saving ? 'Recording...' : 'Record Collection'}
@@ -527,6 +534,8 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
     ],
   });
   const [saving, setSaving] = useState(false);
+  const draftKey = invoice?.id ? `invoice:edit:${invoice.id}` : 'invoice:new';
+  const { clearDraft: clearInvoiceDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setLine = (i, k, v) =>
@@ -592,6 +601,7 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
         await rApi.invoices.create(payload);
         toast.success('Invoice created successfully');
       }
+      clearInvoiceDraft();
       onSaved();
     } catch (err) {
       toast.error(err.response?.data?.error || `Failed to ${invoice ? 'update' : 'create'} invoice`);
@@ -600,12 +610,14 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
     }
   };
 
+  const handleClose = () => { clearInvoiceDraft(); onClose(); };
+
   return (
     <div className="modal-overlay">
       <div className="modal max-w-6xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">{invoice ? 'Edit Invoice' : 'New Sales Invoice'}</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
+          <button onClick={handleClose} className="text-gray-400 text-2xl leading-none">&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-5">
@@ -765,7 +777,7 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
               <input className="input" placeholder="Internal remarks, payment terms…"
                 value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               <PesoReceipt className="w-4 h-4" />
               {saving ? (invoice ? 'Saving...' : 'Creating Invoice...') : (invoice ? 'Save Changes' : 'Create Invoice')}
@@ -791,6 +803,7 @@ export default function InvoicesPage() {
   const [filter, setFilter]       = useState({ status: '', customerId: '', from: '', to: '', search: '' });
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [modal, setModal]         = useState(null);
+  const autoOpenedRef = useRef(false);
   const LIMIT = 15;
 
   const load = useCallback(async () => {
@@ -825,6 +838,37 @@ export default function InvoicesPage() {
     rApi.customers.list({ active: true }).then((r) => setCustomers(r.data));
     acctApi.list({ active: true }).then((r) => setAccounts(r.data));
   }, []);
+
+  useEffect(() => {
+    if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
+    autoOpenedRef.current = true;
+
+    if (loadDraft(window.localStorage, 'invoice:new')) { setModal({ type: 'create' }); return; }
+
+    const invoiceEditKeys = listDraftKeys(window.localStorage, 'invoice:edit:');
+    if (invoiceEditKeys.length) {
+      const id = Number(invoiceEditKeys[0].split(':').pop());
+      if (Number.isFinite(id)) {
+        rApi.invoices.get(id)
+          .then(({ data }) => setModal({ type: 'edit', invoice: data }))
+          .catch(() => clearDraft(window.localStorage, invoiceEditKeys[0]));
+        return;
+      }
+      clearDraft(window.localStorage, invoiceEditKeys[0]);
+    }
+
+    const collectionKeys = listDraftKeys(window.localStorage, 'collection:new:');
+    if (collectionKeys.length) {
+      const invoiceId = Number(collectionKeys[0].split(':').pop());
+      if (Number.isFinite(invoiceId)) {
+        rApi.invoices.get(invoiceId)
+          .then(({ data }) => setModal({ type: 'collect', invoice: data }))
+          .catch(() => clearDraft(window.localStorage, collectionKeys[0]));
+        return;
+      }
+      clearDraft(window.localStorage, collectionKeys[0]);
+    }
+  }, [loading]);
 
   const openInvoice = async (inv) => {
     try {
