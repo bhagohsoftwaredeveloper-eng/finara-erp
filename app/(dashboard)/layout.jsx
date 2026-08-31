@@ -9,6 +9,7 @@ import { isAuthenticated, getUser } from '@/lib/auth';
 import { canAccess, canWrite, setPermissions, setDisabledModules } from '@/lib/permissions';
 import { permissions as permApi } from '@/lib/api';
 import { BusinessProvider } from '@/lib/businessContext';
+import SessionTimeoutGuard from '@/components/layout/SessionTimeoutGuard';
 
 export default function DashboardLayout({ children }) {
   const router   = useRouter();
@@ -70,32 +71,35 @@ export default function DashboardLayout({ children }) {
   if (!authed) return null;
 
   return (
-    <BusinessProvider>
-      <div className="flex h-screen bg-gray-50 dark:bg-gray-950" data-readonly={readonly}>
-        <Sidebar
-          collapsed={collapsed}
-          onToggle={toggleSidebar}
-          mobileOpen={mobileOpen}
-          onMobileClose={() => setMobileOpen(false)}
-        />
-
-        {/* Mobile overlay backdrop */}
-        {mobileOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-            onClick={() => setMobileOpen(false)}
+    <>
+      <SessionTimeoutGuard />
+      <BusinessProvider>
+        <div className="flex h-screen bg-gray-50 dark:bg-gray-950" data-readonly={readonly}>
+          <Sidebar
+            collapsed={collapsed}
+            onToggle={toggleSidebar}
+            mobileOpen={mobileOpen}
+            onMobileClose={() => setMobileOpen(false)}
           />
-        )}
 
-        <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-all duration-200 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
-          <Header onMobileMenu={() => setMobileOpen(true)} />
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <PageTransition>
-              {children}
-            </PageTransition>
-          </main>
+          {/* Mobile overlay backdrop */}
+          {mobileOpen && (
+            <div
+              className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+              onClick={() => setMobileOpen(false)}
+            />
+          )}
+
+          <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-all duration-200 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
+            <Header onMobileMenu={() => setMobileOpen(true)} />
+            <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+              <PageTransition>
+                {children}
+              </PageTransition>
+            </main>
+          </div>
         </div>
-      </div>
-    </BusinessProvider>
+      </BusinessProvider>
+    </>
   );
 }
