@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { payable as pApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
@@ -12,6 +12,8 @@ import { formatCurrency, formatDate } from '@/lib/auth';
 import VendorSelect from '@/components/VendorSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 import NumberInput from '@/components/NumberInput';
+import { useDraftGuard } from '@/lib/useDraftGuard';
+import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
 // ─── Constants ────────────────────────────────────────────────
 const VAT_CODES  = ['VAT', 'ZERO', 'EXEMPT'];
@@ -257,6 +259,8 @@ function PaymentModal({ bill, onClose, onPaid }) {
     checkDate: '',
   });
   const [saving, setSaving] = useState(false);
+  const draftKey = `payment:new:${bill.id}`;
+  const { clearDraft: clearPaymentDraft } = useDraftGuard(draftKey, form, setForm);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
@@ -277,6 +281,7 @@ function PaymentModal({ bill, onClose, onPaid }) {
     try {
       await pApi.bills.payment(bill.id, { ...form, amount: Number(form.amount) });
       toast.success('Payment recorded successfully');
+      clearPaymentDraft();
       onPaid();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Payment failed');
@@ -285,12 +290,14 @@ function PaymentModal({ bill, onClose, onPaid }) {
     }
   };
 
+  const handleClose = () => { clearPaymentDraft(); onClose(); };
+
   return (
     <div className="modal-overlay">
       <div className="modal max-w-md">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">Record Payment</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
+          <button onClick={handleClose} className="text-gray-400 text-2xl">&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-4">
@@ -341,7 +348,7 @@ function PaymentModal({ bill, onClose, onPaid }) {
             </div>
           </div>
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-success">
               <CreditCard className="w-4 h-4" />
               {saving ? 'Processing...' : 'Record Payment'}
@@ -483,6 +490,8 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
     ],
   });
   const [saving, setSaving] = useState(false);
+  const draftKey = bill?.id ? `bill:edit:${bill.id}` : 'bill:new';
+  const { clearDraft: clearBillDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setLine = (i, k, v) => setForm((f) => ({
@@ -549,6 +558,7 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
         await pApi.bills.create(payload);
         toast.success('Bill created successfully');
       }
+      clearBillDraft();
       onSaved();
     } catch (err) {
       toast.error(err.response?.data?.error || `Failed to ${bill ? 'update' : 'create'} bill`);
@@ -557,12 +567,14 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
     }
   };
 
+  const handleClose = () => { clearBillDraft(); onClose(); };
+
   return (
     <div className="modal-overlay">
       <div className="modal max-w-6xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">{bill ? 'Edit Bill' : 'New Bill / Purchase Invoice'}</h3>
-          <button onClick={onClose} className="text-gray-400 text-2xl">&times;</button>
+          <button onClick={handleClose} className="text-gray-400 text-2xl">&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body space-y-5">
@@ -713,7 +725,7 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
               <input className="input" placeholder="Internal remarks, PO ref, delivery terms…"
                 value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleClose} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               <FileText className="w-4 h-4" />
               {saving ? (bill ? 'Saving...' : 'Creating Bill...') : (bill ? 'Save Changes' : 'Create Bill')}
@@ -740,6 +752,7 @@ export default function BillsPage() {
   const [showFilter, setShowFilter] = useState(false);
 
   const [modal, setModal] = useState(null); // 'create' | { bill: ... } | { pay: ... }
+  const autoOpenedRef = useRef(false);
   const LIMIT = 15;
 
   const load = useCallback(async () => {
@@ -776,6 +789,37 @@ export default function BillsPage() {
     pApi.vendors.list({ active: true }).then((r) => setVendors(r.data));
     acctApi.list({ active: true }).then((r) => setAccounts(r.data));
   }, []);
+
+  useEffect(() => {
+    if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
+    autoOpenedRef.current = true;
+
+    if (loadDraft(window.localStorage, 'bill:new')) { setModal({ type: 'create' }); return; }
+
+    const billEditKeys = listDraftKeys(window.localStorage, 'bill:edit:');
+    if (billEditKeys.length) {
+      const id = Number(billEditKeys[0].split(':').pop());
+      if (Number.isFinite(id)) {
+        pApi.bills.get(id)
+          .then(({ data }) => setModal({ type: 'edit', bill: data }))
+          .catch(() => clearDraft(window.localStorage, billEditKeys[0]));
+        return;
+      }
+      clearDraft(window.localStorage, billEditKeys[0]);
+    }
+
+    const paymentKeys = listDraftKeys(window.localStorage, 'payment:new:');
+    if (paymentKeys.length) {
+      const billId = Number(paymentKeys[0].split(':').pop());
+      if (Number.isFinite(billId)) {
+        pApi.bills.get(billId)
+          .then(({ data }) => setModal({ type: 'payment', bill: data }))
+          .catch(() => clearDraft(window.localStorage, paymentKeys[0]));
+        return;
+      }
+      clearDraft(window.localStorage, paymentKeys[0]);
+    }
+  }, [loading]);
 
   const handleVoid = async (bill) => {
     if (!confirm(`Void bill ${bill.billNo}? This cannot be undone.`)) return;
