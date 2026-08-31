@@ -8,7 +8,7 @@ import {
   Printer, Download, Pencil
 } from 'lucide-react';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
-import { formatCurrency, formatDate } from '@/lib/auth';
+import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import VendorSelect from '@/components/VendorSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 import NumberInput from '@/components/NumberInput';
@@ -259,7 +259,7 @@ function PaymentModal({ bill, onClose, onPaid }) {
     checkDate: '',
   });
   const [saving, setSaving] = useState(false);
-  const draftKey = `payment:new:${bill.id}`;
+  const draftKey = scopedKey(`payment:new:${bill.id}`);
   const { clearDraft: clearPaymentDraft } = useDraftGuard(draftKey, form, setForm);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -490,7 +490,7 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
     ],
   });
   const [saving, setSaving] = useState(false);
-  const draftKey = bill?.id ? `bill:edit:${bill.id}` : 'bill:new';
+  const draftKey = scopedKey(bill?.id ? `bill:edit:${bill.id}` : 'bill:new');
   const { clearDraft: clearBillDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -794,9 +794,9 @@ export default function BillsPage() {
     if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
     autoOpenedRef.current = true;
 
-    if (loadDraft(window.localStorage, 'bill:new')) { setModal({ type: 'create' }); return; }
+    if (loadDraft(window.localStorage, scopedKey('bill:new'))) { setModal({ type: 'create' }); return; }
 
-    const billEditKeys = listDraftKeys(window.localStorage, 'bill:edit:');
+    const billEditKeys = listDraftKeys(window.localStorage, scopedKey('bill:edit:'));
     if (billEditKeys.length) {
       const id = Number(billEditKeys[0].split(':').pop());
       if (Number.isFinite(id)) {
@@ -808,7 +808,7 @@ export default function BillsPage() {
       clearDraft(window.localStorage, billEditKeys[0]);
     }
 
-    const paymentKeys = listDraftKeys(window.localStorage, 'payment:new:');
+    const paymentKeys = listDraftKeys(window.localStorage, scopedKey('payment:new:'));
     if (paymentKeys.length) {
       const billId = Number(paymentKeys[0].split(':').pop());
       if (Number.isFinite(billId)) {

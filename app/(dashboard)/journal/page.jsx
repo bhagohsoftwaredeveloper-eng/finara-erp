@@ -6,7 +6,7 @@ import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lo
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import AccountSelect from '@/components/ui/AccountSelect';
 import NumberInput, { groupThousands } from '@/components/NumberInput';
-import { formatCurrency, formatDate } from '@/lib/auth';
+import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import { useDraftGuard } from '@/lib/useDraftGuard';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
@@ -248,7 +248,7 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
     notes: entry?.notes || '',
   });
   const [saving, setSaving] = useState(false);
-  const draftKey = entry?.id ? `journal:edit:${entry.id}` : 'journal:new';
+  const draftKey = scopedKey(entry?.id ? `journal:edit:${entry.id}` : 'journal:new');
   const { clearDraft: clearJournalDraft } = useDraftGuard(draftKey, form, setForm);
 
   const totalDebit  = form.lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
@@ -386,9 +386,9 @@ export default function JournalPage() {
     if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
     autoOpenedRef.current = true;
 
-    if (loadDraft(window.localStorage, 'journal:new')) { setModal('new'); return; }
+    if (loadDraft(window.localStorage, scopedKey('journal:new'))) { setModal('new'); return; }
 
-    const editKeys = listDraftKeys(window.localStorage, 'journal:edit:');
+    const editKeys = listDraftKeys(window.localStorage, scopedKey('journal:edit:'));
     if (!editKeys.length) return;
     const id = Number(editKeys[0].split(':').pop());
     if (!Number.isFinite(id)) { clearDraft(window.localStorage, editKeys[0]); return; }

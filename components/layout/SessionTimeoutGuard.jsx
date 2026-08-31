@@ -38,6 +38,7 @@ export default function SessionTimeoutGuard() {
     try {
       setPendingRedirect(window.localStorage, pathname);
       setIdleLogoutFlag(window.localStorage);
+      window.localStorage.removeItem('lastActivity');
     } catch {}
     clearSession();
     authApi.logout().catch(() => {});

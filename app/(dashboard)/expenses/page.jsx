@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { expenses as expApi, accounts as accountsApi, audit as auditApi } from '@/lib/api';
-import { formatCurrency, formatDate, getUser } from '@/lib/auth';
+import { formatCurrency, formatDate, getUser, scopedKey } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
 import Attachments from '@/components/Attachments';
 import AccountSelect from '@/components/ui/AccountSelect';
@@ -172,18 +172,29 @@ export default function ExpensesPage() {
 
   const fTotal = fItems.reduce((s, it) => s + Number(it.amount || 0), 0);
 
-  const draftKey = editing?.id ? `expense:edit:${editing.id}` : 'expense:new';
+  const draftKey = scopedKey(editing?.id ? `expense:edit:${editing.id}` : 'expense:new');
   const autoOpenedRef = useRef(false);
+  const initialSnapshotRef = useRef(null);
 
   const applyDraft = useCallback((d) => {
-    if (!d) return;
-    setFType(d.fType); setFDate(d.fDate); setFPayee(d.fPayee); setFCategory(d.fCategory);
-    setFPurpose(d.fPurpose); setFReceiptNo(d.fReceiptNo); setFRequestedBy(d.fRequestedBy);
-    setFNotes(d.fNotes); setFItems(d.fItems);
+    if (!d || typeof d !== 'object') return;
+    if (d.fType !== undefined) setFType(d.fType);
+    if (d.fDate !== undefined) setFDate(d.fDate);
+    if (d.fPayee !== undefined) setFPayee(d.fPayee);
+    if (d.fCategory !== undefined) setFCategory(d.fCategory);
+    if (d.fPurpose !== undefined) setFPurpose(d.fPurpose);
+    if (d.fReceiptNo !== undefined) setFReceiptNo(d.fReceiptNo);
+    if (d.fRequestedBy !== undefined) setFRequestedBy(d.fRequestedBy);
+    if (d.fNotes !== undefined) setFNotes(d.fNotes);
+    if (Array.isArray(d.fItems)) setFItems(d.fItems);
   }, []);
 
   useEffect(() => {
     if (!drawerOpen || typeof window === 'undefined') return undefined;
+    const current = JSON.stringify({
+      fType, fDate, fPayee, fCategory, fPurpose, fReceiptNo, fRequestedBy, fNotes, fItems,
+    });
+    if (current === initialSnapshotRef.current) return undefined;
     const t = setTimeout(() => {
       saveDraft(window.localStorage, draftKey, {
         fType, fDate, fPayee, fCategory, fPurpose, fReceiptNo, fRequestedBy, fNotes, fItems,
@@ -235,9 +246,9 @@ export default function ExpensesPage() {
     if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
     autoOpenedRef.current = true;
 
-    if (loadDraft(window.localStorage, 'expense:new')) { openNew(); return; }
+    if (loadDraft(window.localStorage, scopedKey('expense:new'))) { openNew(); return; }
 
-    const editKeys = listDraftKeys(window.localStorage, 'expense:edit:');
+    const editKeys = listDraftKeys(window.localStorage, scopedKey('expense:edit:'));
     if (!editKeys.length) return;
     const id = Number(editKeys[0].split(':').pop());
     if (!Number.isFinite(id)) { clearDraft(window.localStorage, editKeys[0]); return; }
@@ -258,7 +269,12 @@ export default function ExpensesPage() {
     setEditing(null);
     resetForm();
     setDrawerOpen(true);
-    const d = loadDraft(window.localStorage, 'expense:new');
+    initialSnapshotRef.current = JSON.stringify({
+      fType: 'PETTY_CASH', fDate: todayStr(), fPayee: '', fCategory: '',
+      fPurpose: '', fReceiptNo: '', fRequestedBy: userName, fNotes: '',
+      fItems: [{ description: '', accountId: null, amount: '', receiptNo: '' }],
+    });
+    const d = loadDraft(window.localStorage, scopedKey('expense:new'));
     if (d) { applyDraft(d); toast('Draft restored from your last session', { icon: '📝' }); }
   }
 
@@ -272,11 +288,23 @@ export default function ExpensesPage() {
     setFReceiptNo(v.receiptNo || '');
     setFRequestedBy(v.requestedBy || '');
     setFNotes(v.notes || '');
-    setFItems(v.items?.length
+    const items = v.items?.length
       ? v.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
-      : [{ description: '', accountId: null, amount: '', receiptNo: '' }]);
+      : [{ description: '', accountId: null, amount: '', receiptNo: '' }];
+    setFItems(items);
     setDrawerOpen(true);
-    const d = loadDraft(window.localStorage, `expense:edit:${v.id}`);
+    initialSnapshotRef.current = JSON.stringify({
+      fType: v.type,
+      fDate: new Date(v.date).toISOString().slice(0, 10),
+      fPayee: v.payee,
+      fCategory: v.category,
+      fPurpose: v.purpose,
+      fReceiptNo: v.receiptNo || '',
+      fRequestedBy: v.requestedBy || '',
+      fNotes: v.notes || '',
+      fItems: items,
+    });
+    const d = loadDraft(window.localStorage, scopedKey(`expense:edit:${v.id}`));
     if (d) { applyDraft(d); toast('Draft restored from your last session', { icon: '📝' }); }
   }
 

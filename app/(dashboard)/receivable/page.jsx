@@ -13,7 +13,7 @@ import CustomerSelect from '@/components/CustomerSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 import NumberInput from '@/components/NumberInput';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
-import { formatCurrency, formatDate } from '@/lib/auth';
+import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import { useBusiness, isPreCutover } from '@/lib/businessContext';
 import { useDraftGuard } from '@/lib/useDraftGuard';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
@@ -315,7 +315,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
     notes:         '',
   });
   const [saving, setSaving] = useState(false);
-  const draftKey = `collection:new:${invoice.id}`;
+  const draftKey = scopedKey(`collection:new:${invoice.id}`);
   const { clearDraft: clearCollectionDraft } = useDraftGuard(draftKey, form, setForm);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -534,7 +534,7 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
     ],
   });
   const [saving, setSaving] = useState(false);
-  const draftKey = invoice?.id ? `invoice:edit:${invoice.id}` : 'invoice:new';
+  const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : 'invoice:new');
   const { clearDraft: clearInvoiceDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -843,9 +843,9 @@ export default function InvoicesPage() {
     if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
     autoOpenedRef.current = true;
 
-    if (loadDraft(window.localStorage, 'invoice:new')) { setModal({ type: 'create' }); return; }
+    if (loadDraft(window.localStorage, scopedKey('invoice:new'))) { setModal({ type: 'create' }); return; }
 
-    const invoiceEditKeys = listDraftKeys(window.localStorage, 'invoice:edit:');
+    const invoiceEditKeys = listDraftKeys(window.localStorage, scopedKey('invoice:edit:'));
     if (invoiceEditKeys.length) {
       const id = Number(invoiceEditKeys[0].split(':').pop());
       if (Number.isFinite(id)) {
@@ -857,7 +857,7 @@ export default function InvoicesPage() {
       clearDraft(window.localStorage, invoiceEditKeys[0]);
     }
 
-    const collectionKeys = listDraftKeys(window.localStorage, 'collection:new:');
+    const collectionKeys = listDraftKeys(window.localStorage, scopedKey('collection:new:'));
     if (collectionKeys.length) {
       const invoiceId = Number(collectionKeys[0].split(':').pop());
       if (Number.isFinite(invoiceId)) {
