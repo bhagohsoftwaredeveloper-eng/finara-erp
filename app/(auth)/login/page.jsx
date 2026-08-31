@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { auth as authApi } from '@/lib/api';
 import { setSession } from '@/lib/auth';
+import { consumePendingRedirect, consumeIdleLogoutFlag } from '@/lib/postLoginRedirect';
 import { Lock, Mail, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
 // ── Floating particle background ─────────────────────────────
@@ -76,6 +77,12 @@ export default function LoginPage() {
     return () => clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    if (consumeIdleLogoutFlag(window.localStorage)) {
+      toast.error('You were logged out due to inactivity.');
+    }
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -83,7 +90,8 @@ export default function LoginPage() {
       const { data } = await authApi.login(form);
       setSession(data);
       toast.success(`Welcome back, ${data.user.firstName}!`);
-      router.push('/dashboard');
+      const redirectTo = consumePendingRedirect(window.localStorage) || '/dashboard';
+      router.push(redirectTo);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Login failed. Check your credentials.');
     } finally {
