@@ -12,6 +12,7 @@ import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import VendorSelect from '@/components/VendorSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 import NumberInput from '@/components/NumberInput';
+import AccountSelect from '@/components/ui/AccountSelect';
 import { useDraftGuard } from '@/lib/useDraftGuard';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
@@ -639,16 +640,12 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
                       return (
                         <tr key={i} className="align-top">
                           <td>
-                            <select
-                              className="select text-xs"
+                            <AccountSelect
                               value={line.accountId}
-                              onChange={(e) => setLine(i, 'accountId', e.target.value)}
-                            >
-                              <option value="">Select...</option>
-                              {expenseAccounts.map((a) => (
-                                <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>
-                              ))}
-                            </select>
+                              onChange={(val) => setLine(i, 'accountId', val)}
+                              accounts={expenseAccounts}
+                              placeholder="Select..."
+                            />
                           </td>
                           <td>
                             <DescriptionInput

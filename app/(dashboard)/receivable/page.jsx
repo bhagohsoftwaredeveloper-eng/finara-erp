@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
 import PesoSign from '@/components/icons/PesoSign';
+import AccountSelect from '@/components/ui/AccountSelect';
 import CustomerSelect from '@/components/CustomerSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 import NumberInput from '@/components/NumberInput';
@@ -706,16 +707,12 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
                       return (
                         <tr key={i} className="align-top">
                           <td>
-                            <select
-                              className="select text-xs"
+                            <AccountSelect
                               value={line.accountId}
-                              onChange={(e) => setLine(i, 'accountId', e.target.value)}
-                            >
-                              <option value="">Select account...</option>
-                              {revenueAccounts.map((a) => (
-                                <option key={a.id} value={a.id}>{a.accountCode} — {a.accountName}</option>
-                              ))}
-                            </select>
+                              onChange={(val) => setLine(i, 'accountId', val)}
+                              accounts={revenueAccounts}
+                              placeholder="Select account..."
+                            />
                           </td>
                           <td>
                             <DescriptionInput
