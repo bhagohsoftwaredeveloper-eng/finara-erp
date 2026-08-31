@@ -1,11 +1,11 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { receivable as rApi, accounts as acctApi } from '@/lib/api';
+import { receivable as rApi, accounts as acctApi, notifications as notifApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Ban, Filter, X,
   AlertCircle, Clock, CheckCircle2, FileText,
-  Printer, ChevronDown, ChevronUp, Pencil, Truck,
+  Printer, ChevronDown, ChevronUp, Pencil, Truck, Mail,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
 import PesoSign from '@/components/icons/PesoSign';
@@ -52,6 +52,19 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
   const isOverdue =
     ['OPEN', 'PARTIAL'].includes(invoice.status) &&
     new Date(invoice.dueDate) < new Date();
+  const [emailing, setEmailing] = useState(false);
+
+  const handleEmailInvoice = async () => {
+    setEmailing(true);
+    try {
+      const { data } = await notifApi.emailInvoice(invoice.id);
+      toast.success(data.message || 'Invoice emailed');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to email invoice');
+    } finally {
+      setEmailing(false);
+    }
+  };
 
   const handlePrint = () => {
     const linesHTML = (invoice.lines || []).map((l) => `
@@ -296,6 +309,14 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
           )}
           <button onClick={handlePrint} className="btn-secondary">
             <Printer className="w-4 h-4" /> Print
+          </button>
+          <button
+            onClick={handleEmailInvoice}
+            disabled={emailing || !invoice.customer?.email}
+            className="btn-secondary disabled:opacity-40"
+            title={!invoice.customer?.email ? 'Customer has no email address on file' : ''}
+          >
+            <Mail className="w-4 h-4" /> {emailing ? 'Sending...' : 'Email to Customer'}
           </button>
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
