@@ -36,7 +36,7 @@ router.post('/:id/payment',
     body('paymentDate').isISO8601(),
     body('amount').isFloat({ min: 0.01 }),
     body('paymentMethod').notEmpty(),
-    body('checkDate').optional().isISO8601(),
+    body('checkDate').optional({ checkFalsy: true }).isISO8601(),
   ],
   validate, ctrl.recordPayment);
 router.put('/:id',
@@ -61,7 +61,7 @@ router.put('/:id/payment/:paymentId',
     body('paymentDate').isISO8601(),
     body('amount').isFloat({ min: 0 }),
     body('paymentMethod').notEmpty(),
-    body('checkDate').optional().isISO8601(),
+    body('checkDate').optional({ checkFalsy: true }).isISO8601(),
   ],
   validate, ctrl.editPayment);
 router.post('/:id/void', authorize('ADMIN','MANAGER'), param('id').isInt(), validate, ctrl.voidBill);
