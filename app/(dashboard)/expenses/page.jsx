@@ -25,6 +25,7 @@ const HISTORY_ACTION_BADGE = {
   PAY:     'badge-green',
   REJECT:  'badge-red',
   DELETE:  'badge-red',
+  VOID:    'badge-gray',
 };
 
 const fmtDateTime = (d) => {

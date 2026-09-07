@@ -3,6 +3,10 @@ jest.mock('../server/config/database', () => ({
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  expenseVoucherItem: {
+    deleteMany: jest.fn(),
+    createMany: jest.fn(),
+  },
   cashRequest: {
     findUnique: jest.fn(),
   },
@@ -92,9 +96,23 @@ describe('voidExpense', () => {
 
     expect(prisma.cashRequest.findUnique).toHaveBeenCalledWith({ where: { id: 9 }, select: { requestNo: true } });
     expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith({
-      where: { businessId: 1, reference: 'CR-000009', status: 'POSTED' },
+      where: { businessId: 1, reference: 'CR-000009', status: 'POSTED', description: { startsWith: 'Liquidation' } },
     });
     expect(prisma.journalEntry.update).toHaveBeenCalledWith({ where: { id: 77 }, data: { status: 'VOIDED' } });
+  });
+
+  test('does not take the liquidation branch when cashRequestId is set but type is not LIQUIDATION', async () => {
+    prisma.expenseVoucher.findUnique.mockResolvedValue({ ...baseVoucher, status: 'PAID', type: 'PETTY_CASH', cashRequestId: 9 });
+    prisma.expenseVoucher.update.mockResolvedValue({ ...baseVoucher, status: 'VOID' });
+    prisma.journalEntry.findFirst.mockResolvedValue({ id: 55 });
+    prisma.journalEntry.update.mockResolvedValue({});
+
+    await run(ctrl.void, { params: { id: '12' }, body: { reason: 'overpaid' } });
+
+    expect(prisma.cashRequest.findUnique).not.toHaveBeenCalled();
+    expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith({
+      where: { businessId: 1, reference: 'EV-000012', status: 'POSTED' },
+    });
   });
 
   test('a GL-void failure does not block the voucher status change', async () => {
@@ -116,5 +134,31 @@ describe('voidExpense', () => {
     await run(ctrl.void, { params: { id: '12' }, body: { reason: 'overpaid' } });
 
     expect(prisma.journalEntry.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('VOID is terminal — submit/approve/reject cannot reopen it', () => {
+  test('submit rejects an already-VOID voucher', async () => {
+    prisma.expenseVoucher.findUnique.mockResolvedValue({ ...baseVoucher, status: 'VOID' });
+
+    await expect(run(ctrl.submit, { params: { id: '12' }, body: {} }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.expenseVoucher.update).not.toHaveBeenCalled();
+  });
+
+  test('approve rejects an already-VOID voucher', async () => {
+    prisma.expenseVoucher.findUnique.mockResolvedValue({ ...baseVoucher, status: 'VOID' });
+
+    await expect(run(ctrl.approve, { params: { id: '12' }, body: {} }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.expenseVoucher.update).not.toHaveBeenCalled();
+  });
+
+  test('reject rejects an already-VOID voucher', async () => {
+    prisma.expenseVoucher.findUnique.mockResolvedValue({ ...baseVoucher, status: 'VOID' });
+
+    await expect(run(ctrl.reject, { params: { id: '12' }, body: {} }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.expenseVoucher.update).not.toHaveBeenCalled();
   });
 });

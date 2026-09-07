@@ -240,6 +240,11 @@ exports.submit = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { requestedBy } = req.body;
+
+    const existing = await prisma.expenseVoucher.findUnique({ where: { id } });
+    if (!existing) throw createError('Expense voucher not found', 404);
+    if (existing.status === 'VOID') throw createError('A voided voucher cannot be reopened', 400);
+
     const updated = await prisma.expenseVoucher.update({
       where: { id },
       data: { status: 'SUBMITTED', requestedBy: requestedBy || undefined },
@@ -260,9 +265,9 @@ exports.approve = async (req, res, next) => {
     const id = Number(req.params.id);
     const { approvedBy, items } = req.body;
 
-    const existing = Array.isArray(items)
-      ? await prisma.expenseVoucher.findUnique({ where: { id }, include: { items: true } })
-      : null;
+    const existing = await prisma.expenseVoucher.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw createError('Expense voucher not found', 404);
+    if (existing.status === 'VOID') throw createError('A voided voucher cannot be reopened', 400);
 
     if (Array.isArray(items)) {
       await prisma.expenseVoucherItem.deleteMany({ where: { voucherId: id } });
@@ -289,11 +294,11 @@ exports.approve = async (req, res, next) => {
       include: { items: { include: { account: { select: { id: true, accountCode: true, accountName: true } } } } },
     });
 
-    const itemsChanged = existing && Number(existing.totalAmount) !== Number(updated.totalAmount);
+    const itemsChanged = Array.isArray(items) && Number(existing.totalAmount) !== Number(updated.totalAmount);
     await recordAudit({
       req, action: 'APPROVE', entity: 'ExpenseVoucher', entityId: id,
       summary: `Approved ${updated.voucherNo}${itemsChanged ? ' — items adjusted' : ''}`,
-      changes: existing
+      changes: Array.isArray(items)
         ? diff({ items: itemSnapshot(existing.items), totalAmount: Number(existing.totalAmount) },
                 { items: itemSnapshot(updated.items),  totalAmount: Number(updated.totalAmount) })
         : undefined,
@@ -412,6 +417,11 @@ exports.reject = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { rejectedReason } = req.body;
+
+    const existing = await prisma.expenseVoucher.findUnique({ where: { id } });
+    if (!existing) throw createError('Expense voucher not found', 404);
+    if (existing.status === 'VOID') throw createError('A voided voucher cannot be reopened', 400);
+
     const updated = await prisma.expenseVoucher.update({
       where: { id },
       data: { status: 'REJECTED', rejectedReason },
@@ -449,18 +459,28 @@ exports.void = async (req, res, next) => {
     });
 
     if (voucher.status === 'PAID') {
-      let reference = voucher.voucherNo;
-      if (voucher.cashRequestId) {
+      let entryWhere = { businessId: voucher.businessId, reference: voucher.voucherNo, status: 'POSTED' };
+
+      if (voucher.type === 'LIQUIDATION' && voucher.cashRequestId) {
         const cashRequest = await prisma.cashRequest.findUnique({
           where: { id: voucher.cashRequestId },
           select: { requestNo: true },
         });
-        if (cashRequest) reference = cashRequest.requestNo;
+        if (cashRequest) {
+          // The cash request's release entry shares this same reference —
+          // disambiguate to the liquidation entry itself (both pay()'s
+          // linkedRequest branch and cashRequestController.liquidate post
+          // the liquidation entry's description starting with "Liquidation").
+          entryWhere = {
+            businessId:  voucher.businessId,
+            reference:   cashRequest.requestNo,
+            status:      'POSTED',
+            description: { startsWith: 'Liquidation' },
+          };
+        }
       }
 
-      const entry = await prisma.journalEntry.findFirst({
-        where: { businessId: voucher.businessId, reference, status: 'POSTED' },
-      });
+      const entry = await prisma.journalEntry.findFirst({ where: entryWhere });
       if (entry) {
         try {
           await prisma.journalEntry.update({ where: { id: entry.id }, data: { status: 'VOIDED' } });
