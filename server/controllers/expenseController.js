@@ -3,6 +3,7 @@ const { createError } = require('../middleware/errorHandler');
 const glPost = require('../utils/glPost');
 const { buildLiquidationEntry } = require('../utils/cashAdvance');
 const { recordAudit, diff } = require('../utils/audit');
+const logger = require('../utils/logger');
 
 // Compact item snapshot for audit diffs — avoids dumping full nested objects.
 const itemSnapshot = (items = []) => items.map(it => ({ description: it.description, amount: Number(it.amount) }));
@@ -419,6 +420,69 @@ exports.reject = async (req, res, next) => {
     await recordAudit({
       req, action: 'REJECT', entity: 'ExpenseVoucher', entityId: id,
       summary: `Rejected ${updated.voucherNo}${rejectedReason ? `: ${rejectedReason}` : ''}`,
+    });
+
+    res.json(updated);
+  } catch (err) { next(err); }
+};
+
+// ─── Void ─────────────────────────────────────────────────────────
+// A LIQUIDATION voucher's GL entry is posted under its linked cash
+// request's requestNo, not the voucher's own voucherNo — see pay()'s
+// linkedRequest branch and cashRequestController.liquidate. The GL
+// lookup below must match whichever reference was actually posted.
+exports.void = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) throw createError('A void reason is required', 400);
+
+    const voucher = await prisma.expenseVoucher.findUnique({ where: { id } });
+    if (!voucher) throw createError('Expense voucher not found', 404);
+    if (!['SUBMITTED', 'APPROVED', 'PAID'].includes(voucher.status)) {
+      throw createError('Only SUBMITTED, APPROVED, or PAID vouchers can be voided', 400);
+    }
+
+    const updated = await prisma.expenseVoucher.update({
+      where: { id },
+      data: { status: 'VOID', voidedReason: reason, voidedAt: new Date() },
+    });
+
+    if (voucher.status === 'PAID') {
+      let reference = voucher.voucherNo;
+      if (voucher.cashRequestId) {
+        const cashRequest = await prisma.cashRequest.findUnique({
+          where: { id: voucher.cashRequestId },
+          select: { requestNo: true },
+        });
+        if (cashRequest) reference = cashRequest.requestNo;
+      }
+
+      const entry = await prisma.journalEntry.findFirst({
+        where: { businessId: voucher.businessId, reference, status: 'POSTED' },
+      });
+      if (entry) {
+        try {
+          await prisma.journalEntry.update({ where: { id: entry.id }, data: { status: 'VOIDED' } });
+        } catch (err) {
+          logger.error(`[EXPENSE VOID — GL VOID FAILED] voucherNo=${voucher.voucherNo} biz=${voucher.businessId} — ${err.message}`);
+          try {
+            await recordAudit({
+              action:     'GL_POST_FAILED',
+              entity:     'JournalEntry',
+              entityId:   String(entry.id),
+              summary:    `Failed to void GL entry for voided expense voucher ${voucher.voucherNo} — ${err.message}`,
+              user:       req.user?.id ? { id: req.user.id } : undefined,
+              businessId: voucher.businessId,
+            });
+          } catch { /* auditing must never break anything either */ }
+        }
+      }
+    }
+
+    await recordAudit({
+      req, action: 'VOID', entity: 'ExpenseVoucher', entityId: id,
+      summary: `Voided ${voucher.voucherNo}: ${reason}`,
     });
 
     res.json(updated);
