@@ -80,14 +80,48 @@ async function sendPasswordReset(user, rawToken) {
 const peso = (n) => `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dateStr = (d) => new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 
-async function sendInvoiceEmail(invoice, customer) {
+function fillTemplate(str, data) {
+  return String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) => (data[k] ?? ''));
+}
+
+function textBlock(label, text) {
+  if (!text || !text.trim()) return '';
+  const html = text.trim().split('\n').map((line) => `<p style="margin:0 0 4px">${line}</p>`).join('');
+  return `<div style="margin:14px 0;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px">
+    ${label ? `<p style="margin:0 0 6px;font-weight:700;font-size:12px;color:#374151">${label}</p>` : ''}
+    ${html}
+  </div>`;
+}
+
+const DEFAULT_INVOICE_SUBJECT  = 'Invoice {{invoiceNo}} from {{companyName}}';
+const DEFAULT_INVOICE_GREETING = 'Dear {{customerName}},\n\nPlease find your invoice details below. Amount due: {{amountDue}}.';
+
+async function sendInvoiceEmail(invoice, customer, settings = {}) {
   if (!customer?.email) return false;
   const lines = (invoice.lines || []).map((l) =>
     `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">${l.description || ''}</td>
      <td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${peso(l.amount)}</td></tr>`).join('');
+
+  const data = {
+    customerName: customer.name || '',
+    invoiceNo:    invoice.invoiceNo,
+    invoiceDate:  dateStr(invoice.invoiceDate),
+    dueDate:      dateStr(invoice.dueDate),
+    subtotal:     peso(invoice.subtotal),
+    vat:          peso(invoice.vatAmount),
+    total:        peso(invoice.totalAmount),
+    amountDue:    peso(Number(invoice.totalAmount) - Number(invoice.paidAmount || 0)),
+    companyName:  settings.companyName || 'Finara ERP',
+    notes:        invoice.notes || '',
+  };
+
+  const subject = fillTemplate(settings.invoiceEmailSubject || DEFAULT_INVOICE_SUBJECT, data)
+    || `Invoice ${invoice.invoiceNo} from ${data.companyName}`;
+  const greeting = fillTemplate(settings.invoiceEmailGreeting || DEFAULT_INVOICE_GREETING, data)
+    .trim().split('\n').filter(Boolean).map((line) => `<p>${line}</p>`).join('');
+
   const html = wrap(`Invoice ${invoice.invoiceNo}`,
-    `<p>Dear ${customer.name},</p>
-     <p>Please find your invoice details below. Amount due: <strong>${peso(invoice.totalAmount - (invoice.paidAmount || 0))}</strong></p>
+    `${greeting}
      <table style="width:100%;border-collapse:collapse;font-size:13px;margin:12px 0">
        <thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:2px solid #ddd">Description</th><th style="text-align:right;padding:4px 8px;border-bottom:2px solid #ddd">Amount</th></tr></thead>
        <tbody>${lines}</tbody>
@@ -97,8 +131,13 @@ async function sendInvoiceEmail(invoice, customer) {
          <tr><td style="padding:6px 8px;text-align:right;font-weight:700">Total</td><td style="padding:6px 8px;text-align:right;font-weight:700">${peso(invoice.totalAmount)}</td></tr>
        </tfoot>
      </table>
-     <p style="font-size:12px;color:#6b7280">Invoice date: ${dateStr(invoice.invoiceDate)} · Due date: ${dateStr(invoice.dueDate)}</p>`);
-  return sendMail({ to: customer.email, subject: `Invoice ${invoice.invoiceNo} from Finara ERP`, html });
+     <p style="font-size:12px;color:#6b7280">Invoice date: ${data.invoiceDate} · Due date: ${data.dueDate}</p>
+     ${textBlock('Notes', data.notes)}
+     ${textBlock('Payment Instructions', fillTemplate(settings.invoiceEmailPaymentInstructions, data))}
+     ${textBlock('Terms & Conditions', fillTemplate(settings.invoiceEmailTerms, data))}
+     ${textBlock('', fillTemplate(settings.invoiceEmailSignature, data))}`);
+
+  return sendMail({ to: customer.email, subject, html });
 }
 
 async function sendOverdueReminder(invoice, customer) {
@@ -128,5 +167,5 @@ async function sendPayslipEmail(employee, period, item) {
 
 module.exports = {
   sendMail, sendPasswordReset, sendInvoiceEmail, sendOverdueReminder, sendPayslipEmail,
-  wrap, getTransporter, APP_URL,
+  wrap, getTransporter, APP_URL, fillTemplate,
 };
