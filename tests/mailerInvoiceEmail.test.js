@@ -93,4 +93,11 @@ describe('mailer.sendInvoiceEmail', () => {
       subject: 'Invoice INV-000070 from Finara ERP',
     }));
   });
+
+  test('falls back to the hardcoded subject when the template is non-empty but substitutes to blank', async () => {
+    await mailer.sendInvoiceEmail(invoice, customer, { ...baseSettings, invoiceEmailSubject: '{{unknownToken}}' });
+    expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
+      subject: 'Invoice INV-000070 from Finara ERP',
+    }));
+  });
 });
