@@ -8,7 +8,7 @@ import {
   Calculator, Hash, Shield, Save, RefreshCw, Download, AlertTriangle,
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X, ChevronDown,
-  Inbox, HelpCircle, Blocks,
+  Inbox, HelpCircle, Blocks, Mail,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
@@ -17,6 +17,7 @@ import Link from 'next/link';
 // ─── Tabs config ──────────────────────────────────────────────
 const TABS = [
   { key: 'company',    label: 'Company',       icon: Building2,    roles: ['ADMIN', 'MANAGER'] },
+  { key: 'emailTemplate', label: 'Email Template', icon: Mail,      roles: ['ADMIN', 'MANAGER'] },
   { key: 'fiscal',     label: 'Fiscal & Tax',  icon: FileText,     roles: ['ADMIN', 'MANAGER'] },
   { key: 'payroll',    label: 'Payroll',       icon: Calculator,   roles: ['ADMIN', 'MANAGER'] },
   { key: 'numbering',  label: 'Numbering',     icon: Hash,         roles: ['ADMIN', 'MANAGER'] },
@@ -737,6 +738,32 @@ export default function SettingsPage() {
               </div>
               <Field label="Website">
                 <input className="input" value={form.companyWebsite || ''} onChange={set('companyWebsite')} placeholder="https://www.company.com" />
+              </Field>
+            </>
+          )}
+
+          {/* ── Email Template ── */}
+          {activeTab === 'emailTemplate' && (
+            <>
+              <SectionTitle icon={Mail}>Invoice Email Template</SectionTitle>
+              <p className="text-xs text-gray-400 -mt-2 mb-2">
+                Placeholders: <code className="font-mono">{'{{customerName}} {{invoiceNo}} {{invoiceDate}} {{dueDate}} {{subtotal}} {{vat}} {{total}} {{amountDue}} {{companyName}} {{notes}}'}</code>
+              </p>
+
+              <Field label="Subject Line">
+                <input className="input" value={form.invoiceEmailSubject || ''} onChange={set('invoiceEmailSubject')} placeholder="Invoice {{invoiceNo}} from {{companyName}}" />
+              </Field>
+              <Field label="Greeting" sub="shown at the top of the email, above the invoice details">
+                <textarea className="input" rows={3} value={form.invoiceEmailGreeting || ''} onChange={set('invoiceEmailGreeting')} />
+              </Field>
+              <Field label="Payment Instructions" sub="optional — the block is hidden entirely when left blank">
+                <textarea className="input" rows={3} value={form.invoiceEmailPaymentInstructions || ''} onChange={set('invoiceEmailPaymentInstructions')} placeholder="e.g. Pay via GCash 0917-000-0000 or BDO 000-000-0000" />
+              </Field>
+              <Field label="Terms & Conditions" sub="optional — the block is hidden entirely when left blank">
+                <textarea className="input" rows={3} value={form.invoiceEmailTerms || ''} onChange={set('invoiceEmailTerms')} placeholder="e.g. Payment due within 30 days of invoice date." />
+              </Field>
+              <Field label="Signature" sub="optional — the block is hidden entirely when left blank">
+                <textarea className="input" rows={3} value={form.invoiceEmailSignature || ''} onChange={set('invoiceEmailSignature')} placeholder={'e.g. Juan Dela Cruz\nAccounting Department'} />
               </Field>
             </>
           )}
