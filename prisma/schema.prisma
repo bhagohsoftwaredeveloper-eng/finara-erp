@@ -736,6 +736,7 @@ enum ExpenseStatus {
   APPROVED
   PAID
   REJECTED
+  VOID
 }
 
 model ExpenseVoucher {
@@ -758,6 +759,8 @@ model ExpenseVoucher {
   // Reports split petty-cash vs collections on this, not on `type`.
   paymentAccountCode String?          @db.VarChar(10)
   rejectedReason String?              @db.Text
+  voidedReason   String?              @db.Text
+  voidedAt       DateTime?
   notes          String?              @db.Text
   items          ExpenseVoucherItem[]
   cashRequestId  Int?                 @unique
