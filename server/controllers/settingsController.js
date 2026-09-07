@@ -51,6 +51,12 @@ const DEFAULTS = {
   sessionTimeout:     '480',   // minutes
   enforceStrongPwd:   'true',
   auditTrail:         'true',
+  // Invoice email template
+  invoiceEmailSubject:             'Invoice {{invoiceNo}} from {{companyName}}',
+  invoiceEmailGreeting:            'Dear {{customerName}},\n\nPlease find your invoice details below. Amount due: {{amountDue}}.',
+  invoiceEmailPaymentInstructions: '',
+  invoiceEmailTerms:               '',
+  invoiceEmailSignature:           '',
 };
 
 // Get all settings, merged with defaults
@@ -292,4 +298,4 @@ const resetUserPassword = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, saveAll, resetDefaults, backupDatabase, resetDatabase, getDbStats, listUsers, updateUser, deleteUser, resetUserPassword };
+module.exports = { getAll, saveAll, resetDefaults, backupDatabase, resetDatabase, getDbStats, listUsers, updateUser, deleteUser, resetUserPassword, DEFAULTS };

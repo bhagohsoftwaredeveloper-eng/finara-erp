@@ -2,6 +2,16 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { recordAudit } = require('../utils/audit');
 const mailer = require('../utils/mailer');
+const settingsController = require('./settingsController');
+
+const EMAIL_TEMPLATE_KEYS = [
+  'invoiceEmailSubject', 'invoiceEmailGreeting', 'invoiceEmailPaymentInstructions',
+  'invoiceEmailTerms', 'invoiceEmailSignature', 'companyName',
+];
+
+const TEMPLATE_DEFAULTS = Object.fromEntries(
+  EMAIL_TEMPLATE_KEYS.map((k) => [k, settingsController.DEFAULTS[k]])
+);
 
 exports.status = (req, res) => {
   res.json({ emailEnabled: !!mailer.getTransporter() });
@@ -44,12 +54,22 @@ exports.feed = async (req, res, next) => {
 exports.emailInvoice = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    if (!mailer.getTransporter()) throw createError('Email is not configured (SMTP env vars missing)', 400);
+
     const invoice = await prisma.invoice.findUnique({ where: { id }, include: { customer: true, lines: true } });
     if (!invoice) throw createError('Invoice not found', 404);
     if (!invoice.customer?.email) throw createError('Customer has no email address on file', 400);
 
-    const sent = await mailer.sendInvoiceEmail(invoice, invoice.customer);
-    if (!sent) throw createError('Email could not be sent. Check SMTP configuration.', 502);
+    const rows = await prisma.systemSetting.findMany({
+      where: { businessId: req.businessId, key: { in: EMAIL_TEMPLATE_KEYS } },
+    });
+    const settings = {
+      ...TEMPLATE_DEFAULTS,
+      ...Object.fromEntries(rows.map((r) => [r.key, r.value])),
+    };
+
+    const sent = await mailer.sendInvoiceEmail(invoice, invoice.customer, settings);
+    if (!sent) throw createError('Email could not be sent. Check SMTP configuration.', 400);
 
     await recordAudit({ req, action: 'EMAIL', entity: 'Invoice', entityId: id, summary: `Emailed invoice ${invoice.invoiceNo} to ${invoice.customer.email}` });
     res.json({ message: `Invoice emailed to ${invoice.customer.email}` });
