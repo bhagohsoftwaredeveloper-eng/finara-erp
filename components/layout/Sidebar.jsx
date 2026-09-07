@@ -123,6 +123,7 @@ const NAV = [
       {
         label: 'Reports', icon: FileText,
         children: [
+          { label: 'Sales Report',     href: '/reports/sales' },
           { label: 'Trial Balance',    href: '/reports/trial-balance' },
           { label: 'Income Statement', href: '/reports/income-statement' },
           { label: 'Balance Sheet',    href: '/reports/balance-sheet' },

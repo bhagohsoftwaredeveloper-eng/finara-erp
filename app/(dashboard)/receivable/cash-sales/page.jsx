@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { cashSales as csApi, accounts as acctApi, inventory as invApi } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Plus, Search, Ban, Printer, X } from 'lucide-react';
+import { Plus, Search, Ban, Printer, X, Filter } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 import AccountSelect from '@/components/ui/AccountSelect';
@@ -260,14 +260,19 @@ export default function CashSalesPage() {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
   const [showNew, setShowNew] = useState(false);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [showDateFilter, setShowDateFilter] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
-    csApi.list({ search, limit: 100 })
+    const params = { search, from, to, limit: 100 };
+    Object.keys(params).forEach((k) => !params[k] && delete params[k]);
+    csApi.list(params)
       .then((r) => { setRows(r.data.data); setTotal(r.data.total); })
       .catch(() => toast.error('Failed to load cash sales'))
       .finally(() => setLoading(false));
-  }, [search]);
+  }, [search, from, to]);
 
   const loadItems = useCallback(() => {
     invApi.items.list({ limit: 500 })
@@ -320,13 +325,38 @@ export default function CashSalesPage() {
       </div>
 
       <div className="card">
-        <div className="card-body py-3">
-          <div className="relative max-w-sm">
+        <div className="card-body py-3 flex flex-wrap items-center gap-3">
+          <div className="relative max-w-sm flex-1 min-w-[220px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input className="input pl-9" placeholder="Search buyer, description, sale #..."
               value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
+          <button className="btn-secondary" onClick={() => setShowDateFilter(!showDateFilter)}>
+            <Filter className="w-4 h-4" /> Date Range
+            {(from || to) && (
+              <span className="ml-1 w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">
+                {[from, to].filter(Boolean).length}
+              </span>
+            )}
+          </button>
+          {(from || to) && (
+            <button onClick={() => { setFrom(''); setTo(''); }} className="btn-secondary text-red-500 hover:text-red-600">
+              <X className="w-4 h-4" /> Clear
+            </button>
+          )}
         </div>
+        {showDateFilter && (
+          <div className="px-6 pb-4 pt-1 flex gap-3 border-t border-gray-100">
+            <div className="form-group">
+              <label className="label">From</label>
+              <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="label">To</label>
+              <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card">
