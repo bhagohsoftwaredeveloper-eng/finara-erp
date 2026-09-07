@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import {
   Plus, X, Printer, RefreshCw, Trash2, Send, CheckCircle2,
   Banknote, AlertCircle, Edit2, Search, Wallet, ChevronDown,
-  FileText, History,
+  FileText, History, Ban,
 } from 'lucide-react';
 import { saveDraft, loadDraft, clearDraft, listDraftKeys } from '@/lib/draftStorage';
 
@@ -45,6 +45,7 @@ const STATUS_BADGE = {
   APPROVED:  'badge-blue',
   PAID:      'badge-green',
   REJECTED:  'badge-red',
+  VOID:      'badge-gray',
 };
 
 const TABS = ['All', 'Petty Cash', 'Reimbursement', 'Direct Payment', 'Cash Advance', 'Liquidation'];
@@ -384,11 +385,13 @@ export default function ExpensesPage() {
       if (!actionItems.length) { toast.error('At least one line item is required'); return; }
       if (actionItems.some(it => !it.description || !Number(it.amount))) { toast.error('Each line item needs a description and amount'); return; }
     }
+    if (actionMode === 'void' && !actionForm.reason.trim()) { toast.error('A reason is required to void this voucher'); return; }
     try {
       if (actionMode === 'submit')  await expApi.submit(id,  { requestedBy: actionForm.name });
       if (actionMode === 'approve') await expApi.approve(id, { approvedBy: actionForm.name, items: actionItems.map(it => ({ ...it, amount: Number(it.amount) })) });
       if (actionMode === 'pay')     await expApi.pay(id,     { paidBy: actionForm.name, paidDate: actionForm.date, paymentAccountCode: actionForm.paymentAccountCode });
       if (actionMode === 'reject')  await expApi.reject(id,  { rejectedReason: actionForm.reason });
+      if (actionMode === 'void')    await expApi.void(id,    actionForm.reason);
       toast.success(`Voucher ${actionMode}${actionMode === 'pay' ? 'd' : 'ed'}`);
       setActionOpen(false);
       load();
@@ -481,6 +484,7 @@ export default function ExpensesPage() {
     approve: { title: 'Approve Voucher',     btnLabel: 'Approve', btnClass: 'btn-success', fieldLabel: 'Approved By'  },
     pay:     { title: 'Mark as Paid',        btnLabel: 'Mark Paid', btnClass: 'btn-success', fieldLabel: 'Paid By'    },
     reject:  { title: 'Reject Voucher',      btnLabel: 'Reject',  btnClass: 'btn-danger',  fieldLabel: 'Reason'       },
+    void:    { title: 'Void Voucher',        btnLabel: 'Void Voucher', btnClass: 'btn-danger', fieldLabel: 'Reason'  },
   };
   const aCfg = actionConfig[actionMode] || {};
 
@@ -538,7 +542,7 @@ export default function ExpensesPage() {
             </div>
             <select className="input w-40" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option value="">All Statuses</option>
-              {['DRAFT','SUBMITTED','APPROVED','PAID','REJECTED'].map(s => <option key={s} value={s}>{s}</option>)}
+              {['DRAFT','SUBMITTED','APPROVED','PAID','REJECTED','VOID'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <input type="date" className="input w-40" value={fromDate} onChange={e => setFromDate(e.target.value)} placeholder="From" />
             <input type="date" className="input w-40" value={toDate}   onChange={e => setToDate(e.target.value)}   placeholder="To" />
@@ -588,6 +592,7 @@ export default function ExpensesPage() {
                         {v.status === 'SUBMITTED' && <button className="btn-success btn-sm"  onClick={() => openAction('approve', v)} title="Approve"><CheckCircle2 className="w-3 h-3" /></button>}
                         {v.status === 'SUBMITTED' && <button className="btn-danger btn-sm"   onClick={() => openAction('reject',  v)} title="Reject"><X className="w-3 h-3" /></button>}
                         {v.status === 'APPROVED'  && <button className="btn-success btn-sm"  onClick={() => openAction('pay',     v)} title="Mark Paid"><Banknote className="w-3 h-3" /></button>}
+                        {['SUBMITTED','APPROVED','PAID'].includes(v.status) && <button className="btn-danger btn-sm" onClick={() => openAction('void', v)} title="Void"><Ban className="w-3 h-3" /></button>}
                         <button className="btn-secondary btn-sm" onClick={() => printVoucher(v)} title="Print"><Printer className="w-3 h-3" /></button>
                         <button className="btn-secondary btn-sm" onClick={() => openHistory(v)} title="History"><History className="w-3 h-3" /></button>
                         {can.del && <button className="btn-danger btn-sm" onClick={() => handleDelete(v.id)} title="Delete"><Trash2 className="w-3 h-3" /></button>}
@@ -768,7 +773,7 @@ export default function ExpensesPage() {
               </div>
             )}
 
-            {actionMode !== 'reject' ? (
+            {(actionMode !== 'reject' && actionMode !== 'void') ? (
               <>
                 <div className="form-group">
                   <label className="label">{aCfg.fieldLabel}</label>
@@ -802,9 +807,10 @@ export default function ExpensesPage() {
               </>
             ) : (
               <div className="form-group">
-                <label className="label">Reason for Rejection *</label>
+                <label className="label">{actionMode === 'void' ? 'Reason for Voiding *' : 'Reason for Rejection *'}</label>
                 <textarea className="input h-24 resize-none" value={actionForm.reason}
-                  onChange={e => setActionForm(p => ({ ...p, reason: e.target.value }))} placeholder="Explain why this voucher is being rejected…" />
+                  onChange={e => setActionForm(p => ({ ...p, reason: e.target.value }))}
+                  placeholder={actionMode === 'void' ? 'Explain why this voucher is being voided…' : 'Explain why this voucher is being rejected…'} />
               </div>
             )}
           </div>
