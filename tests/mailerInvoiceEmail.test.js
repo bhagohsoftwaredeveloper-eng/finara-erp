@@ -100,4 +100,17 @@ describe('mailer.sendInvoiceEmail', () => {
       subject: 'Invoice INV-000070 from Finara ERP',
     }));
   });
+
+  test('escapes substituted values to prevent HTML injection via customer name or invoice notes', async () => {
+    const maliciousCustomer = { name: '<img src=x onerror=alert(1)>', email: 'evil@example.com' };
+    const invoiceWithMaliciousNotes = { ...invoice, notes: '<script>alert(1)</script>' };
+
+    await mailer.sendInvoiceEmail(invoiceWithMaliciousNotes, maliciousCustomer, baseSettings);
+    const html = sendMailMock.mock.calls[0][0].html;
+
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
 });

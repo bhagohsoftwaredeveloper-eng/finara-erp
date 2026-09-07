@@ -9,6 +9,10 @@ const EMAIL_TEMPLATE_KEYS = [
   'invoiceEmailTerms', 'invoiceEmailSignature', 'companyName',
 ];
 
+const TEMPLATE_DEFAULTS = Object.fromEntries(
+  EMAIL_TEMPLATE_KEYS.map((k) => [k, settingsController.DEFAULTS[k]])
+);
+
 exports.status = (req, res) => {
   res.json({ emailEnabled: !!mailer.getTransporter() });
 };
@@ -60,7 +64,7 @@ exports.emailInvoice = async (req, res, next) => {
       where: { businessId: req.businessId, key: { in: EMAIL_TEMPLATE_KEYS } },
     });
     const settings = {
-      ...settingsController.DEFAULTS,
+      ...TEMPLATE_DEFAULTS,
       ...Object.fromEntries(rows.map((r) => [r.key, r.value])),
     };
 

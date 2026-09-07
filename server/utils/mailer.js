@@ -80,8 +80,12 @@ async function sendPasswordReset(user, rawToken) {
 const peso = (n) => `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dateStr = (d) => new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
 function fillTemplate(str, data) {
-  return String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) => (data[k] ?? ''));
+  return String(str || '').replace(/\{\{(\w+)\}\}/g, (_, k) => escapeHtml(data[k] ?? ''));
 }
 
 function textBlock(label, text) {
@@ -132,7 +136,7 @@ async function sendInvoiceEmail(invoice, customer, settings = {}) {
        </tfoot>
      </table>
      <p style="font-size:12px;color:#6b7280">Invoice date: ${data.invoiceDate} · Due date: ${data.dueDate}</p>
-     ${textBlock('Notes', data.notes)}
+     ${textBlock('Notes', fillTemplate('{{notes}}', data))}
      ${textBlock('Payment Instructions', fillTemplate(settings.invoiceEmailPaymentInstructions, data))}
      ${textBlock('Terms & Conditions', fillTemplate(settings.invoiceEmailTerms, data))}
      ${textBlock('', fillTemplate(settings.invoiceEmailSignature, data))}`);

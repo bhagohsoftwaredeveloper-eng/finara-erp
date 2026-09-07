@@ -85,4 +85,18 @@ describe('notificationController.emailInvoice', () => {
       expect.objectContaining({ where: expect.objectContaining({ businessId: 42 }) })
     );
   });
+
+  test('only passes the email-template keys through to sendInvoiceEmail (no unrelated settings leak)', async () => {
+    prisma.invoice.findUnique.mockResolvedValue(invoice);
+    prisma.systemSetting.findMany.mockResolvedValue([]);
+    mailer.sendInvoiceEmail.mockResolvedValue(true);
+
+    await run({});
+
+    const passedSettings = mailer.sendInvoiceEmail.mock.calls[0][2];
+    expect(Object.keys(passedSettings).sort()).toEqual([
+      'companyName', 'invoiceEmailGreeting', 'invoiceEmailPaymentInstructions',
+      'invoiceEmailSignature', 'invoiceEmailSubject', 'invoiceEmailTerms',
+    ]);
+  });
 });
