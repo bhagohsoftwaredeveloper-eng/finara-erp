@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { receivable as rApi, accounts as acctApi, notifications as notifApi } from '@/lib/api';
+import { receivable as rApi, accounts as acctApi, notifications as notifApi, settings as settingsApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Ban, Filter, X,
@@ -104,6 +104,7 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
         <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(invoice.status)}</div></div>
         <div class="info-box"><div class="info-lbl">Invoice Date</div><div class="info-val">${dateFmt(invoice.invoiceDate)}</div></div>
         <div class="info-box"><div class="info-lbl">Due Date</div><div class="info-val">${dateFmt(invoice.dueDate)}</div></div>
+        ${invoice.paymentTerms ? `<div class="info-box"><div class="info-lbl">Payment Terms</div><div class="info-val">${invoice.paymentTerms}</div></div>` : ''}
         <div class="info-box"><div class="info-lbl">Customer TIN</div><div class="info-val mono small">${invoice.customer?.tin || '—'}</div></div>
       </div>
       ${invoice.description ? `<div class="desc-box">${invoice.description}</div>` : ''}
@@ -169,6 +170,12 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
                 </span>}
               </span>
             </div>
+            {invoice.paymentTerms && (
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Payment Terms</span>
+                <span className="font-medium">{invoice.paymentTerms}</span>
+              </div>
+            )}
             <div>
               <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Customer TIN</span>
               <span className="font-mono text-xs">{invoice.customer?.tin || '—'}</span>
@@ -534,12 +541,13 @@ function ShippingModal({ invoice, onClose, onShipped }) {
 }
 
 // ─── Create Invoice Modal ─────────────────────────────────────
-function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, onCustomerAdded }) {
+function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, onClose, onSaved, onCustomerAdded }) {
   const [form, setForm] = useState(() => {
     if (invoice) return {
       customerId:  String(invoice.customerId),
       invoiceDate: invoice.invoiceDate.slice(0, 10),
       dueDate:     invoice.dueDate.slice(0, 10),
+      paymentTerms: invoice.paymentTerms || '',
       description: invoice.description || '',
       notes:       invoice.notes || '',
       lines: invoice.lines.map((l) => ({
@@ -547,13 +555,15 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
         quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
       })),
     };
+    const defaultTerm = paymentTerms.find((t) => t.isDefault);
     const invoiceDate = new Date().toISOString().split('T')[0];
     const due = new Date(invoiceDate);
-    due.setDate(due.getDate() + 30);
+    due.setDate(due.getDate() + (defaultTerm ? defaultTerm.days : 30));
     return {
       customerId:   '',
       invoiceDate,
       dueDate:      due.toISOString().split('T')[0],
+      paymentTerms: defaultTerm ? defaultTerm.name : '',
       description:  '',
       notes:        '',
       lines: [
@@ -576,14 +586,25 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
   const removeLine = (i) =>
     setForm((f) => ({ ...f, lines: f.lines.filter((_, idx) => idx !== i) }));
 
-  // Auto due date: +30 days from invoice date
+  // Due date = invoice date + the selected term's days (falls back to 30 if no term is set).
+  // Only recompute when invoiceDate/paymentTerms actually change from their last-seen values —
+  // the initial due date is already correct (computed in the useState initializer for a new
+  // invoice, or loaded verbatim from the existing invoice for an edit), so recomputing on mount
+  // would silently clobber a due date the user had manually overridden before saving. Comparing
+  // against last-seen values (rather than a simple "has this effect run before" flag) keeps this
+  // correct under React StrictMode, which double-invokes effects on mount in development.
+  const lastDueDateDepsRef = useRef({ invoiceDate: form.invoiceDate, paymentTerms: form.paymentTerms });
   useEffect(() => {
-    if (form.invoiceDate && !form.dueDate) {
-      const d = new Date(form.invoiceDate);
-      d.setDate(d.getDate() + 30);
-      setForm((f) => ({ ...f, dueDate: d.toISOString().split('T')[0] }));
-    }
-  }, [form.invoiceDate]);
+    if (!form.invoiceDate) return;
+    const prev = lastDueDateDepsRef.current;
+    if (prev.invoiceDate === form.invoiceDate && prev.paymentTerms === form.paymentTerms) return;
+    lastDueDateDepsRef.current = { invoiceDate: form.invoiceDate, paymentTerms: form.paymentTerms };
+    const term = paymentTerms.find((t) => t.name === form.paymentTerms);
+    const days = term ? term.days : 30;
+    const d = new Date(form.invoiceDate);
+    d.setDate(d.getDate() + days);
+    setForm((f) => ({ ...f, dueDate: d.toISOString().split('T')[0] }));
+  }, [form.invoiceDate, form.paymentTerms]);
 
   const revenueAccounts = accounts.filter((a) => a.accountType === 'REVENUE');
 
@@ -675,6 +696,13 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
               <div className="form-group">
                 <label className="label">Due Date *</label>
                 <input type="date" className="input" required value={form.dueDate} onChange={set('dueDate')} />
+              </div>
+              <div className="form-group">
+                <label className="label">Payment Terms</label>
+                <select className="select" value={form.paymentTerms} onChange={set('paymentTerms')}>
+                  <option value="">— none —</option>
+                  {paymentTerms.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+                </select>
               </div>
             </div>
 
@@ -820,6 +848,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices]   = useState([]);
   const [customers, setCustomers] = useState([]);
   const [accounts, setAccounts]   = useState([]);
+  const [paymentTerms, setPaymentTerms] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
@@ -861,6 +890,7 @@ export default function InvoicesPage() {
   useEffect(() => {
     rApi.customers.list({ active: true }).then((r) => setCustomers(r.data));
     acctApi.list({ active: true }).then((r) => setAccounts(r.data));
+    settingsApi.listPaymentTerms().then((r) => setPaymentTerms(r.data.filter((t) => t.isActive)));
   }, []);
 
   useEffect(() => {
@@ -1228,6 +1258,7 @@ export default function InvoicesPage() {
         <CreateInvoiceModal
           customers={customers}
           accounts={accounts}
+          paymentTerms={paymentTerms}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
           onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])}
@@ -1237,6 +1268,7 @@ export default function InvoicesPage() {
         <CreateInvoiceModal
           customers={customers}
           accounts={accounts}
+          paymentTerms={paymentTerms}
           invoice={modal.invoice}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
