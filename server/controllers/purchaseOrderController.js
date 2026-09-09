@@ -62,7 +62,7 @@ exports.getOne = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { vendorId, orderDate, expectedDate, notes, taxAmount, lines } = req.body;
+    const { vendorId, orderDate, expectedDate, paymentTerms, notes, taxAmount, lines } = req.body;
     if (!lines?.length) throw createError('At least one line item is required', 400);
 
     const { subtotal, taxAmount: tax, total } = computeTotals(lines, taxAmount);
@@ -75,6 +75,7 @@ exports.create = async (req, res, next) => {
         vendorId: Number(vendorId),
         orderDate: new Date(orderDate),
         expectedDate: expectedDate ? new Date(expectedDate) : null,
+        paymentTerms: paymentTerms || null,
         notes,
         subtotal, taxAmount: tax, total,
         createdBy: req.user?.id ?? null,
@@ -103,7 +104,7 @@ exports.update = async (req, res, next) => {
     if (!po) throw createError('Purchase order not found', 404);
     if (!['DRAFT', 'SENT'].includes(po.status)) throw createError('Only DRAFT or SENT purchase orders can be edited', 400);
 
-    const { vendorId, orderDate, expectedDate, notes, taxAmount, lines } = req.body;
+    const { vendorId, orderDate, expectedDate, paymentTerms, notes, taxAmount, lines } = req.body;
     const { subtotal, taxAmount: tax, total } = computeTotals(lines || [], taxAmount);
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -124,6 +125,7 @@ exports.update = async (req, res, next) => {
           ...(vendorId && { vendorId: Number(vendorId) }),
           ...(orderDate && { orderDate: new Date(orderDate) }),
           expectedDate: expectedDate ? new Date(expectedDate) : null,
+          paymentTerms: paymentTerms !== undefined ? (paymentTerms || null) : undefined,
           notes,
           ...(lines && { subtotal, taxAmount: tax, total }),
         },
@@ -187,7 +189,7 @@ exports.convertToBill = async (req, res, next) => {
     if (po.status === 'CANCELLED') throw createError('Cannot bill a cancelled PO', 400);
     if (po.lines.some((l) => !l.accountId)) throw createError('Every line must have an expense account before billing', 400);
 
-    const { billDate, dueDate } = req.body;
+    const { billDate, dueDate, paymentTerms } = req.body;
     const billNo = await genBillNo();
 
     const bill = await prisma.bill.create({
@@ -197,6 +199,7 @@ exports.convertToBill = async (req, res, next) => {
         vendorId: po.vendorId,
         billDate: billDate ? new Date(billDate) : new Date(),
         dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 30 * 86400000),
+        paymentTerms: paymentTerms || null,
         description: `From ${po.poNumber}`,
         subtotal: po.subtotal,
         vatAmount: po.taxAmount,
