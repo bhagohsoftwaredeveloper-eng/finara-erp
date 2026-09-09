@@ -145,7 +145,7 @@ exports.getInvoice = async (req, res, next) => {
 
 exports.createInvoice = async (req, res, next) => {
   try {
-    const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
+    const { customerId, invoiceDate, dueDate, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, totalAmount, processedLines } = await computeInvoiceTotals(lines);
 
     const invoiceNo = await genInvNo();
@@ -153,7 +153,7 @@ exports.createInvoice = async (req, res, next) => {
       data: {
         businessId: req.businessId,
         invoiceNo, customerId: Number(customerId),
-        invoiceDate: new Date(invoiceDate), dueDate: new Date(dueDate),
+        invoiceDate: new Date(invoiceDate), dueDate: new Date(dueDate), paymentTerms: paymentTerms || null,
         description, notes, subtotal, vatAmount, totalAmount,
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
@@ -186,7 +186,7 @@ exports.updateInvoice = async (req, res, next) => {
     if (inv.status === 'PAID') throw createError('Cannot edit a fully paid invoice.', 400);
     if (inv.status === 'VOID') throw createError('Cannot edit a voided invoice.', 400);
 
-    const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
+    const { customerId, invoiceDate, dueDate, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, totalAmount, processedLines } = await computeInvoiceTotals(lines);
 
     if (totalAmount < Number(inv.paidAmount) - 0.01) {
@@ -205,6 +205,7 @@ exports.updateInvoice = async (req, res, next) => {
         customerId: Number(customerId),
         invoiceDate: new Date(invoiceDate),
         dueDate: new Date(dueDate),
+        paymentTerms: paymentTerms || null,
         description, notes, subtotal, vatAmount, totalAmount, status,
         lines: {
           deleteMany: {},
