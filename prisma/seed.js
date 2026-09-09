@@ -382,6 +382,23 @@ async function main() {
     },
   });
 
+  // ─── Payment Terms ─────────────────────────────────────────
+  const paymentTerms = [
+    { name: 'Due on Receipt', days: 0,  isDefault: false },
+    { name: 'COD',            days: 0,  isDefault: false },
+    { name: 'Net 15',         days: 15, isDefault: false },
+    { name: 'Net 30',         days: 30, isDefault: true  },
+    { name: 'Net 60',         days: 60, isDefault: false },
+  ];
+  for (const term of paymentTerms) {
+    await prisma.paymentTerm.upsert({
+      where:  { businessId_name: { businessId: 1, name: term.name } },
+      update: {},
+      create: { businessId: 1, ...term },
+    });
+  }
+  console.log(`✅ ${paymentTerms.length} payment terms seeded`);
+
   // ─── Inventory Categories ──────────────────────────────────
   const invCats = [
     { name: 'Retail Products',          type: 'PRODUCT',  description: 'Merchandise for direct retail sale' },
