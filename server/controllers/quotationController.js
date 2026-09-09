@@ -82,7 +82,7 @@ exports.get = async (req, res, next) => {
 // ─── Create ───────────────────────────────────────────────────────
 exports.create = async (req, res, next) => {
   try {
-    const { customerId, quotationDate, validUntil, description, notes, lines } = req.body;
+    const { customerId, quotationDate, validUntil, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, processed } = computeTotals(lines);
 
     // Retry once on a quotationNo collision (e.g. two near-simultaneous
@@ -96,7 +96,7 @@ exports.create = async (req, res, next) => {
           data: {
             businessId: req.businessId,
             quotationNo, customerId: Number(customerId),
-            quotationDate: new Date(quotationDate), validUntil: new Date(validUntil),
+            quotationDate: new Date(quotationDate), validUntil: new Date(validUntil), paymentTerms: paymentTerms || null,
             description, notes, subtotal, vatAmount, totalAmount: subtotal + vatAmount,
             createdBy: req.user?.id ?? null,
             lines: { create: processed.map((l) => ({
@@ -127,7 +127,7 @@ exports.update = async (req, res, next) => {
     if (!existing) throw createError('Quotation not found', 404);
     if (existing.status !== 'DRAFT') throw createError('Only DRAFT quotations can be edited', 400);
 
-    const { customerId, quotationDate, validUntil, description, notes, lines } = req.body;
+    const { customerId, quotationDate, validUntil, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, processed } = computeTotals(lines || []);
 
     await prisma.quotation.update({
@@ -136,6 +136,7 @@ exports.update = async (req, res, next) => {
         customerId:    customerId ? Number(customerId) : undefined,
         quotationDate: quotationDate ? new Date(quotationDate) : undefined,
         validUntil:    validUntil ? new Date(validUntil) : undefined,
+        paymentTerms:  paymentTerms !== undefined ? (paymentTerms || null) : undefined,
         description,
         notes,
         ...(Array.isArray(lines) ? { subtotal, vatAmount, totalAmount: subtotal + vatAmount } : {}),
@@ -213,9 +214,11 @@ exports.convertPreview = async (req, res, next) => {
     });
 
     res.json({
-      quotationNo: q.quotationNo,
-      customer:    q.customer,
-      totalAmount: q.totalAmount,
+      quotationNo:   q.quotationNo,
+      customer:      q.customer,
+      totalAmount:   q.totalAmount,
+      paymentTerms:  q.paymentTerms,
+      quotationDate: q.quotationDate,
       lines: q.lines.map((l) => ({
         id:          l.id,
         itemName:    l.itemName,
@@ -240,7 +243,7 @@ exports.convert = async (req, res, next) => {
     if (q.status === 'CONVERTED') throw createError('Quotation already converted to an invoice', 400);
     if (!q.lines.length)         throw createError('Quotation has no line items', 400);
 
-    const { dueDate, accounts } = req.body;
+    const { dueDate, paymentTerms, accounts } = req.body;
 
     // The revenue account is assigned here, not on the quotation. Every line
     // needs one before anything posts, so a missing account fails loudly
@@ -288,7 +291,7 @@ exports.convert = async (req, res, next) => {
       data: {
         businessId: q.businessId,
         invoiceNo, customerId: q.customerId,
-        invoiceDate: new Date(), dueDate: due,
+        invoiceDate: new Date(), dueDate: due, paymentTerms: paymentTerms || null,
         description: q.description || `From quotation ${q.quotationNo}`,
         subtotal, vatAmount, totalAmount,
         lines: { create: invLines },
