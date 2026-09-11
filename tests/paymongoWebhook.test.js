@@ -1,11 +1,18 @@
 const crypto = require('crypto');
 
-jest.mock('../server/config/database', () => ({
-  business:     { findUnique: jest.fn(), update: jest.fn() },
-  user:         { findUnique: jest.fn() },
-  licenseEvent: { create: jest.fn() },
-  $transaction: jest.fn((ops) => Promise.all(ops)),
-}));
+jest.mock('../server/config/database', () => {
+  const mockPrisma = {
+    business:     { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+    user:         { findUnique: jest.fn() },
+    licenseEvent: { create: jest.fn() },
+  };
+  // Support both the interactive form ($transaction(async (tx) => …), used by the
+  // webhook controller) and the legacy array form used elsewhere.
+  mockPrisma.$transaction = jest.fn((fnOrArray) =>
+    typeof fnOrArray === 'function' ? fnOrArray(mockPrisma) : Promise.all(fnOrArray)
+  );
+  return mockPrisma;
+});
 jest.mock('../server/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock('../server/utils/mailer', () => ({ sendLicenseActivatedNotice: jest.fn().mockResolvedValue(true) }));
 
@@ -38,12 +45,18 @@ function linkPaymentPaidPayload({ businessId, amount = 1500000 }) {
   };
 }
 
-const run = (req) => new Promise((resolve) => {
+// Rejects (rather than hanging) if the controller throws synchronously or its
+// promise rejects — a crash regression must fail the test, not time it out.
+const run = (req) => new Promise((resolve, reject) => {
   const res = { statusCode: null, sendStatus(code) { this.statusCode = code; resolve(this); } };
-  ctrl.paymongo(req, res);
+  Promise.resolve(ctrl.paymongo(req, res)).catch(reject);
 });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  prisma.business.updateMany.mockResolvedValue({ count: 1 });
+  prisma.licenseEvent.create.mockResolvedValue({});
+});
 
 describe('webhookController.paymongo', () => {
   test('rejects an invalid signature with 401 and makes no DB writes', async () => {
@@ -62,12 +75,56 @@ describe('webhookController.paymongo', () => {
 
     expect(res.statusCode).toBe(200);
     expect(prisma.$transaction).toHaveBeenCalled();
-    const ops = prisma.$transaction.mock.calls[0][0];
-    expect(ops).toHaveLength(3);
+    expect(prisma.business.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 3, licenseStatus: { not: 'ACTIVE' } },
+      data: expect.objectContaining({ licenseStatus: 'ACTIVE', licenseActivatedBy: null }),
+    }));
+    expect(prisma.licenseEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.licenseEvent.create).toHaveBeenNthCalledWith(1, {
+      data: { businessId: 3, eventType: 'PAYMENT_RECEIVED', amount: 15000, note: 'PayMongo payment pay_1', actorUserId: null },
+    });
+    expect(prisma.licenseEvent.create).toHaveBeenNthCalledWith(2, {
+      data: { businessId: 3, eventType: 'ACTIVATED', actorUserId: null },
+    });
     expect(mailer.sendLicenseActivatedNotice).toHaveBeenCalledWith(
-      { id: 3, name: 'NCC', licenseStatus: 'PENDING', createdByUserId: 7 },
+      { id: 3, name: 'NCC', licenseStatus: 'ACTIVE', createdByUserId: 7 },
       { id: 7, email: 'juan@finara.ph' },
     );
+  });
+
+  test('logs REACTIVATED (not ACTIVATED) when the business was SUSPENDED', async () => {
+    prisma.business.findUnique.mockResolvedValue({ id: 4, name: 'NCC', licenseStatus: 'SUSPENDED', createdByUserId: null });
+
+    const res = await run(signedRequest(linkPaymentPaidPayload({ businessId: 4 })));
+
+    expect(res.statusCode).toBe(200);
+    expect(prisma.licenseEvent.create).toHaveBeenNthCalledWith(2, {
+      data: { businessId: 4, eventType: 'REACTIVATED', actorUserId: null },
+    });
+  });
+
+  test('returns 401 without throwing when req.body is a plain object, not a Buffer', async () => {
+    // express.raw() hands the controller {} for a body-less or wrong-content-type request.
+    const req = { headers: { 'paymongo-signature': 't=123,te=bogus,li=' }, body: {} };
+    const res = await run(req);
+    expect(res.statusCode).toBe(401);
+    expect(prisma.business.findUnique).not.toHaveBeenCalled();
+  });
+
+  test('is idempotent — a redelivered event writes no second set of license events', async () => {
+    prisma.business.findUnique.mockResolvedValue({ id: 3, name: 'NCC', licenseStatus: 'PENDING', createdByUserId: null });
+    prisma.business.updateMany
+      .mockResolvedValueOnce({ count: 1 })   // first delivery wins the race
+      .mockResolvedValueOnce({ count: 0 });  // retry finds it already ACTIVE
+
+    const first = await run(signedRequest(linkPaymentPaidPayload({ businessId: 3 })));
+    expect(first.statusCode).toBe(200);
+    expect(prisma.licenseEvent.create).toHaveBeenCalledTimes(2);
+
+    const second = await run(signedRequest(linkPaymentPaidPayload({ businessId: 3 })));
+    expect(second.statusCode).toBe(200);
+    expect(prisma.licenseEvent.create).toHaveBeenCalledTimes(2); // unchanged
+    expect(mailer.sendLicenseActivatedNotice).toHaveBeenCalledTimes(1);
   });
 
   test('is a no-op (200, no writes) when the business is already ACTIVE', async () => {

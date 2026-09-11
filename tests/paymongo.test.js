@@ -100,4 +100,40 @@ describe('paymongo.verifyWebhookSignature', () => {
     const paymongo = require('../server/utils/paymongo');
     expect(paymongo.verifyWebhookSignature(Buffer.from('{}'), undefined, secret)).toBe(false);
   });
+
+  test('rejects (does not throw) a non-Buffer, non-string rawBody', () => {
+    // express.raw() hands the controller a plain {} when the request has no body
+    // or the wrong content-type; crypto .update() would throw ERR_INVALID_ARG_TYPE.
+    const paymongo = require('../server/utils/paymongo');
+    const t = '1700000000';
+    const te = sign(t, Buffer.from('{}'));
+    const header = `t=${t},te=${te},li=`;
+    expect(() => paymongo.verifyWebhookSignature({}, header, secret)).not.toThrow();
+    expect(paymongo.verifyWebhookSignature({}, header, secret)).toBe(false);
+    expect(paymongo.verifyWebhookSignature(undefined, header, secret)).toBe(false);
+    expect(paymongo.verifyWebhookSignature(null, header, secret)).toBe(false);
+  });
+
+  test('rejects a signature header with no t= segment', () => {
+    const paymongo = require('../server/utils/paymongo');
+    const rawBody = Buffer.from('{}');
+    const te = sign('1700000000', rawBody);
+    expect(paymongo.verifyWebhookSignature(rawBody, `te=${te},li=`, secret)).toBe(false);
+  });
+
+  test('rejects (does not throw) a non-hex signature value', () => {
+    const paymongo = require('../server/utils/paymongo');
+    const rawBody = Buffer.from('{}');
+    const header = 't=1700000000,te=not-valid-hex!!,li=';
+    expect(() => paymongo.verifyWebhookSignature(rawBody, header, secret)).not.toThrow();
+    expect(paymongo.verifyWebhookSignature(rawBody, header, secret)).toBe(false);
+  });
+
+  test('rejects a missing secret', () => {
+    const paymongo = require('../server/utils/paymongo');
+    const rawBody = Buffer.from('{}');
+    const t = '1700000000';
+    const header = `t=${t},te=${sign(t, rawBody)},li=`;
+    expect(paymongo.verifyWebhookSignature(rawBody, header, undefined)).toBe(false);
+  });
 });

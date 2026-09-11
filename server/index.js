@@ -10,6 +10,10 @@ const routes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 
+// Safety net: an unhandled promise rejection (e.g. a throw inside an async route
+// handler with no try/catch) would otherwise terminate the process on Node 18+.
+process.on('unhandledRejection', (err) => logger.error('[unhandledRejection] ' + (err?.stack || err)));
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 

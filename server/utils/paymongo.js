@@ -37,6 +37,9 @@ async function createPaymentLink({ amount, description, businessId }) {
 
 /** t=<epoch>,te=<test-mode sig>,li=<live-mode sig> — use whichever of te/li is non-empty. */
 function verifyWebhookSignature(rawBody, signatureHeader, secret) {
+  // express.raw() can hand us a non-Buffer body (e.g. {}) when the request has no
+  // body or the wrong content-type. crypto's .update() throws on those, so bail early.
+  if (!Buffer.isBuffer(rawBody) && typeof rawBody !== 'string') return false;
   if (!signatureHeader || !secret) return false;
 
   const parts = {};
