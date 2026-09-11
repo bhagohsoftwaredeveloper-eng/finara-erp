@@ -20,6 +20,23 @@ const authenticate = (req, res, next) => {
   }
 };
 
+// SUPER_ADMIN bypasses the license gate entirely; every other caller must
+// resolve to an ACTIVE business or be rejected before req.businessId is
+// trusted downstream.
+async function assertLicenseActive(req, res, businessId) {
+  const biz = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { licenseStatus: true },
+  });
+  if (biz && biz.licenseStatus !== 'ACTIVE') {
+    res.status(403).json({
+      error: biz.licenseStatus === 'PENDING' ? 'License not yet activated' : 'Business license suspended',
+    });
+    return false;
+  }
+  return true;
+}
+
 // Resolves and validates businessId from x-business-id header.
 // Must run AFTER authenticate. Attaches req.businessId.
 // ADMIN users can access any business; others must be granted access via user_businesses.
@@ -27,10 +44,13 @@ const resolveBusiness = async (req, res, next) => {
   try {
     const headerBizId = Number(req.headers['x-business-id']);
 
-    // If no header supplied, fall back to the first business the user has access to
     if (!headerBizId) {
-      if (['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role)) {
-        // Admin with no header: default to business 1
+      if (req.user?.role === 'SUPER_ADMIN') {
+        req.businessId = 1;
+        return next();
+      }
+      if (req.user?.role === 'ADMIN') {
+        if (!(await assertLicenseActive(req, res, 1))) return;
         req.businessId = 1;
         return next();
       }
@@ -38,12 +58,18 @@ const resolveBusiness = async (req, res, next) => {
         where: { userId: req.user.id },
         orderBy: { businessId: 'asc' },
       });
-      req.businessId = ub?.businessId || 1;
+      const bizId = ub?.businessId || 1;
+      if (!(await assertLicenseActive(req, res, bizId))) return;
+      req.businessId = bizId;
       return next();
     }
 
-    // Admin can switch to any business
-    if (['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role)) {
+    if (req.user?.role === 'SUPER_ADMIN') {
+      req.businessId = headerBizId;
+      return next();
+    }
+    if (req.user?.role === 'ADMIN') {
+      if (!(await assertLicenseActive(req, res, headerBizId))) return;
       req.businessId = headerBizId;
       return next();
     }
@@ -55,6 +81,7 @@ const resolveBusiness = async (req, res, next) => {
     if (!ub) {
       return res.status(403).json({ error: 'Access denied to this business' });
     }
+    if (!(await assertLicenseActive(req, res, headerBizId))) return;
     req.businessId = headerBizId;
     next();
   } catch (err) {

@@ -8,9 +8,14 @@ const { resetDemoBusiness } = require('../../prisma/seedDemo');
 exports.list = async (req, res, next) => {
   try {
     let businesses;
-    if (['ADMIN', 'SUPER_ADMIN'].includes(req.user.role)) {
+    if (req.user.role === 'SUPER_ADMIN') {
       businesses = await prisma.business.findMany({
         where: { isActive: true },
+        orderBy: { name: 'asc' },
+      });
+    } else if (req.user.role === 'ADMIN') {
+      businesses = await prisma.business.findMany({
+        where: { isActive: true, licenseStatus: 'ACTIVE' },
         orderBy: { name: 'asc' },
       });
     } else {
@@ -18,7 +23,7 @@ exports.list = async (req, res, next) => {
         where: { userId: req.user.id },
         include: { business: true },
       });
-      businesses = ubs.map((ub) => ub.business).filter((b) => b.isActive);
+      businesses = ubs.map((ub) => ub.business).filter((b) => b.isActive && b.licenseStatus === 'ACTIVE');
     }
     res.json(businesses);
   } catch (err) { next(err); }
@@ -42,6 +47,14 @@ exports.get = async (req, res, next) => {
 
     const biz = await prisma.business.findUnique({ where: { id } });
     if (!biz) throw createError('Business not found', 404);
+
+    if (req.user.role !== 'SUPER_ADMIN' && biz.licenseStatus !== 'ACTIVE') {
+      throw createError(
+        biz.licenseStatus === 'PENDING' ? 'License not yet activated' : 'Business license suspended',
+        403
+      );
+    }
+
     res.json(biz);
   } catch (err) { next(err); }
 };
