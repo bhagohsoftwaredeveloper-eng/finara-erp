@@ -4,6 +4,7 @@ const { clearBusinessCache } = require('../utils/glPost');
 const { cloneChartOfAccounts } = require('../utils/cloneChartOfAccounts');
 const { resetDemoBusiness } = require('../../prisma/seedDemo');
 const mailer = require('../utils/mailer');
+const paymongo = require('../utils/paymongo');
 
 const LICENSE_TRANSITIONS = {
   PENDING:   { ACTIVE: 'ACTIVATED' },
@@ -160,6 +161,44 @@ exports.updateLicense = async (req, res, next) => {
     else mailer.sendLicenseSuspendedNotice(updated, requester);
 
     res.json(updated);
+  } catch (err) { next(err); }
+};
+
+// ─── Payment link generation (ADMIN, online path) ──────────────────
+exports.generatePaymentLink = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const amount = Number(req.body.amount);
+    if (!amount || amount <= 0) throw createError('amount must be a positive number', 400);
+
+    const biz = await prisma.business.findUnique({ where: { id } });
+    if (!biz) throw createError('Business not found', 404);
+    if (biz.licenseStatus === 'ACTIVE') throw createError('Business license is already active', 400);
+    if (!paymongo.isConfigured()) {
+      throw createError('Online payment not configured — use manual activation', 400);
+    }
+
+    const link = await paymongo.createPaymentLink({
+      amount,
+      description: req.body.description || `Finara license — ${biz.name}`,
+      businessId: id,
+    });
+
+    const updated = await prisma.business.update({
+      where: { id },
+      data: {
+        paymentLinkId: link.id,
+        paymentLinkUrl: link.url,
+        paymentLinkAmount: amount,
+        paymentLinkGeneratedAt: new Date(),
+      },
+    });
+
+    await prisma.licenseEvent.create({
+      data: { businessId: id, eventType: 'PAYMENT_LINK_GENERATED', amount, actorUserId: req.user.id },
+    });
+
+    res.json({ paymentLinkUrl: updated.paymentLinkUrl });
   } catch (err) { next(err); }
 };
 
