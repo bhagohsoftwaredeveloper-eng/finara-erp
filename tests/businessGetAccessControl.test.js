@@ -28,11 +28,11 @@ describe('businessController.get access control', () => {
 
   test('a non-admin with a matching grant can fetch that business', async () => {
     prisma.userBusiness.findUnique.mockResolvedValue({ userId: 5, businessId: 1 });
-    prisma.business.findUnique.mockResolvedValue({ id: 1, name: 'Demo Trading Co.' });
+    prisma.business.findUnique.mockResolvedValue({ id: 1, name: 'Demo Trading Co.', licenseStatus: 'ACTIVE' });
 
     const biz = await run({ id: 5, role: 'MANAGER' }, 1);
 
-    expect(biz).toEqual({ id: 1, name: 'Demo Trading Co.' });
+    expect(biz).toEqual({ id: 1, name: 'Demo Trading Co.', licenseStatus: 'ACTIVE' });
     expect(prisma.userBusiness.findUnique).toHaveBeenCalledWith({
       where: { userId_businessId: { userId: 5, businessId: 1 } },
     });
@@ -45,20 +45,20 @@ describe('businessController.get access control', () => {
   });
 
   test('ADMIN bypasses the grant check entirely', async () => {
-    prisma.business.findUnique.mockResolvedValue({ id: 2, name: 'Beulah IT' });
+    prisma.business.findUnique.mockResolvedValue({ id: 2, name: 'Beulah IT', licenseStatus: 'ACTIVE' });
 
     const biz = await run({ id: 1, role: 'ADMIN' }, 2);
 
-    expect(biz).toEqual({ id: 2, name: 'Beulah IT' });
+    expect(biz).toEqual({ id: 2, name: 'Beulah IT', licenseStatus: 'ACTIVE' });
     expect(prisma.userBusiness.findUnique).not.toHaveBeenCalled();
   });
 
   test('SUPER_ADMIN bypasses the grant check entirely too', async () => {
-    prisma.business.findUnique.mockResolvedValue({ id: 2, name: 'Beulah IT' });
+    prisma.business.findUnique.mockResolvedValue({ id: 2, name: 'Beulah IT', licenseStatus: 'ACTIVE' });
 
     const biz = await run({ id: 1, role: 'SUPER_ADMIN' }, 2);
 
-    expect(biz).toEqual({ id: 2, name: 'Beulah IT' });
+    expect(biz).toEqual({ id: 2, name: 'Beulah IT', licenseStatus: 'ACTIVE' });
     expect(prisma.userBusiness.findUnique).not.toHaveBeenCalled();
   });
 

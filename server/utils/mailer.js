@@ -169,7 +169,43 @@ async function sendPayslipEmail(employee, period, item) {
   return sendMail({ to: employee.email, subject: `Your payslip — ${period?.name || 'Finara ERP'}`, html });
 }
 
+async function sendLicensePendingNotice(business, requester, superAdminEmails) {
+  if (!superAdminEmails?.length) return false;
+  const requesterLabel = requester?.name || requester?.firstName || requester?.email || 'A user';
+  const html = wrap('New Business Pending License',
+    `<p><strong>${escapeHtml(requesterLabel)}</strong> created a new business that is awaiting license activation.</p>
+     <p><strong>Business:</strong> ${escapeHtml(business.name)} (${escapeHtml(business.code)})</p>
+     <p>Sign in as SUPER_ADMIN and open Settings &rarr; Businesses to activate its license.</p>`);
+  const results = await Promise.all(
+    superAdminEmails.map((to) => sendMail({ to, subject: `New business pending license — ${business.name}`, html }))
+  );
+  return results.some(Boolean);
+}
+
+async function sendLicenseActivatedNotice(business, requester) {
+  const recipients = [...new Set([requester?.email, business.email].filter(Boolean))];
+  if (!recipients.length) return false;
+  const html = wrap('Your Finara License Is Active',
+    `<p>Good news — the license for <strong>${escapeHtml(business.name)}</strong> has been activated. You now have full access.</p>`);
+  const results = await Promise.all(
+    recipients.map((to) => sendMail({ to, subject: `Your Finara license is active — ${business.name}`, html }))
+  );
+  return results.some(Boolean);
+}
+
+async function sendLicenseSuspendedNotice(business, requester) {
+  const recipients = [...new Set([requester?.email, business.email].filter(Boolean))];
+  if (!recipients.length) return false;
+  const html = wrap('Your Finara License Has Been Suspended',
+    `<p>The license for <strong>${escapeHtml(business.name)}</strong> has been suspended. Access is locked until it is reactivated.</p>`);
+  const results = await Promise.all(
+    recipients.map((to) => sendMail({ to, subject: `Your Finara license has been suspended — ${business.name}`, html }))
+  );
+  return results.some(Boolean);
+}
+
 module.exports = {
   sendMail, sendPasswordReset, sendInvoiceEmail, sendOverdueReminder, sendPayslipEmail,
+  sendLicensePendingNotice, sendLicenseActivatedNotice, sendLicenseSuspendedNotice,
   wrap, getTransporter, APP_URL, fillTemplate,
 };

@@ -10,6 +10,10 @@ const routes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 
+// Safety net: an unhandled promise rejection (e.g. a throw inside an async route
+// handler with no try/catch) would otherwise terminate the process on Node 18+.
+process.on('unhandledRejection', (err) => logger.error('[unhandledRejection] ' + (err?.stack || err)));
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -64,6 +68,11 @@ const authLimiter = rateLimit({
 
 app.use(globalLimiter);
 app.use(compression());
+
+// Mounted ahead of the global JSON parser: PayMongo signs the raw request
+// body, so this route needs the unparsed Buffer, not a parsed object.
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), routes.webhooks);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
