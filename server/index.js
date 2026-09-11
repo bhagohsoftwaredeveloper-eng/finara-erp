@@ -64,6 +64,11 @@ const authLimiter = rateLimit({
 
 app.use(globalLimiter);
 app.use(compression());
+
+// Mounted ahead of the global JSON parser: PayMongo signs the raw request
+// body, so this route needs the unparsed Buffer, not a parsed object.
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), routes.webhooks);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
