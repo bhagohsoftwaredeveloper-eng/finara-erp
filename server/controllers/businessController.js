@@ -3,6 +3,7 @@ const { createError } = require('../middleware/errorHandler');
 const { clearBusinessCache } = require('../utils/glPost');
 const { cloneChartOfAccounts } = require('../utils/cloneChartOfAccounts');
 const { resetDemoBusiness } = require('../../prisma/seedDemo');
+const mailer = require('../utils/mailer');
 
 // ─── List all businesses the current user can access ─────────────
 exports.list = async (req, res, next) => {
@@ -69,6 +70,8 @@ exports.create = async (req, res, next) => {
       data: {
         code: code.toUpperCase(), name, tin, address, phone, email, industry,
         booksStartDate: booksStartDate ? new Date(booksStartDate) : null,
+        licenseStatus: 'PENDING',
+        createdByUserId: req.user.id,
       },
     });
 
@@ -81,6 +84,14 @@ exports.create = async (req, res, next) => {
       data: admins.map((u) => ({ userId: u.id, businessId: biz.id })),
       skipDuplicates: true,
     });
+
+    await prisma.licenseEvent.create({
+      data: { businessId: biz.id, eventType: 'CREATED', actorUserId: req.user.id },
+    });
+
+    // Fire-and-forget: sendMail never throws, so this never blocks the response.
+    const superAdmins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' } });
+    mailer.sendLicensePendingNotice(biz, req.user, superAdmins.map((u) => u.email));
 
     res.status(201).json(biz);
   } catch (err) { next(err); }
