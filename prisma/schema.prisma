@@ -8,6 +8,21 @@ datasource db {
 }
 
 // ─── Multi-Business ────────────────────────────────────────
+enum LicenseStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum LicenseEventType {
+  CREATED
+  PAYMENT_LINK_GENERATED
+  PAYMENT_RECEIVED
+  ACTIVATED
+  SUSPENDED
+  REACTIVATED
+}
+
 model Business {
   id          Int       @id @default(autoincrement())
   code        String    @unique @db.VarChar(20)
@@ -26,8 +41,31 @@ model Business {
   updatedAt   DateTime  @updatedAt
 
   userBusinesses UserBusiness[]
+  licenseStatus          LicenseStatus @default(ACTIVE)
+  licenseActivatedAt     DateTime?
+  licenseActivatedBy     Int?
+  createdByUserId        Int?
+  paymentLinkId          String?       @db.VarChar(100)
+  paymentLinkUrl         String?       @db.Text
+  paymentLinkAmount      Decimal?      @db.Decimal(12, 2)
+  paymentLinkGeneratedAt DateTime?
+  licenseEvents          LicenseEvent[]
 
   @@map("businesses")
+}
+
+model LicenseEvent {
+  id          Int              @id @default(autoincrement())
+  businessId  Int
+  business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  eventType   LicenseEventType
+  note        String?          @db.Text
+  amount      Decimal?         @db.Decimal(12, 2)
+  actorUserId Int?
+  createdAt   DateTime         @default(now())
+
+  @@index([businessId])
+  @@map("license_events")
 }
 
 model UserBusiness {
