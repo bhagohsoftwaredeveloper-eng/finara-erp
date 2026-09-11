@@ -5,6 +5,12 @@ const { cloneChartOfAccounts } = require('../utils/cloneChartOfAccounts');
 const { resetDemoBusiness } = require('../../prisma/seedDemo');
 const mailer = require('../utils/mailer');
 
+const LICENSE_TRANSITIONS = {
+  PENDING:   { ACTIVE: 'ACTIVATED' },
+  SUSPENDED: { ACTIVE: 'REACTIVATED' },
+  ACTIVE:    { SUSPENDED: 'SUSPENDED' },
+};
+
 // ─── List all businesses the current user can access ─────────────
 exports.list = async (req, res, next) => {
   try {
@@ -115,6 +121,45 @@ exports.update = async (req, res, next) => {
     clearBusinessCache(id);
 
     res.json(biz);
+  } catch (err) { next(err); }
+};
+
+// ─── License transition (manual, SUPER_ADMIN only) ────────────────
+exports.updateLicense = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { status, note } = req.body;
+    if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
+      throw createError('status must be ACTIVE or SUSPENDED', 400);
+    }
+
+    const biz = await prisma.business.findUnique({ where: { id } });
+    if (!biz) throw createError('Business not found', 404);
+
+    const eventType = LICENSE_TRANSITIONS[biz.licenseStatus]?.[status];
+    if (!eventType) {
+      throw createError(`Cannot transition license from ${biz.licenseStatus} to ${status}`, 400);
+    }
+
+    const isActivating = status === 'ACTIVE';
+    const updated = await prisma.business.update({
+      where: { id },
+      data: isActivating
+        ? { licenseStatus: status, licenseActivatedAt: new Date(), licenseActivatedBy: req.user.id }
+        : { licenseStatus: status },
+    });
+
+    await prisma.licenseEvent.create({
+      data: { businessId: id, eventType, note: note || null, actorUserId: req.user.id },
+    });
+
+    const requester = biz.createdByUserId
+      ? await prisma.user.findUnique({ where: { id: biz.createdByUserId } })
+      : null;
+    if (isActivating) mailer.sendLicenseActivatedNotice(updated, requester);
+    else mailer.sendLicenseSuspendedNotice(updated, requester);
+
+    res.json(updated);
   } catch (err) { next(err); }
 };
 
