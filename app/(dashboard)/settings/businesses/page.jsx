@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Users, Check, X, Building2, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Users, Check, X, Building2, Trash2, RotateCcw, AlertTriangle, ShieldCheck, ShieldOff, Link as LinkIcon, Copy, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { businesses as bizApi, settings as settingsApi } from '@/lib/api';
 import { getUser } from '@/lib/auth';
@@ -37,8 +37,17 @@ export default function BusinessesPage() {
   const [resetPhrase, setResetPhrase] = useState('');
   const [resetting,   setResetting]   = useState(false);
 
+  const [licenseBiz,    setLicenseBiz]    = useState(null);   // business object for the license panel
+  const [licenseAction, setLicenseAction] = useState(null);   // 'activate' | 'suspend'
+  const [licenseNote,   setLicenseNote]   = useState('');
+  const [linkAmount,      setLinkAmount]      = useState('');
+  const [linkDescription, setLinkDescription] = useState('');
+  const [generatingLink,  setGeneratingLink]  = useState(false);
+  const [savingLicense,   setSavingLicense]   = useState(false);
+
   const me = getUser();
   const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(me?.role);
+  const isSuperAdmin = me?.role === 'SUPER_ADMIN';
 
   async function load() {
     try {
@@ -70,7 +79,7 @@ export default function BusinessesPage() {
     try {
       if (editBiz === 'new') {
         await bizApi.create(form);
-        toast.success('Business created — COA cloned from default');
+        toast.success('Business created — pending license activation');
       } else {
         await bizApi.update(editBiz.id, form);
         toast.success('Business updated');
@@ -80,6 +89,45 @@ export default function BusinessesPage() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'Save failed');
     }
+  }
+
+  // ── License ──────────────────────────────────────────────────
+  async function confirmLicenseAction() {
+    setSavingLicense(true);
+    try {
+      const status = licenseAction === 'activate' ? 'ACTIVE' : 'SUSPENDED';
+      await bizApi.updateLicense(licenseBiz.id, { status, note: licenseNote || undefined });
+      toast.success(status === 'ACTIVE' ? 'License activated' : 'License suspended');
+      setLicenseAction(null);
+      setLicenseNote('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update license');
+    } finally {
+      setSavingLicense(false);
+    }
+  }
+
+  async function generatePaymentLink() {
+    setGeneratingLink(true);
+    try {
+      const { data } = await bizApi.generatePaymentLink(licenseBiz.id, {
+        amount: Number(linkAmount),
+        description: linkDescription || undefined,
+      });
+      toast.success('Payment link generated');
+      setLicenseBiz((b) => ({ ...b, paymentLinkUrl: data.paymentLinkUrl }));
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to generate payment link');
+    } finally {
+      setGeneratingLink(false);
+    }
+  }
+
+  function copyPaymentLink(url) {
+    navigator.clipboard.writeText(url);
+    toast.success('Link copied');
   }
 
   // ── Demo data reset ────────────────────────────────────────────
@@ -156,7 +204,7 @@ export default function BusinessesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Code','Name','TIN','Status','Actions'].map((h) => (
+                {['Code','Name','TIN','Status','License','Actions'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -173,12 +221,23 @@ export default function BusinessesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
+                    <span className={`badge ${
+                      biz.licenseStatus === 'ACTIVE' ? 'badge-green' :
+                      biz.licenseStatus === 'SUSPENDED' ? 'badge-red' : 'badge-yellow'
+                    }`}>
+                      {biz.licenseStatus === 'ACTIVE' ? 'Active' : biz.licenseStatus === 'SUSPENDED' ? 'Suspended' : 'Pending'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button onClick={() => openEdit(biz)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
                         <Pencil className="w-3 h-3" /> Edit
                       </button>
                       <button onClick={() => openManage(biz.id)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
                         <Users className="w-3 h-3" /> Users
+                      </button>
+                      <button onClick={() => { setLicenseBiz(biz); setLinkAmount(''); setLinkDescription(''); }} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> License
                       </button>
                       {biz.code === 'DEMO' && (
                         <button
@@ -194,7 +253,7 @@ export default function BusinessesPage() {
                 </tr>
               ))}
               {!list.length && (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-gray-400">No businesses found</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">No businesses found</td></tr>
               )}
             </tbody>
           </table>
@@ -318,6 +377,93 @@ export default function BusinessesPage() {
             >
               {resetting ? 'Resetting…' : 'Reset Demo Data'}
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* License modal */}
+      {licenseBiz !== null && (
+        <Modal title={`License — ${licenseBiz.name}`} onClose={() => setLicenseBiz(null)}>
+          <div className="mb-4">
+            <span className={`badge ${
+              licenseBiz.licenseStatus === 'ACTIVE' ? 'badge-green' :
+              licenseBiz.licenseStatus === 'SUSPENDED' ? 'badge-red' : 'badge-yellow'
+            }`}>
+              {licenseBiz.licenseStatus === 'ACTIVE' ? 'Active' : licenseBiz.licenseStatus === 'SUSPENDED' ? 'Suspended' : 'Pending'}
+            </span>
+          </div>
+
+          {licenseBiz.licenseStatus !== 'ACTIVE' && (
+            <div className="mb-5 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2">
+                <LinkIcon className="w-4 h-4" /> Generate Payment Link
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="label">Amount (PHP)</label>
+                  <input className="input" type="number" min="1" step="0.01" value={linkAmount}
+                    onChange={(e) => setLinkAmount(e.target.value)} placeholder="15000" />
+                </div>
+                <div>
+                  <label className="label">Description</label>
+                  <input className="input" value={linkDescription}
+                    onChange={(e) => setLinkDescription(e.target.value)} placeholder="Optional" />
+                </div>
+              </div>
+              <button className="btn-secondary text-xs" disabled={!linkAmount || generatingLink} onClick={generatePaymentLink}>
+                {generatingLink ? 'Generating…' : 'Generate Link'}
+              </button>
+              {licenseBiz.paymentLinkUrl && (
+                <div className="mt-3 flex items-center gap-2 text-xs bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                  <span className="truncate flex-1">{licenseBiz.paymentLinkUrl}</span>
+                  <button className="text-blue-600 hover:underline flex items-center gap-1" onClick={() => copyPaymentLink(licenseBiz.paymentLinkUrl)}>
+                    <Copy className="w-3 h-3" /> Copy
+                  </button>
+                  {licenseBiz.email && (
+                    <a className="text-blue-600 hover:underline flex items-center gap-1"
+                      href={`mailto:${licenseBiz.email}?subject=${encodeURIComponent(`Finara license payment — ${licenseBiz.name}`)}&body=${encodeURIComponent(licenseBiz.paymentLinkUrl)}`}>
+                      <Mail className="w-3 h-3" /> Send
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isSuperAdmin && (
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Manual Activation (offline payment)</p>
+              {licenseAction === null ? (
+                <div className="flex gap-2">
+                  {licenseBiz.licenseStatus !== 'ACTIVE' && (
+                    <button className="btn-primary text-xs flex items-center gap-1" onClick={() => setLicenseAction('activate')}>
+                      <ShieldCheck className="w-3 h-3" /> Activate License
+                    </button>
+                  )}
+                  {licenseBiz.licenseStatus === 'ACTIVE' && (
+                    <button className="btn-danger text-xs flex items-center gap-1" onClick={() => setLicenseAction('suspend')}>
+                      <ShieldOff className="w-3 h-3" /> Suspend
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="label">Note (optional)</label>
+                  <textarea className="input" rows={2} value={licenseNote} onChange={(e) => setLicenseNote(e.target.value)}
+                    placeholder="e.g. GCash ref #12345, PHP 15,000, paid 2026-09-11" />
+                  <div className="flex justify-end gap-2 pt-3">
+                    <button className="btn-secondary text-xs" onClick={() => { setLicenseAction(null); setLicenseNote(''); }}>Cancel</button>
+                    <button className="btn-primary text-xs" disabled={savingLicense} onClick={confirmLicenseAction}>
+                      {savingLicense ? 'Saving…' : licenseAction === 'activate' ? 'Confirm Activate' : 'Confirm Suspend'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4">
+            <button className="btn-secondary" onClick={() => setLicenseBiz(null)}>Close</button>
           </div>
         </Modal>
       )}
