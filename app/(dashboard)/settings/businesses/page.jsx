@@ -236,7 +236,7 @@ export default function BusinessesPage() {
                       <button onClick={() => openManage(biz.id)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
                         <Users className="w-3 h-3" /> Users
                       </button>
-                      <button onClick={() => { setLicenseBiz(biz); setLinkAmount(''); setLinkDescription(''); }} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
+                      <button onClick={() => { setLicenseBiz(biz); setLicenseAction(null); setLicenseNote(''); setLinkAmount(''); setLinkDescription(''); }} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
                         <ShieldCheck className="w-3 h-3" /> License
                       </button>
                       {biz.code === 'DEMO' && (
@@ -383,7 +383,7 @@ export default function BusinessesPage() {
 
       {/* License modal */}
       {licenseBiz !== null && (
-        <Modal title={`License — ${licenseBiz.name}`} onClose={() => setLicenseBiz(null)}>
+        <Modal title={`License — ${licenseBiz.name}`} onClose={() => { setLicenseBiz(null); setLicenseAction(null); setLicenseNote(''); }}>
           <div className="mb-4">
             <span className={`badge ${
               licenseBiz.licenseStatus === 'ACTIVE' ? 'badge-green' :
@@ -463,7 +463,7 @@ export default function BusinessesPage() {
           )}
 
           <div className="flex justify-end pt-4">
-            <button className="btn-secondary" onClick={() => setLicenseBiz(null)}>Close</button>
+            <button className="btn-secondary" onClick={() => { setLicenseBiz(null); setLicenseAction(null); setLicenseNote(''); }}>Close</button>
           </div>
         </Modal>
       )}
