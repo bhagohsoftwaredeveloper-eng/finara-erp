@@ -22,33 +22,37 @@ exports.paymongo = async (req, res) => {
     }
 
     const paymongoEventType = event?.data?.attributes?.type;
-    const payment = event?.data?.attributes?.data;
-    const isLinkPayment = paymongoEventType === 'link.payment.paid'
-      || (paymongoEventType === 'payment.paid' && payment?.attributes?.origin === 'links');
-    if (!isLinkPayment) {
+    if (paymongoEventType !== 'link.payment.paid') {
       logger.info(`[paymongoWebhook] ignoring unrelated event type: ${paymongoEventType}`);
       return res.sendStatus(200);
     }
 
-    const businessId = Number(payment?.attributes?.metadata?.businessId);
-    if (!businessId) {
-      logger.warn('[paymongoWebhook] link payment event had no businessId in metadata — ignoring');
+    // For link.payment.paid, `data` is the Link resource, not the payment —
+    // PayMongo does not carry our request-time metadata through to the link
+    // or to its nested payment (only an auto-generated pm_reference_number
+    // shows up there), so correlate back to the business via the link id we
+    // stored on it when the link was generated (businessController.generatePaymentLink).
+    const link = event?.data?.attributes?.data;
+    const linkId = link?.id;
+    if (!linkId) {
+      logger.warn('[paymongoWebhook] link.payment.paid event had no link id — ignoring');
       return res.sendStatus(200);
     }
 
-    const paymentId = payment?.attributes?.id || payment?.id;
-
-    const business = await prisma.business.findUnique({ where: { id: businessId } });
+    const business = await prisma.business.findFirst({ where: { paymentLinkId: linkId } });
     if (!business) {
-      logger.info(`[paymongoWebhook] business ${businessId} not found — ignoring`);
+      logger.info(`[paymongoWebhook] no business found for payment link ${linkId} — ignoring`);
       return res.sendStatus(200);
     }
     if (business.licenseStatus === 'ACTIVE') {
-      logger.info(`[paymongoWebhook] business ${businessId} is already ACTIVE — ignoring`);
+      logger.info(`[paymongoWebhook] business ${business.id} is already ACTIVE — ignoring`);
       return res.sendStatus(200);
     }
 
-    const amount = Number(payment?.attributes?.amount || 0) / 100;
+    const businessId = business.id;
+    const paidPayment = link?.attributes?.payments?.[0]?.data;
+    const paymentId = paidPayment?.id || linkId;
+    const amount = Number(paidPayment?.attributes?.amount ?? link?.attributes?.amount ?? 0) / 100;
 
     // Mirror the manual path's state machine (businessController.LICENSE_TRANSITIONS):
     // SUSPENDED → ACTIVE is a REACTIVATED event, PENDING → ACTIVE is ACTIVATED.
