@@ -7,7 +7,9 @@ const adminOnly = authorize('ADMIN');
 // `list` must NOT go through resolveBusiness: a user whose currently-selected
 // business gets suspended would otherwise be 403'd on the very request that
 // populates the business switcher, locking them out of the whole app.
-router.get('/', authenticate, ctrl.list);
+// `onboard` works before the user has a business, so it also skips resolveBusiness.
+router.get('/',            authenticate,     ctrl.list);
+router.post('/onboard',    authenticate,     ctrl.onboard);
 
 router.use(authenticate, resolveBusiness);
 

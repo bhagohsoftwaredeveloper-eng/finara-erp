@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import PageTransition from '@/components/layout/PageTransition';
+import Breadcrumbs from '@/components/layout/Breadcrumbs';
 import { isAuthenticated, getUser } from '@/lib/auth';
 import { canAccess, canWrite, setPermissions, setDisabledModules } from '@/lib/permissions';
 import { permissions as permApi } from '@/lib/api';
@@ -49,7 +50,7 @@ export default function DashboardLayout({ children }) {
   useEffect(() => {
     if (!authed) return;
     permApi.getDisabled()
-      .then(({ data }) => setDisabledModules(data))
+      .then(({ data }) => setDisabledModules(data.disabled, data.adminExempt))
       .catch(() => setDisabledModules([]));
   }, [authed]);
 
@@ -93,6 +94,7 @@ export default function DashboardLayout({ children }) {
           <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-all duration-200 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
             <Header onMobileMenu={() => setMobileOpen(true)} />
             <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+              <Breadcrumbs />
               <PageTransition>
                 {children}
               </PageTransition>

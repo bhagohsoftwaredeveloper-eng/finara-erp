@@ -77,6 +77,10 @@ const saveAll = async (req, res, next) => {
   try {
     const businessId = req.businessId;
     const updates = Object.entries(req.body);
+    const timeout = req.body.sessionTimeout;
+    if (timeout !== undefined && !(Number(timeout) >= 2)) {
+      return res.status(400).json({ error: 'Session timeout must be at least 2 minutes' });
+    }
     await Promise.all(
       updates.map(([key, value]) =>
         prisma.systemSetting.upsert({

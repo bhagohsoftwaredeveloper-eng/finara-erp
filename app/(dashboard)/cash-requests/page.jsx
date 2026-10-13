@@ -49,9 +49,13 @@ function matchCodeFor(description, rules = [], fallback = '6390') {
   return { accountCode: fallback, matched: false };
 }
 
-// Resolve a matched code to an account id within the loaded COA.
-const accountIdForCode = (accounts, code) =>
-  accounts.find((a) => a.accountCode === code)?.id || '';
+// Resolve a matched code to an account id within the loaded COA. Retired
+// (inactive) accounts are skipped, falling back to the default expense account,
+// so a trading company never gets an agency account suggested.
+const accountIdForCode = (accounts, code, fallback = '6390') => {
+  const usable = (c) => accounts.find((a) => a.accountCode === c && a.isActive !== false);
+  return (usable(code) || usable(fallback))?.id || '';
+};
 
 // ─── New / Edit Request Modal ─────────────────────────────────
 function RequestModal({ request, names, onClose, onSaved }) {
@@ -79,7 +83,18 @@ function RequestModal({ request, names, onClose, onSaved }) {
   const setItem = (i, k, v) =>
     setForm((f) => ({
       ...f,
-      items: f.items.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)),
+      items: f.items.map((it, idx) => {
+        if (idx !== i) return it;
+        const next = { ...it, [k]: v };
+        // A manual account choice is sticky.
+        if (k === 'accountId') next.accountTouched = true;
+        // Typing a description re-runs the match until the user overrides it.
+        if (k === 'description' && !next.accountTouched) {
+          const { accountCode } = matchCodeFor(v, accountMap.rules, accountMap.fallback);
+          next.accountId = accountIdForCode(accounts, accountCode, accountMap.fallback);
+        }
+        return next;
+      }),
     }));
   const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
   const rmItem  = (i) => setForm((f) => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
@@ -414,7 +429,7 @@ function LiquidateModal({ request, accounts, accountMap, onClose, onDone }) {
       if (k === 'accountId') next.accountTouched = true;
       if (k === 'description' && !next.accountTouched) {
         const { accountCode } = matchCodeFor(v, accountMap.rules, accountMap.fallback);
-        next.accountId = accountIdForCode(accounts, accountCode);
+        next.accountId = accountIdForCode(accounts, accountCode, accountMap.fallback);
       }
       return next;
     }));
