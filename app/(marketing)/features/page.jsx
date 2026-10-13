@@ -1,8 +1,10 @@
 import ModuleShowcase from '@/components/marketing/ModuleShowcase';
+import FeaturesBrowser from '@/components/marketing/FeaturesBrowser';
 import CTABanner from '@/components/marketing/CTABanner';
 import { Reveal, Stagger, StaggerItem } from '@/components/marketing/Reveal';
 import {
   Landmark, RefreshCcw, PiggyBank, Briefcase, ScrollText, Building2, ShoppingCart, Wallet,
+  Banknote, HandCoins, FileCheck2, Receipt,
 } from 'lucide-react';
 
 export const metadata = {
@@ -13,6 +15,7 @@ export const metadata = {
 
 const MODULES = [
   {
+    id: 'general-ledger',
     kicker: 'General Ledger',
     title: 'The core of your books',
     description:
@@ -26,6 +29,7 @@ const MODULES = [
     alt: 'Finara General Ledger',
   },
   {
+    id: 'accounts-payable',
     kicker: 'Accounts Payable',
     title: 'Know what you owe, and when',
     description:
@@ -39,6 +43,7 @@ const MODULES = [
     alt: 'Finara Accounts Payable',
   },
   {
+    id: 'accounts-receivable',
     kicker: 'Accounts Receivable',
     title: 'Invoice, collect, and stay on top of customers',
     description:
@@ -52,6 +57,7 @@ const MODULES = [
     alt: 'Finara Accounts Receivable',
   },
   {
+    id: 'payroll',
     kicker: 'Payroll',
     title: 'Philippine payroll, computed correctly',
     description:
@@ -65,6 +71,7 @@ const MODULES = [
     alt: 'Finara Payroll',
   },
   {
+    id: 'bir-compliance',
     kicker: 'BIR Compliance',
     title: 'File with confidence',
     description:
@@ -78,6 +85,7 @@ const MODULES = [
     alt: 'Finara BIR Compliance',
   },
   {
+    id: 'reports',
     kicker: 'Reports',
     title: 'Answers, not exports',
     description:
@@ -91,6 +99,7 @@ const MODULES = [
     alt: 'Finara Reports',
   },
   {
+    id: 'inventory',
     kicker: 'Inventory',
     title: 'Stock that ties to your books',
     description:
@@ -103,11 +112,53 @@ const MODULES = [
     image: '/marketing/screenshots/inventory.png',
     alt: 'Finara Inventory',
   },
+  {
+    id: 'cash-banking',
+    kicker: 'Cash & Banking',
+    title: 'Every peso in and out, reconciled',
+    description:
+      'Record over-the-counter cash sales, issue and track cheques, and reconcile your books against the bank statement.',
+    bullets: [
+      'Cash sales posted straight to the ledger',
+      'Cheque register for issued and cleared cheques',
+      'Bank reconciliation with cash position reporting',
+    ],
+    icon: Banknote,
+  },
+  {
+    id: 'spend-control',
+    kicker: 'Spend Control',
+    title: 'Approve spending before it happens',
+    description:
+      'From purchase order to expense voucher to cash request, keep every outgoing peso documented and approved.',
+    bullets: [
+      'Purchase orders you can convert into vendor bills',
+      'Scan a supplier PO and let OCR fill in the details',
+      'Expense vouchers and cash requests with approval flow',
+    ],
+    icon: HandCoins,
+  },
+  {
+    id: 'remittances',
+    kicker: 'Government Remittances',
+    title: 'SSS, PhilHealth and Pag-IBIG, on schedule',
+    description:
+      'Track what you owe each agency and what you have already remitted, with a daily report for the person who does the filing.',
+    bullets: [
+      'Remittance dashboard of amounts due per agency',
+      'Government records kept per payroll period',
+      'Daily remittance report',
+    ],
+    icon: Landmark,
+  },
 ];
 
 const MORE = [
   { icon: ShoppingCart, label: 'Purchase Orders' },
-  { icon: Wallet,       label: 'Expenses' },
+  { icon: Wallet,       label: 'Expense Vouchers' },
+  { icon: HandCoins,    label: 'Cash Requests' },
+  { icon: Receipt,      label: 'Cash Sales' },
+  { icon: FileCheck2,   label: 'Cheque Register' },
   { icon: PiggyBank,    label: 'Budgeting' },
   { icon: Briefcase,    label: 'Fixed Assets' },
   { icon: Landmark,     label: 'Bank & Reconciliation' },
@@ -133,6 +184,8 @@ export default function FeaturesPage() {
           </Reveal>
         </div>
       </section>
+
+      <FeaturesBrowser />
 
       {MODULES.map((m, i) => (
         <ModuleShowcase key={m.kicker} {...m} reverse={i % 2 === 1} />

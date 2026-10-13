@@ -10,10 +10,12 @@ export default function ModuleShowcase({
   bullets = [],
   image,
   alt,
+  icon: Icon,
   reverse = false,
+  id,
 }) {
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+    <section id={id} className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20 scroll-mt-20">
       <div
         className={`grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center ${
           reverse ? 'lg:[&>*:first-child]:order-2' : ''
@@ -39,7 +41,17 @@ export default function ModuleShowcase({
           </Link>
         </Reveal>
         <div>
-          <BrowserFrame src={image} alt={alt} />
+          {image ? (
+            <BrowserFrame src={image} alt={alt} />
+          ) : (
+            <div className="aspect-[16/10] rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-blue-100/60 shadow-sm flex items-center justify-center">
+              {Icon && (
+                <div className="w-24 h-24 rounded-3xl bg-brand text-white flex items-center justify-center shadow-lg">
+                  <Icon className="w-12 h-12" />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </section>

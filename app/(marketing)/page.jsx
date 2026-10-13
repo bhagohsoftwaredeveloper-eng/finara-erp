@@ -1,8 +1,10 @@
 import Hero from '@/components/marketing/Hero';
+import ModuleBrowser from '@/components/marketing/ModuleBrowser';
 import ModuleShowcase from '@/components/marketing/ModuleShowcase';
 import FeatureGrid from '@/components/marketing/FeatureGrid';
 import ComplianceStrip from '@/components/marketing/ComplianceStrip';
 import StatsRow from '@/components/marketing/StatsRow';
+import TestimonialCarousel from '@/components/marketing/TestimonialCarousel';
 import CTABanner from '@/components/marketing/CTABanner';
 
 export const metadata = {
@@ -21,7 +23,10 @@ export default function HomePage() {
     <>
       <Hero />
 
+      <ModuleBrowser />
+
       <ModuleShowcase
+        id="general-ledger"
         kicker="General Ledger"
         title="Double-entry that balances itself"
         description="Post journal entries with a draft → posted → voided workflow on top of a 52-account, PFRS-aligned chart of accounts. Your trial balance is always in balance — by construction."
@@ -35,6 +40,7 @@ export default function HomePage() {
       />
 
       <ModuleShowcase
+        id="payroll"
         reverse
         kicker="Payroll"
         title="TRAIN Law payroll in minutes"
@@ -49,6 +55,7 @@ export default function HomePage() {
       />
 
       <ModuleShowcase
+        id="bir-compliance"
         kicker="BIR Compliance"
         title="BIR reports without the spreadsheet gymnastics"
         description="Generate the reports your accountant files every month and quarter — straight from your posted books."
@@ -62,6 +69,7 @@ export default function HomePage() {
       />
 
       <ModuleShowcase
+        id="reports"
         reverse
         kicker="Reports"
         title="Financial statements on demand"
@@ -78,6 +86,7 @@ export default function HomePage() {
       <FeatureGrid />
       <ComplianceStrip />
       <StatsRow />
+      <TestimonialCarousel />
       <CTABanner />
     </>
   );

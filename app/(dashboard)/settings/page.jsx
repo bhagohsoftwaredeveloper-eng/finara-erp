@@ -8,7 +8,7 @@ import {
   Calculator, Hash, Shield, Save, RefreshCw, Download, AlertTriangle,
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X, ChevronDown,
-  Inbox, HelpCircle, Blocks, Mail,
+  Inbox, HelpCircle, Blocks, Mail, Banknote,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
@@ -1288,6 +1288,22 @@ export default function SettingsPage() {
                   value={boolVal('showCentsInReports')}
                   onChange={(v) => setB('showCentsInReports')(v)}
                 />
+              </div>
+
+              <div className="border-t border-gray-100 pt-5 space-y-3">
+                <SectionTitle icon={Banknote} color="text-amber-600">Cash Handling</SectionTitle>
+                <Toggle
+                  label="Require Cash Denomination Count"
+                  sub="When cash goes in or out of Cash on Hand / Petty Cash (cash requests, petty cash vouchers, PO petty-cash payments), the bills and coins must be counted and equal the amount"
+                  value={boolVal('cashDenominationEnabled')}
+                  onChange={(v) => setB('cashDenominationEnabled')(v)}
+                />
+                {boolVal('cashDenominationEnabled') && (
+                  <Field label="Accepted Denominations (₱)" sub="comma-separated, e.g. 1000,500,200,100,50,20,10,5,1,0.25">
+                    <input className="input" value={String(form.cashDenominations ?? '').replace(/[\[\]]/g, '')}
+                      onChange={set('cashDenominations')} />
+                  </Field>
+                )}
               </div>
 
               {/* System info */}

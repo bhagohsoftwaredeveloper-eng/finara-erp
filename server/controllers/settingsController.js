@@ -51,6 +51,9 @@ const DEFAULTS = {
   sessionTimeout:     '480',   // minutes
   enforceStrongPwd:   'true',
   auditTrail:         'true',
+  // Cash handling
+  cashDenominationEnabled: 'false',
+  cashDenominations:       '[1000,500,200,100,50,20,10,5,1,0.25]',
   // Invoice email template
   invoiceEmailSubject:             'Invoice {{invoiceNo}} from {{companyName}}',
   invoiceEmailGreeting:            'Dear {{customerName}},\n\nPlease find your invoice details below. Amount due: {{amountDue}}.',

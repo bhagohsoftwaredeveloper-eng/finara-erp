@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import AccountSelect from '@/components/ui/AccountSelect';
 import NumberInput from '@/components/NumberInput';
+import DenominationCounter, { useDenominationCount } from '@/components/ui/DenominationCounter';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 
 const STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'RELEASED', 'LIQUIDATED', 'REJECTED', 'CANCELLED'];
@@ -30,7 +31,7 @@ const CASH_ACCOUNTS = [
 ];
 
 const todayStr = () => new Date().toISOString().split('T')[0];
-const emptyItem = () => ({ description: '', quantity: '1', estimatedCost: '', accountId: '', accountTouched: false });
+const emptyItem = () => ({ description: '', quantity: '1', estimatedCost: '' });
 
 // Mirrors server/utils/accountMap.js — word-boundary, case-insensitive,
 // first rule wins. The rules themselves come from the server so the two
@@ -53,7 +54,7 @@ const accountIdForCode = (accounts, code) =>
   accounts.find((a) => a.accountCode === code)?.id || '';
 
 // ─── New / Edit Request Modal ─────────────────────────────────
-function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }) {
+function RequestModal({ request, names, onClose, onSaved }) {
   const isEdit = !!request?.id;
   const [form, setForm] = useState(
     isEdit
@@ -68,8 +69,6 @@ function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }
                 description: i.description,
                 quantity: i.quantity != null ? String(i.quantity) : '',
                 estimatedCost: String(i.estimatedCost),
-                accountId: i.accountId ? String(i.accountId) : '',
-                accountTouched: !!i.accountId,
               }))
             : [emptyItem()],
         }
@@ -80,18 +79,7 @@ function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }
   const setItem = (i, k, v) =>
     setForm((f) => ({
       ...f,
-      items: f.items.map((it, idx) => {
-        if (idx !== i) return it;
-        const next = { ...it, [k]: v };
-        // A manual account choice is sticky.
-        if (k === 'accountId') next.accountTouched = true;
-        // Typing a description re-runs the match until the user overrides it.
-        if (k === 'description' && !next.accountTouched) {
-          const { accountCode } = matchCodeFor(v, accountMap.rules, accountMap.fallback);
-          next.accountId = accountIdForCode(accounts, accountCode);
-        }
-        return next;
-      }),
+      items: f.items.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)),
     }));
   const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
   const rmItem  = (i) => setForm((f) => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
@@ -107,10 +95,7 @@ function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }
 
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        items: items.map(({ accountTouched, ...rest }) => rest),
-      };
+      const payload = { ...form, items };
       if (isEdit) await crApi.update(request.id, payload);
       else        await crApi.create(payload);
       toast.success(isEdit ? 'Cash request updated' : 'Cash request created');
@@ -175,7 +160,6 @@ function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }
                     <tr>
                       <th>Description</th>
                       <th className="w-28 text-right">Qty</th>
-                      <th className="w-56">Intended Account</th>
                       <th className="w-40 text-right">Est. Cost (₱)</th>
                       <th className="w-8" />
                     </tr>
@@ -191,24 +175,6 @@ function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }
                         <td>
                           <NumberInput decimals={3} className="input text-xs text-right"
                             value={it.quantity} onChange={(v) => setItem(i, 'quantity', v)} />
-                        </td>
-                        <td>
-                          <AccountSelect
-                            value={it.accountId}
-                            onChange={(v) => setItem(i, 'accountId', v)}
-                            accounts={accounts}
-                            placeholder="— optional —"
-                          />
-                          {it.description && !it.accountTouched && (
-                            <p className={`text-[10px] mt-0.5 ${
-                              matchCodeFor(it.description, accountMap.rules, accountMap.fallback).matched
-                                ? 'text-gray-400' : 'text-amber-600'
-                            }`}>
-                              {matchCodeFor(it.description, accountMap.rules, accountMap.fallback).matched
-                                ? 'auto · click to change'
-                                : 'no match — review this account'}
-                            </p>
-                          )}
                         </td>
                         <td>
                           <NumberInput className="input text-xs text-right" placeholder="0.00"
@@ -254,21 +220,44 @@ function RequestModal({ request, accounts, names, accountMap, onClose, onSaved }
 }
 
 // ─── Release Modal ────────────────────────────────────────────
-function ReleaseModal({ request, onClose, onDone }) {
+function ReleaseModal({ request, accounts, accountMap, onClose, onDone }) {
   const [form, setForm] = useState({
     releasedAmount:  String(request.requestedAmount),
     cashAccountCode: '1010',
     releasedDate:    todayStr(),
     releasedBy:      '',
   });
+  // The requester doesn't pick the GL account — the person releasing the
+  // cash does, once, right before it's handed over.
+  const [items, setItems] = useState(() => (request.items || []).map((i) => {
+    const { accountCode } = matchCodeFor(i.description, accountMap.rules, accountMap.fallback);
+    return {
+      id:             i.id,
+      description:    i.description,
+      quantity:       i.quantity,
+      estimatedCost:  i.estimatedCost,
+      accountId:      i.accountId ? String(i.accountId) : accountIdForCode(accounts, accountCode),
+      accountTouched: !!i.accountId,
+    };
+  }));
   const [saving, setSaving] = useState(false);
+  const dn = useDenominationCount({ accountCode: form.cashAccountCode, amount: Number(form.releasedAmount) });
+
+  const setItemAccount = (i, v) =>
+    setItems((p) => p.map((it, idx) => (idx === i ? { ...it, accountId: v, accountTouched: true } : it)));
 
   const submit = async (e) => {
     e.preventDefault();
     if (!(Number(form.releasedAmount) > 0)) { toast.error('Enter an amount greater than zero'); return; }
+    if (dn.error) { toast.error(dn.error); return; }
     setSaving(true);
     try {
-      await crApi.release(request.id, form);
+      const payload = {
+        ...form,
+        denominations: dn.lines,
+        items: items.map(({ id, accountId }) => ({ id, accountId: accountId || null })),
+      };
+      await crApi.release(request.id, payload);
       toast.success('Cash released');
       onDone();
     } catch (err) {
@@ -278,7 +267,7 @@ function ReleaseModal({ request, onClose, onDone }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-md">
+      <div className="modal max-w-2xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">Release Cash</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -292,6 +281,53 @@ function ReleaseModal({ request, onClose, onDone }) {
                 <span>Requested</span><span>{formatCurrency(request.requestedAmount)}</span>
               </div>
             </div>
+
+            {items.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Assign Account per Item</h4>
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="table table-compact">
+                    <thead>
+                      <tr>
+                        <th>Description</th>
+                        <th className="w-28 text-right">Qty</th>
+                        <th className="w-56">Intended Account</th>
+                        <th className="w-32 text-right">Est. Cost (₱)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((it, i) => (
+                        <tr key={it.id}>
+                          <td className="text-xs">{it.description}</td>
+                          <td className="text-right text-xs">
+                            {it.quantity != null ? Number(it.quantity).toLocaleString() : '—'}
+                          </td>
+                          <td>
+                            <AccountSelect
+                              value={it.accountId}
+                              onChange={(v) => setItemAccount(i, v)}
+                              accounts={accounts}
+                              placeholder="— select —"
+                            />
+                            {!it.accountTouched && (
+                              <p className={`text-[10px] mt-0.5 ${
+                                matchCodeFor(it.description, accountMap.rules, accountMap.fallback).matched
+                                  ? 'text-gray-400' : 'text-amber-600'
+                              }`}>
+                                {matchCodeFor(it.description, accountMap.rules, accountMap.fallback).matched
+                                  ? 'auto · click to change'
+                                  : 'no match — review this account'}
+                              </p>
+                            )}
+                          </td>
+                          <td className="text-right text-xs">{formatCurrency(it.estimatedCost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="label">Amount to Release (₱) *</label>
@@ -307,6 +343,10 @@ function ReleaseModal({ request, onClose, onDone }) {
                 {CASH_ACCOUNTS.map((a) => <option key={a.code} value={a.code}>{a.label}</option>)}
               </select>
             </div>
+
+            {dn.required && (
+              <DenominationCounter {...dn.counterProps} title="Count the cash being released" />
+            )}
 
             <div className="form-group">
               <label className="label">Release Date *</label>
@@ -361,6 +401,11 @@ function LiquidateModal({ request, accounts, accountMap, onClose, onDone }) {
   const released = Number(request.releasedAmount);
   const spent    = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
   const variance = Number((spent - released).toFixed(2));
+  // Only the cash that actually changes hands (sukli or reimbursement) is counted
+  const dn = useDenominationCount({
+    accountCode: variance === 0 ? null : request.cashAccountCode,
+    amount: Math.abs(variance),
+  });
 
   const setLine = (i, k, v) =>
     setLines((p) => p.map((l, idx) => {
@@ -382,10 +427,13 @@ function LiquidateModal({ request, accounts, accountMap, onClose, onDone }) {
     e.preventDefault();
     const valid = lines.filter((l) => l.description && Number(l.amount) > 0);
     if (!valid.length) { toast.error('Add at least one line with an amount'); return; }
+    if (dn.error) { toast.error(dn.error); return; }
     setSaving(true);
     try {
       const payload = valid.map(({ accountTouched, ...rest }) => rest);
-      await crApi.liquidate(request.id, { lines: payload, receiptNo, liquidationDate: date });
+      await crApi.liquidate(request.id, {
+        lines: payload, receiptNo, liquidationDate: date, denominations: dn.lines,
+      });
       toast.success('Liquidation recorded');
       onDone();
     } catch (err) {
@@ -480,6 +528,13 @@ function LiquidateModal({ request, accounts, accountMap, onClose, onDone }) {
                 </div>
               </div>
             </div>
+
+            {dn.required && (
+              <DenominationCounter
+                {...dn.counterProps}
+                title={variance < 0 ? 'Count the sukli being returned' : 'Count the reimbursement being paid'}
+              />
+            )}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
@@ -955,12 +1010,12 @@ export default function CashRequestsPage() {
       </div>
 
       {modal?.type === 'new' && (
-        <RequestModal accounts={accounts} names={names} accountMap={accountMap}
+        <RequestModal names={names}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }} />
       )}
       {modal?.type === 'release' && (
-        <ReleaseModal request={modal.request}
+        <ReleaseModal request={modal.request} accounts={accounts} accountMap={accountMap}
           onClose={() => setModal(null)}
           onDone={() => { setModal(null); load(); }} />
       )}

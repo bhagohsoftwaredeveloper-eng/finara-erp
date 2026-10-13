@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { dayRange, isValidDateStr } = require('../utils/dates');
+const { getConfig, validateCount, saveCount } = require('../utils/cashDenomination');
 
 // Split expense vouchers on the account the cash actually left from, NOT on
 // voucher `type`. A reimbursement or direct payment settled out of the petty
@@ -301,7 +302,44 @@ exports.get = async (req, res, next) => {
       include: { items: true },
     });
     if (!row) throw createError('Daily remittance not found', 404);
-    res.json(row);
+    const denominationCount = await prisma.cashDenominationCount.findFirst({
+      where: { businessId: row.businessId, sourceType: 'DAILY_REMITTANCE', sourceId: id },
+      orderBy: { id: 'desc' },
+    });
+    res.json({ ...row, denominationCount });
+  } catch (err) { next(err); }
+};
+
+// ─── Save end-of-day cash count ───────────────────────────────────
+// Not strict: the count is compared against the expected cash on hand and the
+// over/short is recorded, never rejected. One count per remittance (replaced).
+exports.saveCount = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { denominations, expectedAmount, accountCode } = req.body;
+
+    const existing = await prisma.dailyRemittance.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Daily remittance not found', 404);
+    if (existing.status === 'APPROVED') throw createError('Cannot change the count of an approved record', 400);
+
+    const cfg = await getConfig(req.businessId);
+    if (!cfg.enabled) throw createError('Cash denomination counting is not enabled', 400);
+    if (!(Number(expectedAmount) >= 0)) throw createError('expectedAmount is required', 400);
+
+    let count;
+    try { count = validateCount(denominations, cfg.denoms); } catch (e) { throw createError(e.message, 400); }
+
+    const saved = await prisma.$transaction(async (tx) => {
+      await tx.cashDenominationCount.deleteMany({
+        where: { businessId: req.businessId, sourceType: 'DAILY_REMITTANCE', sourceId: id },
+      });
+      return saveCount(tx, {
+        businessId: req.businessId, sourceType: 'DAILY_REMITTANCE', sourceId: id,
+        direction: 'COUNT', accountCode: accountCode || '1010', count,
+        expectedAmount: Number(expectedAmount), countedBy: req.user?.name,
+      });
+    });
+    res.json(saved);
   } catch (err) { next(err); }
 };
 

@@ -3,6 +3,7 @@ const { createError } = require('../middleware/errorHandler');
 const { recordAudit } = require('../utils/audit');
 const glPost = require('../utils/glPost');
 const { nextDocNumber } = require('../utils/docNumber');
+const { resolveCount, saveCount } = require('../utils/cashDenomination');
 
 const genPONumber = async () => {
   // Must come from the last issued number, not a row count — a count reuses
@@ -253,11 +254,16 @@ exports.payFromPettyCash = async (req, res, next) => {
     if (linesWithAccount.length === 0)
       throw createError('At least one line must have an expense account assigned', 400);
 
-    const { paidDate, paidBy, receiptNo, notes, fundAccountCode = '1011' } = req.body;
+    const { paidDate, paidBy, receiptNo, notes, fundAccountCode = '1011', denominations } = req.body;
     // Validate fund account — only 1011 (Cash) and 1012 (GCash) allowed
     const allowedFunds = ['1011', '1012'];
     const pcAccount = allowedFunds.includes(fundAccountCode) ? fundAccountCode : '1011';
     const payDate = paidDate ? new Date(paidDate) : new Date();
+
+    // Physical petty cash (1011) must be counted when the business enables it
+    const count = await resolveCount({
+      businessId: req.businessId, accountCode: pcAccount, amount: Number(po.total), denominations,
+    }).catch((e) => { throw createError(e.message, e.status || 400); });
 
     // ── 1. Generate voucher number (same logic as expenseController) ──
     const lastVoucher = await prisma.expenseVoucher.findFirst({
@@ -294,6 +300,14 @@ exports.payFromPettyCash = async (req, res, next) => {
       },
       include: { items: true },
     });
+
+    if (count) {
+      await saveCount(prisma, {
+        businessId: req.businessId, sourceType: 'PO_PETTY_CASH', sourceId: voucher.id,
+        direction: 'OUT', accountCode: pcAccount, count, expectedAmount: Number(po.total),
+        countedBy: paidBy || req.user?.name,
+      });
+    }
 
     // ── 3. Post GL Journal Entry ────────────────────────────────
     // Dr each expense account (per line), Cr Petty Cash Fund (1011)

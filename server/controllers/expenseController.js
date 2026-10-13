@@ -4,6 +4,7 @@ const glPost = require('../utils/glPost');
 const { buildLiquidationEntry } = require('../utils/cashAdvance');
 const { recordAudit, diff } = require('../utils/audit');
 const logger = require('../utils/logger');
+const { resolveCount, saveCount } = require('../utils/cashDenomination');
 
 // Compact item snapshot for audit diffs — avoids dumping full nested objects.
 const itemSnapshot = (items = []) => items.map(it => ({ description: it.description, amount: Number(it.amount) }));
@@ -26,8 +27,59 @@ const CATEGORY_ACCOUNT = {
 };
 
 // ─── Expense categories (predefined for quick selection) ─────────
-exports.getCategories = (_req, res) => {
-  res.json([
+// Built-ins plus the business's own quick-added categories (SystemSetting
+// `expenseCustomCategories`, a JSON array of labels). A custom category is
+// stored on the voucher as its label; with no CATEGORY_ACCOUNT entry it posts
+// to 6390 Miscellaneous unless the voucher items carry their own account.
+const CUSTOM_KEY = 'expenseCustomCategories';
+
+async function loadCustomCategories(businessId) {
+  const row = await prisma.systemSetting.findUnique({
+    where: { businessId_key: { businessId, key: CUSTOM_KEY } },
+  });
+  try {
+    const list = JSON.parse(row?.value || '[]');
+    return Array.isArray(list) ? list.filter((x) => typeof x === 'string' && x.trim()) : [];
+  } catch { return []; }
+}
+
+exports.getCategories = async (req, res, next) => {
+  try {
+    const custom = await loadCustomCategories(req.businessId);
+    res.json([
+      ...BUILT_IN_CATEGORIES.filter((c) => c.value !== 'MISCELLANEOUS'),
+      ...custom.map((label) => ({ value: label, label, sub: 'Custom category', custom: true })),
+      BUILT_IN_CATEGORIES.find((c) => c.value === 'MISCELLANEOUS'),
+    ]);
+  } catch (err) { next(err); }
+};
+
+exports.addCategory = async (req, res, next) => {
+  try {
+    const label = String(req.body?.label || '').trim().replace(/\s+/g, ' ');
+    if (label.length < 2 || label.length > 60) {
+      throw createError('Category name must be 2–60 characters', 400);
+    }
+    const custom = await loadCustomCategories(req.businessId);
+    const lower = label.toLowerCase();
+    const builtIn = BUILT_IN_CATEGORIES.find((c) => c.label.toLowerCase() === lower);
+    const existing = builtIn || custom.find((c) => c.toLowerCase() === lower);
+    if (existing) {
+      // Idempotent: return the one that already exists instead of failing
+      const value = builtIn ? builtIn.value : existing;
+      return res.json({ value, label: builtIn ? builtIn.label : existing, existed: true });
+    }
+    const next_ = [...custom, label];
+    await prisma.systemSetting.upsert({
+      where:  { businessId_key: { businessId: req.businessId, key: CUSTOM_KEY } },
+      update: { value: JSON.stringify(next_) },
+      create: { businessId: req.businessId, key: CUSTOM_KEY, value: JSON.stringify(next_) },
+    });
+    res.status(201).json({ value: label, label, sub: 'Custom category', custom: true });
+  } catch (err) { next(err); }
+};
+
+const BUILT_IN_CATEGORIES = [
     { value: 'TRANSPORTATION',  label: 'Transportation',         sub: 'Gas, toll, parking, taxi/Grab' },
     { value: 'MEALS',           label: 'Meals & Entertainment',  sub: 'Food, drinks, client meals' },
     { value: 'OFFICE_SUPPLIES', label: 'Office Supplies',        sub: 'Stationery, printer ink, etc.' },
@@ -41,8 +93,7 @@ exports.getCategories = (_req, res) => {
     { value: 'RENT',            label: 'Rent / Lease',           sub: 'Office, warehouse, equipment rent' },
     { value: 'TAXES',           label: 'Taxes & Licenses',       sub: 'BIR payments, permits, licenses' },
     { value: 'MISCELLANEOUS',   label: 'Miscellaneous',          sub: 'Other company expenses' },
-  ]);
-};
+];
 
 // ─── Sequential voucher number ────────────────────────────────────
 async function nextVoucherNo() {
@@ -139,7 +190,11 @@ exports.get = async (req, res, next) => {
       include: { items: { include: { account: { select: { id: true, accountCode: true, accountName: true } } } } },
     });
     if (!row) throw createError('Expense voucher not found', 404);
-    res.json(row);
+    const denominationCount = await prisma.cashDenominationCount.findFirst({
+      where: { businessId: row.businessId, sourceType: { in: ['EXPENSE_VOUCHER', 'PO_PETTY_CASH'] }, sourceId: id },
+      orderBy: { id: 'desc' },
+    });
+    res.json({ ...row, denominationCount });
   } catch (err) { next(err); }
 };
 
@@ -312,7 +367,7 @@ exports.approve = async (req, res, next) => {
 exports.pay = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { paidBy, paidDate, paymentAccountCode } = req.body;
+    const { paidBy, paidDate, paymentAccountCode, denominations } = req.body;
 
     // Fetch voucher with items before updating
     const voucher = await prisma.expenseVoucher.findUnique({
@@ -341,14 +396,30 @@ exports.pay = async (req, res, next) => {
                   || (voucher.type === 'PETTY_CASH' ? '1011' : '1020');
     const totalAmt = Number(voucher.totalAmount);
 
-    const updated = await prisma.expenseVoucher.update({
-      where: { id },
-      data: {
-        status:   'PAID',
-        paidBy:   paidBy  || undefined,
-        paidDate: paidDate ? new Date(paidDate + 'T00:00:00.000Z') : new Date(),
-        paymentAccountCode: cashCode,
-      },
+    // Physical cash going out must be counted when the business enables it.
+    // Liquidation vouchers settle through the cash request, not here.
+    const count = linkedRequest ? null : await resolveCount({
+      businessId: voucher.businessId, accountCode: cashCode, amount: totalAmt, denominations,
+    }).catch((e) => { throw createError(e.message, e.status || 400); });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.expenseVoucher.update({
+        where: { id },
+        data: {
+          status:   'PAID',
+          paidBy:   paidBy  || undefined,
+          paidDate: paidDate ? new Date(paidDate + 'T00:00:00.000Z') : new Date(),
+          paymentAccountCode: cashCode,
+        },
+      });
+      if (count) {
+        await saveCount(tx, {
+          businessId: voucher.businessId, sourceType: 'EXPENSE_VOUCHER', sourceId: id,
+          direction: 'OUT', accountCode: cashCode, count, expectedAmount: totalAmt,
+          countedBy: paidBy || req.user?.name,
+        });
+      }
+      return row;
     });
 
     // Build DR lines: use item accountId if set, else fall back to category mapping

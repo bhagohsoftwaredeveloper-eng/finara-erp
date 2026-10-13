@@ -4,7 +4,7 @@ import { payroll as pApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Calendar, ChevronDown, ChevronUp, Play, CheckCircle,
-  AlertCircle, Clock, Users, TrendingUp, Eye,
+  AlertCircle, Clock, Users, TrendingUp, Eye, Search,
   FileText, MoreHorizontal, X, Loader2, ArrowRight, Printer,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
@@ -447,6 +447,7 @@ export default function PayPeriodsPage() {
   const [periods, setPeriods]     = useState([]);
   const [loading, setLoading]     = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch]             = useState('');
   const [showCreate, setShowCreate]     = useState(false);
   const [detailPeriod, setDetailPeriod] = useState(null);
 
@@ -485,6 +486,10 @@ export default function PayPeriodsPage() {
 
   const totalPaid = periods.filter((p) => p.status === 'PAID').reduce((s, p) => s + Number(p.totalNet || 0), 0);
   const avgPeriod = periods.length ? totalPaid / Math.max(counts.PAID, 1) : 0;
+
+  const visiblePeriods = search
+    ? periods.filter((p) => p.periodName.toLowerCase().includes(search.toLowerCase()))
+    : periods;
 
   return (
     <div className="space-y-5">
@@ -528,6 +533,17 @@ export default function PayPeriodsPage() {
         })}
       </div>
 
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          className="input pl-9"
+          placeholder="Search pay periods..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       {/* Workflow guide */}
       <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-3.5 flex items-center gap-3 text-sm text-blue-700">
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -554,9 +570,14 @@ export default function PayPeriodsPage() {
             <Plus className="w-4 h-4" /> Create Pay Period
           </button>
         </div>
+      ) : visiblePeriods.length === 0 ? (
+        <div className="card p-12 text-center">
+          <Search className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">No periods match "{search}"</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 sm:grid-cols-3 gap-4">
-          {periods.map((p) => (
+          {visiblePeriods.map((p) => (
             <PeriodCard
               key={p.id}
               period={p}

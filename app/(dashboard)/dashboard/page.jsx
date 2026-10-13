@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { dashboard as dashApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/auth';
 import toast from 'react-hot-toast';
@@ -8,7 +9,29 @@ import {
   ShoppingCart, FileText, CheckCircle, Clock,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const PRESETS = [
+  { key: 'month', label: 'This Month' },
+  { key: 'lastMonth', label: 'Last Month' },
+  { key: 'quarter', label: 'This Quarter' },
+  { key: 'year', label: 'This Year' },
+  { key: 'custom', label: 'Custom' },
+];
+
+function presetRange(key) {
+  const t = new Date();
+  const y = t.getFullYear();
+  const m = t.getMonth();
+  if (key === 'lastMonth') return { from: ymd(new Date(y, m - 1, 1)), to: ymd(new Date(y, m, 0)) };
+  if (key === 'quarter') { const q = Math.floor(m / 3) * 3; return { from: ymd(new Date(y, q, 1)), to: ymd(new Date(y, q + 3, 0)) }; }
+  if (key === 'year') return { from: `${y}-01-01`, to: `${y}-12-31` };
+  return { from: ymd(new Date(y, m, 1)), to: ymd(new Date(y, m + 1, 0)) };
+}
+
+const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 
 const StatCard = ({ label, value, sub, icon: Icon, color, trend }) => (
   <div className="stat-card">
@@ -31,13 +54,23 @@ const StatCard = ({ label, value, sub, icon: Icon, color, trend }) => (
 export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [preset, setPreset] = useState('month');
+  const [range, setRange] = useState(() => presetRange('month'));
 
   useEffect(() => {
-    dashApi.get()
+    if (!range.from || !range.to) return;
+    if (range.from > range.to) { toast.error('"From" date must not be after "To" date'); return; }
+    dashApi.get({ from: range.from, to: range.to })
       .then((r) => setData(r.data))
-      .catch(() => toast.error('Failed to load dashboard data'))
+      .catch((e) => toast.error(e.response?.data?.message || 'Failed to load dashboard data'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [range]);
+
+  const choosePreset = (key) => {
+    setPreset(key);
+    if (key !== 'custom') setRange(presetRange(key));
+  };
+  const periodLabel = preset === 'month' ? 'This month' : `${fmtShort(range.from)} – ${fmtShort(range.to)}`;
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -78,7 +111,7 @@ export default function DashboardPage() {
         <StatCard
           label="Total Sales"
           value={formatCurrency(d.gl?.monthRevenue)}
-          sub="This month"
+          sub={periodLabel}
           icon={TrendingUp} color="bg-blue-100 text-blue-600"
         />
         <StatCard
@@ -96,11 +129,12 @@ export default function DashboardPage() {
         <StatCard
           label="Total Expenses"
           value={formatCurrency(d.gl?.monthExpense)}
-          sub="This month"
+          sub={periodLabel}
           icon={TrendingDown} color="bg-red-100 text-red-600"
         />
         <StatCard
-          label="Net Income (MTD)"
+          label="Net Income"
+          sub={periodLabel}
           value={formatCurrency(netIncome)}
           icon={netIncome >= 0 ? TrendingUp : TrendingDown}
           color={netIncome >= 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}
@@ -111,10 +145,34 @@ export default function DashboardPage() {
         {/* Chart */}
         <div className="card xl:col-span-2">
           <div className="card-header">
-            <h3 className="font-semibold text-gray-900">Month-to-Date P&L</h3>
-            <span className="badge-blue">Current Month</span>
+            <h3 className="font-semibold text-gray-900">Profit &amp; Loss</h3>
+            <span className="badge-blue">{periodLabel}</span>
           </div>
           <div className="card-body">
+            <div className="flex flex-wrap items-end gap-2 mb-4">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => choosePreset(p.key)}
+                  className={preset === p.key ? 'btn-primary text-xs px-3 py-1.5' : 'btn-secondary text-xs px-3 py-1.5'}
+                >
+                  {p.label}
+                </button>
+              ))}
+              {preset === 'custom' && (
+                <>
+                  <input type="date" className="input text-xs py-1.5 w-auto" value={range.from} max={range.to || undefined}
+                    onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))} />
+                  <span className="text-xs text-gray-400 pb-2">to</span>
+                  <input type="date" className="input text-xs py-1.5 w-auto" value={range.to} min={range.from || undefined}
+                    onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} />
+                </>
+              )}
+              <Link href="/reports/income-statement" className="ml-auto text-xs font-semibold text-blue-600 hover:underline pb-2">
+                View full Income Statement
+              </Link>
+            </div>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData} barSize={48}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -123,7 +181,7 @@ export default function DashboardPage() {
                 <Tooltip formatter={(v) => formatCurrency(v)} />
                 <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
                   {chartData.map((entry, i) => (
-                    <rect key={i} fill={entry.fill} />
+                    <Cell key={i} fill={entry.fill} />
                   ))}
                 </Bar>
               </BarChart>

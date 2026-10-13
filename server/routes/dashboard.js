@@ -7,8 +7,20 @@ router.use(authenticate, resolveBusiness);
 router.get('/', async (req, res, next) => {
   try {
     const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    let startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    let endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    // Optional P&L range (YYYY-MM-DD); defaults to the current month
+    const { from, to } = req.query;
+    if (from || to) {
+      const iso = /^\d{4}-\d{2}-\d{2}$/;
+      if (!iso.test(from || '') || !iso.test(to || '') || isNaN(new Date(from)) || isNaN(new Date(to))) {
+        return res.status(400).json({ message: 'from and to must be valid YYYY-MM-DD dates' });
+      }
+      if (from > to) return res.status(400).json({ message: '"From" date must not be after "To" date' });
+      startOfMonth = new Date(`${from}T00:00:00.000Z`);
+      endOfMonth = new Date(`${to}T23:59:59.999Z`);
+    }
 
     const [
       totalCustomers, totalVendors, totalEmployees,

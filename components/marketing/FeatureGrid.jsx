@@ -1,5 +1,6 @@
 import {
   FileText, Boxes, ShoppingCart, PiggyBank, Building2, ScrollText, Briefcase,
+  Landmark, HandCoins, Receipt, FileCheck2,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
 import { Reveal, Stagger, StaggerItem } from './Reveal';
@@ -11,7 +12,11 @@ const FEATURES = [
   { icon: ShoppingCart, title: 'Purchase Orders',     text: 'Create POs and convert them straight into vendor bills.' },
   { icon: PiggyBank,    title: 'Budgeting',           text: 'Set budgets per account and monitor actual vs. plan.' },
   { icon: Briefcase,    title: 'Fixed Assets',        text: 'Asset registry with automatic depreciation schedules.' },
-  { icon: ScrollText,   title: 'Audit Trail',         text: 'Every change logged — who, what, and when, for full accountability.' },
+  { icon: Landmark,     title: 'Bank Reconciliation', text: 'Match bank statements to your books and see your cash position.' },
+  { icon: HandCoins,    title: 'Cash Requests',       text: 'Request, approve, and liquidate cash advances with a paper trail.' },
+  { icon: Receipt,      title: 'Expense Vouchers',    text: 'Document every expense with vouchers that post to the ledger.' },
+  { icon: FileCheck2,   title: 'Cheque Register',     text: 'Track issued, outstanding, and cleared cheques.' },
+  { icon: ScrollText,   title: 'Audit Trail',        text: 'Every change logged — who, what, and when, for full accountability.' },
   { icon: Building2,    title: 'Multi-Business',      text: 'Run multiple companies in one system with separated books.' },
 ];
 

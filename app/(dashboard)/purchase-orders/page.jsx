@@ -12,6 +12,7 @@ import {
 import VendorSelect from '@/components/VendorSelect';
 import AccountSelect from '@/components/ui/AccountSelect';
 import NumberInput from '@/components/NumberInput';
+import DenominationCounter, { useDenominationCount } from '@/components/ui/DenominationCounter';
 
 // ─── Constants ────────────────────────────────────────────────
 const STATUS_BADGE = {
@@ -580,11 +581,13 @@ function PettyCashPayModal({ po, onClose, onSaved }) {
   const [notes,            setNotes]            = useState('');
   const [fundAccountCode,  setFundAccountCode]  = useState('1011');
   const [saving,           setSaving]           = useState(false);
+  const dn = useDenominationCount({ accountCode: fundAccountCode, amount: Number(po.total) });
 
   const submit = async () => {
+    if (dn.error) { toast.error(dn.error); return; }
     setSaving(true);
     try {
-      const { data } = await poApi.pettyCash(po.id, { paidDate, paidBy, receiptNo, notes, fundAccountCode });
+      const { data } = await poApi.pettyCash(po.id, { paidDate, paidBy, receiptNo, notes, fundAccountCode, denominations: dn.lines });
       toast.success(data.message || 'Petty cash payment recorded');
       onSaved();
     } catch (err) {
@@ -594,7 +597,7 @@ function PettyCashPayModal({ po, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-sm">
+      <div className="modal max-w-lg">
         <div className="modal-header">
           <h3 className="font-semibold flex items-center gap-2">
             <Banknote className="w-5 h-5 text-amber-500" /> Pay from Petty Cash
@@ -627,6 +630,9 @@ function PettyCashPayModal({ po, onClose, onSaved }) {
               </button>
             </div>
           </div>
+          {dn.required && (
+            <DenominationCounter {...dn.counterProps} title="Count the cash being paid out" />
+          )}
           <div className="form-group">
             <label className="label">Payment Date *</label>
             <input type="date" className="input" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />

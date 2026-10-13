@@ -17,6 +17,7 @@ router.get('/daily/calculate',       dailyCtrl.calculate);
 router.get('/daily',                 dailyCtrl.list);
 router.post('/daily',                write, dailyCtrl.create);
 router.put('/daily/:id',             write, dailyCtrl.update);
+router.put('/daily/:id/count',       write, dailyCtrl.saveCount);
 router.post('/daily/:id/submit',     write, dailyCtrl.submit);
 router.post('/daily/:id/approve',    write, dailyCtrl.approve);
 router.delete('/daily/:id',          write, dailyCtrl.remove);

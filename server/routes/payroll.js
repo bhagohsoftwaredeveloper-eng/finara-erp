@@ -9,6 +9,10 @@ router.use(authenticate, resolveBusiness);
 // Writes are further restricted per-route below (ADMIN/MANAGER, ADMIN for approve).
 router.use(authorize('ADMIN', 'MANAGER', 'ACCOUNTANT'));
 
+// Employee directory (read-only, sourced from the external Beulah system)
+router.get('/employee-directory', ctrl.listEmployeeDirectory);
+router.get('/employee-directory/:id', ctrl.getEmployeeDirectory);
+
 // Employees
 router.get('/employees', ctrl.listEmployees);
 router.get('/employees/:id', param('id').isInt(), validate, ctrl.getEmployee);

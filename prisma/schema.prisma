@@ -834,6 +834,27 @@ enum DailyRemitStatus {
   APPROVED
 }
 
+// Physical cash count by denomination. Polymorphic: one row per cash movement
+// (or end-of-day count) identified by sourceType + sourceId. Only written when
+// the business has cashDenominationEnabled — see server/utils/cashDenomination.js.
+model CashDenominationCount {
+  id             Int      @id @default(autoincrement())
+  businessId     Int
+  sourceType     String   @db.VarChar(30) // EXPENSE_VOUCHER | PO_PETTY_CASH | CASH_REQUEST_RELEASE | CASH_REQUEST_RETURN | CASH_REQUEST_REIMBURSE | DAILY_REMITTANCE
+  sourceId       Int
+  direction      String   @db.VarChar(5)  // IN | OUT | COUNT
+  accountCode    String?  @db.VarChar(20)
+  lines          Json
+  total          Decimal  @db.Decimal(15, 2)
+  expectedAmount Decimal? @db.Decimal(15, 2)
+  variance       Decimal? @db.Decimal(15, 2)
+  countedBy      String?  @db.VarChar(100)
+  createdAt      DateTime @default(now())
+
+  @@index([businessId, sourceType, sourceId])
+  @@map("cash_denomination_counts")
+}
+
 model DailyRemittance {
   id            Int                   @id @default(autoincrement())
   businessId    Int                   @default(1)

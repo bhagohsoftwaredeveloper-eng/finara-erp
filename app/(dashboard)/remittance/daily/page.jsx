@@ -11,6 +11,8 @@ import {
   AlertCircle, FileText, RotateCcw, Send,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
+import NumberInput from '@/components/NumberInput';
+import DenominationCounter, { useDenominationCount } from '@/components/ui/DenominationCounter';
 
 const fmt = n => formatCurrency(Number(n || 0));
 const today = () => new Date().toISOString().slice(0, 10);
@@ -131,6 +133,57 @@ function Section({ category, items, defaultOpen = true }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────
+// End-of-day physical cash count. Not strict: the count is compared with the
+// expected cash on hand (per books) and the over/short is recorded, not blocked.
+function CashCountCard({ saved, readOnly, onSaved }) {
+  const prior = saved.denominationCount;
+  const [expected, setExpected] = useState(prior ? String(prior.expectedAmount ?? '') : '');
+  const [busy, setBusy] = useState(false);
+  const dn = useDenominationCount({ accountCode: '1010', amount: Number(expected) || 0, strict: false });
+  const { setCounts } = dn.counterProps;
+
+  // Prefill from the saved count so a reload shows what was counted
+  useEffect(() => {
+    if (!prior) { setCounts({}); return; }
+    setCounts(Object.fromEntries((prior.lines || []).map((l) => [l.denom, String(l.qty)])));
+  }, [prior, setCounts]);
+
+  if (!dn.required) return null;
+
+  const save = async () => {
+    if (dn.error) { toast.error(dn.error); return; }
+    if (!(Number(expected) >= 0) || expected === '') { toast.error('Enter the expected cash on hand'); return; }
+    setBusy(true);
+    try {
+      await remittanceApi.daily.saveCount(saved.id, {
+        denominations: dn.lines, expectedAmount: Number(expected), accountCode: '1010',
+      });
+      toast.success('Cash count saved');
+      onSaved();
+    } catch (e) { toast.error(e?.response?.data?.error || 'Could not save count'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header"><h2 className="font-semibold text-gray-900">End-of-Day Cash Count</h2></div>
+      <div className="card-body pt-3 space-y-4">
+        <div className="form-group max-w-xs">
+          <label className="label">Expected Cash on Hand (per books) ₱</label>
+          <NumberInput className="input" placeholder="0.00" value={expected} onChange={setExpected}
+            disabled={readOnly} />
+        </div>
+        <DenominationCounter {...dn.counterProps} title="Count the cash in the drawer / petty cash box" />
+        {!readOnly && (
+          <button onClick={save} disabled={busy} className="btn-primary">
+            {busy ? 'Saving…' : prior ? 'Update Count' : 'Save Count'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DailyRemittancePage() {
   const user = typeof window !== 'undefined' ? getUser() : null;
 
@@ -623,6 +676,11 @@ export default function DailyRemittancePage() {
           {Object.entries(CATEGORIES).map(([cat]) => (
             <Section key={cat} category={cat} items={grouped[cat] || []} />
           ))}
+
+          {/* ── End-of-day cash count (needs a saved record) ── */}
+          {saved && (
+            <CashCountCard key={saved.id} saved={saved} readOnly={isApproved} onSaved={() => loadSaved(date)} />
+          )}
 
           {/* ── Notes ── */}
           {!isApproved && (

@@ -5,7 +5,9 @@ import { formatCurrency, formatDate, getUser, scopedKey } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
 import Attachments from '@/components/Attachments';
 import AccountSelect from '@/components/ui/AccountSelect';
+import CategoryCombobox from '@/components/ui/CategoryCombobox';
 import NumberInput from '@/components/NumberInput';
+import DenominationCounter, { useDenominationCount } from '@/components/ui/DenominationCounter';
 import toast from 'react-hot-toast';
 import {
   Plus, X, Printer, RefreshCw, Trash2, Send, CheckCircle2,
@@ -151,6 +153,12 @@ export default function ExpensesPage() {
   const [actionMode,   setActionMode]   = useState(''); // submit|approve|pay|reject
   const [actionRecord, setActionRecord] = useState(null);
   const [actionForm,   setActionForm]   = useState({ name: '', date: todayStr(), reason: '', paymentAccountCode: '' });
+  // Cash denomination count — only for paying out of a physical cash fund.
+  // Liquidation vouchers settle through their cash request instead.
+  const dn = useDenominationCount({
+    accountCode: actionMode === 'pay' && actionRecord?.type !== 'LIQUIDATION' ? actionForm.paymentAccountCode : null,
+    amount: Number(actionRecord?.totalAmount || 0),
+  });
   const [actionItems,  setActionItems]  = useState([]);
   const [cashAccounts, setCashAccounts] = useState([]);
 
@@ -358,6 +366,7 @@ export default function ExpensesPage() {
     // Default payment account: Petty Cash (1011) for PETTY_CASH type, else Cash in Bank (1020)
     const defaultCashCode = rec.type === 'PETTY_CASH' ? '1011' : '1020';
     setActionForm({ name: existingName || userName, date: todayStr(), reason: '', paymentAccountCode: defaultCashCode });
+    dn.counterProps.setCounts({});
     setActionItems(mode === 'approve'
       ? (rec.items?.length
           ? rec.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
@@ -387,10 +396,11 @@ export default function ExpensesPage() {
       if (actionItems.some(it => !it.description || !Number(it.amount))) { toast.error('Each line item needs a description and amount'); return; }
     }
     if (actionMode === 'void' && !actionForm.reason.trim()) { toast.error('A reason is required to void this voucher'); return; }
+    if (actionMode === 'pay' && dn.error) { toast.error(dn.error); return; }
     try {
       if (actionMode === 'submit')  await expApi.submit(id,  { requestedBy: actionForm.name });
       if (actionMode === 'approve') await expApi.approve(id, { approvedBy: actionForm.name, items: actionItems.map(it => ({ ...it, amount: Number(it.amount) })) });
-      if (actionMode === 'pay')     await expApi.pay(id,     { paidBy: actionForm.name, paidDate: actionForm.date, paymentAccountCode: actionForm.paymentAccountCode });
+      if (actionMode === 'pay')     await expApi.pay(id,     { paidBy: actionForm.name, paidDate: actionForm.date, paymentAccountCode: actionForm.paymentAccountCode, denominations: dn.lines });
       if (actionMode === 'reject')  await expApi.reject(id,  { rejectedReason: actionForm.reason });
       if (actionMode === 'void')    await expApi.void(id,    actionForm.reason);
       toast.success(`Voucher ${actionMode}${actionMode === 'pay' ? 'd' : 'ed'}`);
@@ -642,10 +652,25 @@ export default function ExpensesPage() {
           </div>
           <div className="form-group">
             <label className="label">Category *</label>
-            <select className="input" value={fCategory} onChange={e => setFCategory(e.target.value)}>
-              <option value="">— Select category —</option>
-              {categories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
+            <CategoryCombobox
+              value={fCategory}
+              onChange={setFCategory}
+              options={categories}
+              onCreate={async (label) => {
+                try {
+                  const { data } = await expApi.addCategory(label);
+                  setCategories(prev => prev.some(c => c.value === data.value)
+                    ? prev
+                    : [...prev.filter(c => c.value !== 'MISCELLANEOUS'), { ...data, custom: true },
+                       ...prev.filter(c => c.value === 'MISCELLANEOUS')]);
+                  toast.success(data.existed ? `“${data.label}” already exists — selected` : `Category “${data.label}” added`);
+                  return data;
+                } catch (e) {
+                  toast.error(e?.response?.data?.error || 'Could not add category');
+                  return null;
+                }
+              }}
+            />
           </div>
         </div>
 
@@ -799,6 +824,9 @@ export default function ExpensesPage() {
                       </select>
                       <p className="text-xs text-gray-400 mt-1">Where the funds came from (Petty Cash, Cash in Bank, etc.)</p>
                     </div>
+                    {dn.required && (
+                      <DenominationCounter {...dn.counterProps} title="Count the cash being paid out" />
+                    )}
                     <div className="form-group">
                       <label className="label">Payment Date</label>
                       <input type="date" className="input" value={actionForm.date} onChange={e => setActionForm(p => ({ ...p, date: e.target.value }))} />

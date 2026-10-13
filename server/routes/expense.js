@@ -8,6 +8,7 @@ const approve = authorize('ADMIN', 'MANAGER');
 router.use(authenticate, resolveBusiness);
 
 router.get('/categories',        ctrl.getCategories);
+router.post('/categories',       write, ctrl.addCategory);
 router.get('/summary',           ctrl.getSummary);
 router.get('/',                  ctrl.list);
 router.get('/:id',               ctrl.get);

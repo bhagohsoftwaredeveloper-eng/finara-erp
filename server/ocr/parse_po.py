@@ -3,9 +3,22 @@ OCR parser for Purchase Order scanned forms.
 Usage: python3 parse_po.py <image_path>
 Outputs: JSON with extracted PO fields
 """
-import sys, re, json
+import sys, os, shutil, re, json
 from PIL import Image, ImageFilter, ImageEnhance
 import pytesseract
+
+# Resolve the Tesseract binary if it isn't on PATH: prefer an explicit
+# TESSERACT_CMD override, then fall back to the default Windows install path
+# (a freshly-installed Tesseract updates the system PATH, but processes
+# already running — like the Express dev server — won't see it until restart).
+if not shutil.which('tesseract'):
+    env_cmd = os.environ.get('TESSERACT_CMD')
+    if env_cmd and os.path.isfile(env_cmd):
+        pytesseract.pytesseract.tesseract_cmd = env_cmd
+    else:
+        default_win = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        if os.path.isfile(default_win):
+            pytesseract.pytesseract.tesseract_cmd = default_win
 
 def preprocess(path):
     img = Image.open(path).convert('L')          # grayscale

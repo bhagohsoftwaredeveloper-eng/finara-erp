@@ -2,6 +2,32 @@ const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { computePayroll, computeSSS, computePhilHealth, computePagIBIG, computeWithholdingTax } = require('../utils/phCompliance');
 const glPost = require('../utils/glPost');
+const beulahEmployeeClient = require('../services/beulahEmployeeClient');
+const logger = require('../utils/logger');
+
+// Beulah Employee Directory — read-only roster from the external Beulah system.
+// Separate from listEmployees/getEmployee below (Finara's own internal
+// Employee table, which still drives payroll compute/calculator/2316).
+exports.listEmployeeDirectory = async (req, res, next) => {
+  try {
+    const rows = await beulahEmployeeClient.listEmployees();
+    res.json(rows);
+  } catch (err) {
+    logger.warn(`[BEULAH EMPLOYEE DIRECTORY] list failed — ${err.message}`);
+    next(createError('Could not reach employee directory', 502));
+  }
+};
+
+exports.getEmployeeDirectory = async (req, res, next) => {
+  try {
+    const row = await beulahEmployeeClient.getEmployee(req.params.id);
+    res.json(row);
+  } catch (err) {
+    if (err.status === 404) return next(createError('Employee not found', 404));
+    logger.warn(`[BEULAH EMPLOYEE DIRECTORY] get failed — ${err.message}`);
+    next(createError('Could not reach employee directory', 502));
+  }
+};
 
 exports.listEmployees = async (req, res, next) => {
   try {

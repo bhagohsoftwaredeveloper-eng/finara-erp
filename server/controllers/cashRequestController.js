@@ -4,6 +4,7 @@ const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
 const glPost = require('../utils/glPost');
 const { buildReleaseEntry, buildLiquidationEntry } = require('../utils/cashAdvance');
+const { resolveCount, saveCount } = require('../utils/cashDenomination');
 const { matchAccountCode, KEYWORD_RULES, FALLBACK_ACCOUNT } = require('../utils/accountMap');
 
 const genRequestNo = async () => {
@@ -73,7 +74,14 @@ exports.getOne = async (req, res, next) => {
       },
     });
     if (!cr) throw createError('Cash request not found', 404);
-    res.json(cr);
+    const denominationCounts = await prisma.cashDenominationCount.findMany({
+      where: {
+        businessId: req.businessId, sourceId: cr.id,
+        sourceType: { in: ['CASH_REQUEST_RELEASE', 'CASH_REQUEST_RETURN', 'CASH_REQUEST_REIMBURSE'] },
+      },
+      orderBy: { id: 'asc' },
+    });
+    res.json({ ...cr, denominationCounts });
   } catch (err) { next(err); }
 };
 
@@ -197,9 +205,12 @@ exports.cancel = transition(
 exports.release = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { releasedAmount, cashAccountCode, releasedBy, releasedDate } = req.body;
+    const { releasedAmount, cashAccountCode, releasedBy, releasedDate, items, denominations } = req.body;
 
-    const cr = await prisma.cashRequest.findFirst({ where: { id, businessId: req.businessId } });
+    const cr = await prisma.cashRequest.findFirst({
+      where: { id, businessId: req.businessId },
+      include: { items: true },
+    });
     if (!cr) throw createError('Cash request not found', 404);
     if (cr.status !== 'APPROVED') throw createError('Only APPROVED requests can be released', 400);
 
@@ -216,16 +227,41 @@ exports.release = async (req, res, next) => {
     // Throws on bad input before anything is written
     const { lines } = buildReleaseEntry({ requestNo: cr.requestNo, amount, cashAccountCode });
 
-    const updated = await prisma.cashRequest.update({
-      where: { id },
-      data: {
-        status:          'RELEASED',
-        releasedAmount:  amount,
-        cashAccountCode: String(cashAccountCode),
-        releasedBy:      releasedBy || actorName(req),
-        releasedDate:    releasedDate ? new Date(releasedDate) : new Date(),
-      },
-      include: { items: true },
+    // Cash handed over must be counted by denomination when the business enables it
+    const count = await resolveCount({
+      businessId: req.businessId, accountCode: cashAccountCode, amount, denominations,
+    }).catch((e) => { throw createError(e.message, e.status || 400); });
+
+    // The requester doesn't pick the GL account — whoever releases the cash
+    // assigns it here, per item, before the money goes out the door.
+    const requestItemIds = new Set(cr.items.map((i) => i.id));
+    const itemAccounts = (items || []).filter((i) => requestItemIds.has(Number(i.id)));
+
+    const updated = await prisma.$transaction(async (tx) => {
+      for (const i of itemAccounts) {
+        await tx.cashRequestItem.update({
+          where: { id: Number(i.id) },
+          data: { accountId: i.accountId ? Number(i.accountId) : null },
+        });
+      }
+      if (count) {
+        await saveCount(tx, {
+          businessId: req.businessId, sourceType: 'CASH_REQUEST_RELEASE', sourceId: id,
+          direction: 'OUT', accountCode: cashAccountCode, count, expectedAmount: amount,
+          countedBy: releasedBy || actorName(req),
+        });
+      }
+      return tx.cashRequest.update({
+        where: { id },
+        data: {
+          status:          'RELEASED',
+          releasedAmount:  amount,
+          cashAccountCode: String(cashAccountCode),
+          releasedBy:      releasedBy || actorName(req),
+          releasedDate:    releasedDate ? new Date(releasedDate) : new Date(),
+        },
+        include: { items: true },
+      });
     });
 
     await glPost.safePost({
@@ -277,7 +313,7 @@ const resolveLineAccounts = async (lines, businessId) => {
 exports.liquidate = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { lines, receiptNo, liquidationDate, notes } = req.body;
+    const { lines, receiptNo, liquidationDate, notes, denominations } = req.body;
 
     const cr = await prisma.cashRequest.findFirst({
       where: { id, businessId: req.businessId },
@@ -308,6 +344,12 @@ exports.liquidate = async (req, res, next) => {
       lines:           spent,
       cashAccountCode: cr.cashAccountCode,
     });
+
+    // Sukli returned (cash in) or reimbursement paid (cash out) is physical cash
+    const count = mode === 'EXACT' ? null : await resolveCount({
+      businessId: req.businessId, accountCode: cr.cashAccountCode,
+      amount: Math.abs(variance), denominations,
+    }).catch((e) => { throw createError(e.message, e.status || 400); });
 
     const actualSpent = spent.reduce((s, l) => s + l.amount, 0);
     const dateStr = liquidationDate || new Date().toISOString().slice(0, 10);
@@ -346,6 +388,14 @@ exports.liquidate = async (req, res, next) => {
         },
         include: { items: true },
       });
+
+      if (count) {
+        await saveCount(tx, {
+          businessId: req.businessId, sourceType: mode === 'RETURN' ? 'CASH_REQUEST_RETURN' : 'CASH_REQUEST_REIMBURSE',
+          sourceId: id, direction: mode === 'RETURN' ? 'IN' : 'OUT', accountCode: cr.cashAccountCode,
+          count, expectedAmount: Math.abs(variance), countedBy: actorName(req),
+        });
+      }
 
       const updated = await tx.cashRequest.update({
         where: { id },
