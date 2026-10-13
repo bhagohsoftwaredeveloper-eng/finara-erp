@@ -1,5 +1,7 @@
 jest.mock('../server/config/database', () => ({
   userBusiness: { findFirst: jest.fn(), findUnique: jest.fn() },
+  // License gate (assertLicenseActive) reads the business's licenseStatus
+  business: { findUnique: jest.fn() },
 }));
 jest.mock('../server/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
@@ -12,7 +14,10 @@ const run = (user, headers = {}) => new Promise((resolve) => {
   resolveBusiness(req, res, () => resolve({ req, next: true }));
 });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  prisma.business.findUnique.mockResolvedValue({ licenseStatus: 'ACTIVE' });
+});
 
 // A fresh self-signup has no business. It used to fall back to business 1 and
 // see another tenant's data.

@@ -2,6 +2,7 @@ jest.mock('../server/config/database', () => ({
   business:      { create: jest.fn(), update: jest.fn(), delete: jest.fn() },
   userBusiness:  { findFirst: jest.fn(), create: jest.fn(), createMany: jest.fn(), deleteMany: jest.fn() },
   user:          { findMany: jest.fn() },
+  licenseEvent:  { create: jest.fn() },
   systemSetting: { upsert: jest.fn(), deleteMany: jest.fn() },
   account:       { deleteMany: jest.fn(), updateMany: jest.fn() },
   feeType:       { deleteMany: jest.fn() },
@@ -13,6 +14,10 @@ jest.mock('../server/utils/cloneChartOfAccounts', () => ({ cloneChartOfAccounts:
 jest.mock('../prisma/seedSchool', () => ({ setupSchool: jest.fn() }));
 jest.mock('../prisma/seedDemo', () => ({ resetDemoBusiness: jest.fn() }));
 jest.mock('../server/utils/glPost', () => ({ clearBusinessCache: jest.fn() }));
+jest.mock('../server/utils/mailer', () => ({
+  sendLicensePendingNotice: jest.fn(),
+  sendLicenseActivatedNotice: jest.fn(),
+}));
 
 const prisma = require('../server/config/database');
 const { cloneChartOfAccounts } = require('../server/utils/cloneChartOfAccounts');
