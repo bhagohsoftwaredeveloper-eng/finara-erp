@@ -6,6 +6,13 @@ const { recordAudit, diff } = require('../utils/audit');
 const logger = require('../utils/logger');
 const { resolveCount, saveCount } = require('../utils/cashDenomination');
 
+// Optional Driver / Vehicle cost tags on an item. Added only when set, so untagged
+// items are stored exactly as before.
+const itemTags = (it) => ({
+  ...(it.driverId && { driverId: Number(it.driverId) }),
+  ...(it.vehicleId && { vehicleId: Number(it.vehicleId) }),
+});
+
 // Compact item snapshot for audit diffs — avoids dumping full nested objects.
 const itemSnapshot = (items = []) => items.map(it => ({ description: it.description, amount: Number(it.amount) }));
 
@@ -218,6 +225,7 @@ exports.create = async (req, res, next) => {
             accountId:   it.accountId || null,
             amount:      Number(it.amount || 0),
             receiptNo:   it.receiptNo  || null,
+            ...itemTags(it),
           })),
         },
       },
@@ -263,6 +271,7 @@ exports.update = async (req, res, next) => {
             accountId:   it.accountId || null,
             amount:      Number(it.amount || 0),
             receiptNo:   it.receiptNo  || null,
+            ...itemTags(it),
           })),
         });
       }
@@ -334,6 +343,7 @@ exports.approve = async (req, res, next) => {
             accountId:   it.accountId || null,
             amount:      Number(it.amount || 0),
             receiptNo:   it.receiptNo  || null,
+            ...itemTags(it),
           })),
         });
       }
@@ -427,10 +437,10 @@ exports.pay = async (req, res, next) => {
     if (voucher.items.length > 0) {
       for (const item of voucher.items) {
         if (item.accountId) {
-          drLines.push({ accountId: item.accountId, debit: Number(item.amount), description: item.description });
+          drLines.push({ accountId: item.accountId, debit: Number(item.amount), description: item.description, ...itemTags(item) });
         } else {
           const code = CATEGORY_ACCOUNT[voucher.category] || '6390';
-          drLines.push({ accountCode: code, debit: Number(item.amount), description: item.description });
+          drLines.push({ accountCode: code, debit: Number(item.amount), description: item.description, ...itemTags(item) });
         }
       }
     } else {
@@ -448,6 +458,7 @@ exports.pay = async (req, res, next) => {
           description: i.description,
           amount:      Number(i.amount),
           accountId:   i.accountId,
+          ...itemTags(i),
         })),
         cashAccountCode: request.cashAccountCode,
       });
