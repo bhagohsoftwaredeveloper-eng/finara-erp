@@ -40,6 +40,7 @@ const NAV = [
         label: 'Accounts Receivable', icon: PesoReceipt,
         children: [
           { label: 'Invoices',   href: '/receivable' },
+          { label: 'Delivery Receipts', href: '/receivable/delivery-receipts' },
           { label: 'Quotations', href: '/receivable/quotations' },
           { label: 'Customers',  href: '/receivable/customers' },
           { label: 'AR Aging',   href: '/receivable/aging' },
