@@ -35,9 +35,21 @@ exports.list = async (req, res, next) => {
         orderBy: { name: 'asc' },
         include: { userBusinesses: { where: { userId: req.user.id }, select: { id: true } } },
       });
+      // Locked businesses whose client asked to be activated again: the operator's to-do list.
+      const lockedIds = all.filter((b) => b.licenseStatus !== 'ACTIVE').map((b) => String(b.id));
+      const asks = lockedIds.length
+        ? await prisma.auditLog.findMany({
+            where: { entity: 'Business', action: 'REQUEST_ACTIVATION', entityId: { in: lockedIds } },
+            orderBy: { createdAt: 'desc' },
+            select: { entityId: true, createdAt: true, userEmail: true },
+          })
+        : [];
+      const askFor = (id) => asks.find((a) => a.entityId === String(id));
       return res.json(all.map(({ userBusinesses, ...b }) => ({
         ...b,
         isOwned: b.createdByUserId === req.user.id || userBusinesses.length > 0,
+        activationRequestedAt: askFor(b.id)?.createdAt || null,
+        activationRequestedBy: askFor(b.id)?.userEmail || null,
       })));
     }
 

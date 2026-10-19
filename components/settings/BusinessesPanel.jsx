@@ -235,6 +235,19 @@ export default function BusinessesPanel() {
         </button>
       </div>
 
+      {isSuperAdmin && list.some((b) => b.activationRequestedAt) && (
+        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          <p className="font-semibold">Activation requests</p>
+          <ul className="mt-1 space-y-0.5">
+            {list.filter((b) => b.activationRequestedAt).map((b) => (
+              <li key={b.id}>
+                <strong>{b.name}</strong> ({b.licenseStatus === 'SUSPENDED' ? 'suspended' : 'pending'}) · {b.activationRequestedBy || 'client'} · {fmtDay(b.activationRequestedAt)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {loading ? (
         <div className="card card-body text-center text-gray-400 py-16">Loading…</div>
       ) : (
@@ -262,6 +275,9 @@ export default function BusinessesPanel() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${licenseBadge(biz).cls}`}>{licenseBadge(biz).text}</span>
+                    {biz.activationRequestedAt && (
+                      <span className="badge badge-blue ml-1.5" title={`Requested by ${biz.activationRequestedBy || 'the client'} on ${fmtDay(biz.activationRequestedAt)}`}>Activation requested</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -464,6 +480,11 @@ export default function BusinessesPanel() {
         <Modal title={`License — ${licenseBiz.name}`} onClose={() => { setLicenseBiz(null); setLicenseAction(null); setLicenseNote(''); }}>
           <div className="mb-4">
             <span className={`badge ${licenseBadge(licenseBiz).cls}`}>{licenseBadge(licenseBiz).text}</span>
+            {licenseBiz.activationRequestedAt && (
+              <p className="text-sm text-blue-700 mt-2">
+                Activation requested by <strong>{licenseBiz.activationRequestedBy || 'the client'}</strong> on {fmtDay(licenseBiz.activationRequestedAt)}.
+              </p>
+            )}
           </div>
 
           {/* Both license-administration panels are SUPER_ADMIN-only — only a
