@@ -232,10 +232,48 @@ model JournalLine {
   credit      Decimal      @default(0) @db.Decimal(15, 2)
   description String?      @db.VarChar(255)
   lineOrder   Int          @default(0)
+  // Optional cost tags (see Driver / Vehicle). Plain columns, no relation, so a
+  // report can group by them without joins and deleting a tag never touches the books.
+  driverId    Int?
+  vehicleId   Int?
 
   @@index([entryId])
   @@index([accountId])
+  @@index([driverId])
+  @@index([vehicleId])
   @@map("journal_lines")
+}
+
+// ─── Cost tags: Drivers and Vehicles ───────────────────────
+// Optional tags on expense lines so reports can show cost per driver or per
+// vehicle (e.g. repairs & maintenance). JournalLine/ExpenseVoucherItem/BillLine
+// store only the ids.
+model Driver {
+  id         Int      @id @default(autoincrement())
+  businessId Int      @default(1)
+  code       String   @db.VarChar(30)
+  name       String   @db.VarChar(100)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("drivers")
+}
+
+model Vehicle {
+  id          Int      @id @default(autoincrement())
+  businessId  Int      @default(1)
+  code        String   @db.VarChar(30)
+  description String?  @db.VarChar(150)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("vehicles")
 }
 
 enum JournalStatus {
@@ -307,6 +345,8 @@ model BillLine {
   unitPrice   Decimal @default(0) @db.Decimal(15, 2)
   amount      Decimal @default(0) @db.Decimal(15, 2)
   vatCode     VatCode @default(VAT)
+  driverId    Int?
+  vehicleId   Int?
 
   @@index([billId])
   @@map("bill_lines")
@@ -923,6 +963,8 @@ model ExpenseVoucherItem {
   account     Account?        @relation(fields: [accountId], references: [id])
   amount      Decimal         @db.Decimal(15, 2)
   receiptNo   String?         @db.VarChar(100)
+  driverId    Int?
+  vehicleId   Int?
 
   @@index([voucherId])
   @@map("expense_voucher_items")
