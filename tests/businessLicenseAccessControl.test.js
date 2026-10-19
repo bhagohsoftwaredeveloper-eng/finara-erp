@@ -1,6 +1,7 @@
 jest.mock('../server/config/database', () => ({
   business:     { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), count: jest.fn() },
   userBusiness: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn() },
+  auditLog:     { findMany: jest.fn().mockResolvedValue([]) },
 }));
 
 const prisma = require('../server/config/database');
@@ -73,6 +74,21 @@ describe('businessController.list license gate', () => {
     });
     expect(rows.map((r) => [r.id, r.isOwned])).toEqual([[1, true], [2, false], [3, true]]);
     expect(rows[0]).not.toHaveProperty('userBusinesses');
+  });
+
+  test('scope=manage carries the latest activation request of a locked company', async () => {
+    prisma.business.findMany.mockResolvedValue([
+      { id: 1, createdByUserId: 1, licenseStatus: 'ACTIVE', userBusinesses: [] },
+      { id: 2, createdByUserId: 8, licenseStatus: 'SUSPENDED', userBusinesses: [] },
+    ]);
+    const when = new Date('2026-10-19T08:00:00Z');
+    prisma.auditLog.findMany.mockResolvedValueOnce([{ entityId: '2', createdAt: when, userEmail: 'juan@x.com' }]);
+    const rows = await new Promise((resolve, reject) => {
+      ctrl.list({ user: { id: 1, role: 'SUPER_ADMIN' }, query: { scope: 'manage' } }, { json: resolve }, reject);
+    });
+    expect(rows[0].activationRequestedAt).toBeNull();
+    expect(rows[1]).toMatchObject({ activationRequestedAt: when, activationRequestedBy: 'juan@x.com' });
+    expect(prisma.auditLog.findMany.mock.calls[0][0].where.entityId).toEqual({ in: ['2'] });
   });
 
   test('scope=manage is SUPER_ADMIN only', async () => {
