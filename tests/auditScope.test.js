@@ -28,7 +28,10 @@ describe('audit trail scope', () => {
     await run(ctrl.list, { id: 11, role: 'MANAGER' }, { headers: { 'x-business-id': '9' } });
 
     expect(whereOf()).toEqual({
-      AND: [{ OR: [{ businessId: 9 }, { businessId: null, userId: { in: [11, 12, 7] } }] }],
+      AND: [{
+        OR: [{ businessId: 9 }, { businessId: null, userId: { in: [11, 12, 7] } }],
+        NOT: { user: { role: 'SUPER_ADMIN' } },   // the operator's own activity is never shown
+      }],
     });
   });
 

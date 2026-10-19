@@ -3,7 +3,8 @@ const { createError } = require('../middleware/errorHandler');
 const { canAccessBusinessData, defaultBusinessId } = require('../utils/businessAccess');
 
 // The audit trail of one company: what happened in it, plus the sign-ins (which belong to
-// no company) of the people who work in it. The operator (SUPER_ADMIN) sees everything.
+// no company) of the people who work in it. The operator (SUPER_ADMIN) sees everything, and
+// nobody else sees what the operator did.
 async function scopeFor(req) {
   if (req.user.role === 'SUPER_ADMIN') return null;
   const header = Number(req.headers['x-business-id']);
@@ -16,7 +17,10 @@ async function scopeFor(req) {
   ]);
   const memberIds = members.map((m) => m.userId);
   if (biz?.createdByUserId) memberIds.push(biz.createdByUserId);
-  return { OR: [{ businessId: bizId }, { businessId: null, userId: { in: memberIds } }] };
+  return {
+    OR: [{ businessId: bizId }, { businessId: null, userId: { in: memberIds } }],
+    NOT: { user: { role: 'SUPER_ADMIN' } },
+  };
 }
 
 exports.list = async (req, res, next) => {
