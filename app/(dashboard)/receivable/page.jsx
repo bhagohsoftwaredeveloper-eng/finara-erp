@@ -544,7 +544,7 @@ function ShippingModal({ invoice, onClose, onShipped }) {
 }
 
 // ─── Create Invoice Modal ─────────────────────────────────────
-function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, prefill, onClose, onSaved, onCustomerAdded }) {
+function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, prefill, onClose, onSaved, onCustomerAdded, onTermAdded }) {
   const [form, setForm] = useState(() => {
     if (invoice) return {
       customerId:  String(invoice.customerId),
@@ -588,11 +588,32 @@ function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, prefil
     };
   });
   const [saving, setSaving] = useState(false);
+  const [quick, setQuick]   = useState(null); // null | { name, days, saving } while the quick-add term row is open
   // A prefilled invoice gets its own draft key so a saved blank-invoice draft never overwrites it.
   const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : prefill ? `invoice:dr:${prefill.id}` : 'invoice:new');
   const { clearDraft: clearInvoiceDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // Quick add: create a term without leaving the invoice, then select it. Selecting it
+  // changes form.paymentTerms, so the due-date effect below fills in the due date.
+  const addTerm = async () => {
+    const name = quick.name.trim();
+    if (!name) { toast.error('Enter a name for the term'); return; }
+    if (quick.days === '' || Number(quick.days) < 0) { toast.error('Enter the number of days (0 or more)'); return; }
+    setQuick((q) => ({ ...q, saving: true }));
+    try {
+      const { data } = await settingsApi.createPaymentTerm({ name, days: Number(quick.days) });
+      onTermAdded(data);
+      setForm((f) => ({ ...f, paymentTerms: data.name }));
+      setQuick(null);
+      toast.success(`Term "${data.name}" added`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to add term');
+      setQuick((q) => ({ ...q, saving: false }));
+    }
+  };
+
   // New invoices only: choosing a customer pre-selects that customer's default term.
   // The due-date effect below then recomputes the date. An edit keeps its own terms.
   const setCustomer = (id) => {
@@ -732,6 +753,23 @@ function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, prefil
                   <option value="">— none —</option>
                   {paymentTerms.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
                 </select>
+                {quick ? (
+                  <div className="flex flex-wrap items-center gap-2 mt-2 p-2 bg-gray-50 rounded-xl">
+                    <input className="input flex-1 min-w-[7rem]" placeholder="Name, e.g. Net 45" maxLength={50} autoFocus
+                      value={quick.name} onChange={(e) => setQuick((q) => ({ ...q, name: e.target.value }))} />
+                    <input className="input w-20" type="number" min="0" max="365" step="1" placeholder="Days"
+                      value={quick.days} onChange={(e) => setQuick((q) => ({ ...q, days: e.target.value }))} />
+                    <button type="button" className="btn-primary btn-sm" disabled={quick.saving} onClick={addTerm}>
+                      {quick.saving ? 'Adding…' : 'Add'}
+                    </button>
+                    <button type="button" className="btn-secondary btn-sm" onClick={() => setQuick(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <button type="button" className="text-xs text-blue-600 hover:underline mt-1"
+                    onClick={() => setQuick({ name: '', days: '', saving: false })}>
+                    + New payment term
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1338,6 +1376,7 @@ export default function InvoicesPage() {
           customers={customers}
           accounts={accounts}
           paymentTerms={paymentTerms}
+          onTermAdded={(t) => setPaymentTerms((prev) => [...prev, t].sort((a, b) => a.days - b.days))}
           prefill={prefill}
           onClose={() => { setModal(null); setPrefill(null); }}
           onSaved={() => { setModal(null); setPrefill(null); load(); }}
@@ -1349,6 +1388,7 @@ export default function InvoicesPage() {
           customers={customers}
           accounts={accounts}
           paymentTerms={paymentTerms}
+          onTermAdded={(t) => setPaymentTerms((prev) => [...prev, t].sort((a, b) => a.days - b.days))}
           invoice={modal.invoice}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
