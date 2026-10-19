@@ -378,7 +378,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-md">
+      <div className="modal max-w-2xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">Record Collection</h3>
           <button onClick={handleClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -391,9 +391,9 @@ function CollectionModal({ invoice, onClose, onCollected }) {
                 <span className="text-gray-600">Invoice</span>
                 <span className="font-mono font-medium">{invoice.invoiceNo}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Customer</span>
-                <span className="font-medium">{invoice.customer?.name}</span>
+              <div className="flex justify-between gap-6">
+                <span className="text-gray-600 flex-shrink-0">Customer</span>
+                <span className="font-medium text-right">{invoice.customer?.name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Invoice Total</span>
@@ -411,6 +411,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="label">Collection Date *</label>
               <input type="date" className="input" required value={form.paymentDate} onChange={set('paymentDate')} />
@@ -441,7 +442,9 @@ function CollectionModal({ invoice, onClose, onCollected }) {
                 ))}
               </div>
             </div>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="label">Payment Method *</label>
               <select className="select" required value={form.paymentMethod} onChange={set('paymentMethod')}>
@@ -457,6 +460,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
                 onChange={set('reference')}
                 placeholder="Official receipt no., transaction ID..."
               />
+            </div>
             </div>
 
             <div className="form-group">
