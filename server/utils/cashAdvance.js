@@ -36,9 +36,14 @@ function buildLiquidationEntry({
   const spentLines = lines.map((l) => {
     const amt = Number(l.amount);
     if (!(amt > 0)) throw new Error('Every liquidation line must be greater than zero');
+    // Optional cost tags ride along onto the expense line.
+    const tags = {
+      ...(l.driverId && { driverId: Number(l.driverId) }),
+      ...(l.vehicleId && { vehicleId: Number(l.vehicleId) }),
+    };
     return l.accountId
-      ? { accountId: Number(l.accountId), debit: amt, description: l.description }
-      : { accountCode: fallbackAccountCode, debit: amt, description: l.description };
+      ? { accountId: Number(l.accountId), debit: amt, description: l.description, ...tags }
+      : { accountCode: fallbackAccountCode, debit: amt, description: l.description, ...tags };
   });
 
   const actualSpent = spentLines.reduce((s, l) => s + l.debit, 0);

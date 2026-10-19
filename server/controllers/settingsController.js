@@ -305,4 +305,104 @@ const resetUserPassword = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getAll, saveAll, resetDefaults, backupDatabase, resetDatabase, getDbStats, listUsers, updateUser, deleteUser, resetUserPassword, DEFAULTS };
+// ─── Payment Terms ────────────────────────────────────────────────
+const STANDARD_TERMS = [
+  { name: 'Due on Receipt', days: 0,  isDefault: false },
+  { name: 'COD',            days: 0,  isDefault: false },
+  { name: 'Net 15',         days: 15, isDefault: false },
+  { name: 'Net 30',         days: 30, isDefault: true  },
+  { name: 'Net 60',         days: 60, isDefault: false },
+];
+
+// A business with no terms at all gets the standard set. skipDuplicates makes a race
+// between two first requests harmless (unique on businessId + name).
+async function ensureStandardTerms(businessId) {
+  if ((await prisma.paymentTerm.count({ where: { businessId } })) > 0) return;
+  await prisma.paymentTerm.createMany({
+    data: STANDARD_TERMS.map((t, i) => ({ businessId, ...t, sortOrder: i })),
+    skipDuplicates: true,
+  });
+}
+
+const listPaymentTerms = async (req, res, next) => {
+  try {
+    await ensureStandardTerms(req.businessId);
+    const terms = await prisma.paymentTerm.findMany({
+      where: { businessId: req.businessId },
+      orderBy: { sortOrder: 'asc' },
+    });
+    res.json(terms);
+  } catch (err) { next(err); }
+};
+
+const createPaymentTerm = async (req, res, next) => {
+  try {
+    const { name, days, isDefault } = req.body;
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
+    if (days === undefined || days === null || Number(days) < 0) {
+      return res.status(400).json({ error: 'Days must be 0 or more' });
+    }
+
+    if (isDefault) {
+      await prisma.paymentTerm.updateMany({
+        where: { businessId: req.businessId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    const term = await prisma.paymentTerm.create({
+      data: {
+        businessId: req.businessId,
+        name: String(name).trim(),
+        days: Number(days),
+        isDefault: !!isDefault,
+      },
+    });
+    res.status(201).json(term);
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(400).json({ error: 'A payment term with that name already exists' });
+    next(err);
+  }
+};
+
+const updatePaymentTerm = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const owned = await prisma.paymentTerm.findFirst({ where: { id: Number(id), businessId: req.businessId } });
+    if (!owned) return res.status(404).json({ error: 'Payment term not found' });
+    const { name, days, isDefault, isActive } = req.body;
+
+    if (isDefault) {
+      await prisma.paymentTerm.updateMany({
+        where: { businessId: req.businessId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    const term = await prisma.paymentTerm.update({
+      where: { id: Number(id) },
+      data: {
+        ...(name !== undefined && { name: String(name).trim() }),
+        ...(days !== undefined && { days: Number(days) }),
+        ...(isDefault !== undefined && { isDefault: !!isDefault }),
+        ...(isActive !== undefined && { isActive: !!isActive }),
+      },
+    });
+    res.json(term);
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(400).json({ error: 'A payment term with that name already exists' });
+    next(err);
+  }
+};
+
+const deletePaymentTerm = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const owned = await prisma.paymentTerm.findFirst({ where: { id: Number(id), businessId: req.businessId } });
+    if (!owned) return res.status(404).json({ error: 'Payment term not found' });
+    await prisma.paymentTerm.delete({ where: { id: Number(id) } });
+    res.json({ message: 'Payment term deleted' });
+  } catch (err) { next(err); }
+};
+
+module.exports = { getAll, saveAll, resetDefaults, backupDatabase, resetDatabase, getDbStats, listUsers, updateUser, deleteUser, resetUserPassword, listPaymentTerms, createPaymentTerm, updatePaymentTerm, deletePaymentTerm, DEFAULTS };

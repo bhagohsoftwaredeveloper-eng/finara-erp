@@ -58,13 +58,20 @@ async function computeBillTotals(lines) {
 // contra-expense line, since l.amount is already negative for those,
 // matching their CREDIT normal balance) / DR Input VAT / CR Accounts
 // Payable — Trade.
+// Optional Driver / Vehicle cost tags on a bill line. Added only when set, so
+// untagged lines are stored exactly as before.
+const lineTags = (l) => ({
+  ...(l.driverId && { driverId: Number(l.driverId) }),
+  ...(l.vehicleId && { vehicleId: Number(l.vehicleId) }),
+});
+
 function buildBillGLLines(bill) {
   return [
     ...bill.lines.map((l) => {
       const amt = Number(l.amount);
       return amt < 0
-        ? { accountId: l.accountId, credit: -amt, description: l.description }
-        : { accountId: l.accountId, debit: amt, description: l.description };
+        ? { accountId: l.accountId, credit: -amt, description: l.description, ...lineTags(l) }
+        : { accountId: l.accountId, debit: amt, description: l.description, ...lineTags(l) };
     }),
     ...(Number(bill.vatAmount) > 0 ? [{
       accountCode: '1330', debit: Number(bill.vatAmount), description: 'Input VAT',
@@ -166,7 +173,7 @@ exports.getBill = async (req, res, next) => {
 
 exports.createBill = async (req, res, next) => {
   try {
-    const { vendorId, billDate, dueDate, description, notes, lines } = req.body;
+    const { vendorId, billDate, dueDate, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, totalAmount, processedLines } = await computeBillTotals(lines);
 
     const billNo = await genBillNo();
@@ -174,11 +181,12 @@ exports.createBill = async (req, res, next) => {
       data: {
         businessId: req.businessId,
         billNo, vendorId: Number(vendorId),
-        billDate: new Date(billDate), dueDate: new Date(dueDate),
+        billDate: new Date(billDate), dueDate: new Date(dueDate), paymentTerms: paymentTerms || null,
         description, notes, subtotal, vatAmount, totalAmount,
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+          ...lineTags(l),
         })) },
       },
       include: { vendor: true, lines: true },
@@ -254,7 +262,7 @@ exports.updateBill = async (req, res, next) => {
     if (bill.status === 'PAID') throw createError('Cannot edit a fully paid bill.', 400);
     if (bill.status === 'VOID') throw createError('Cannot edit a voided bill.', 400);
 
-    const { vendorId, billDate, dueDate, description, notes, lines } = req.body;
+    const { vendorId, billDate, dueDate, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, totalAmount, processedLines } = await computeBillTotals(lines);
 
     if (totalAmount < Number(bill.paidAmount) - 0.01) {
@@ -273,12 +281,14 @@ exports.updateBill = async (req, res, next) => {
         vendorId: Number(vendorId),
         billDate: new Date(billDate),
         dueDate: new Date(dueDate),
+        paymentTerms: paymentTerms || null,
         description, notes, subtotal, vatAmount, totalAmount, status,
         lines: {
           deleteMany: {},
           create: processedLines.map((l) => ({
             accountId: Number(l.accountId), description: l.description,
             quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+            ...lineTags(l),
           })),
         },
       },

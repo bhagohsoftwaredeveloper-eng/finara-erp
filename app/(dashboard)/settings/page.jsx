@@ -8,7 +8,7 @@ import {
   Calculator, Hash, Shield, Save, RefreshCw, Download, AlertTriangle,
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X, ChevronDown,
-  Inbox, HelpCircle, Blocks, Mail, Banknote, Tags, ClipboardCheck,
+  Inbox, HelpCircle, Blocks, Mail, Banknote, Tags, ClipboardCheck, CalendarClock, Truck,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
@@ -17,6 +17,7 @@ import BusinessesPanel from '@/components/settings/BusinessesPanel';
 import ModulesPanel from '@/components/settings/ModulesPanel';
 import PlansPanel from '@/components/settings/PlansPanel';
 import OrdersPanel from '@/components/settings/OrdersPanel';
+import FleetPanel from '@/components/settings/FleetPanel';
 
 // ─── Tabs config ──────────────────────────────────────────────
 const TABS = [
@@ -25,6 +26,8 @@ const TABS = [
   { key: 'fiscal',     label: 'Fiscal & Tax',  icon: FileText,     roles: ['ADMIN', 'MANAGER'] },
   { key: 'payroll',    label: 'Payroll',       icon: Calculator,   roles: ['ADMIN', 'MANAGER'] },
   { key: 'numbering',  label: 'Numbering',     icon: Hash,         roles: ['ADMIN', 'MANAGER'] },
+  { key: 'paymentTerms', label: 'Payment Terms', icon: CalendarClock, roles: ['ADMIN', 'MANAGER'] },
+  { key: 'fleet',        label: 'Drivers & Vehicles', icon: Truck,    roles: ['ADMIN', 'MANAGER'] },
   { key: 'users',      label: 'Users',         icon: Users,        roles: ['ADMIN'] },
   { key: 'database',   label: 'Database',      icon: Database,     roles: ['ADMIN'] },
   { key: 'system',      label: 'System',       icon: SettingsIcon, roles: ['ADMIN', 'MANAGER'] },
@@ -345,7 +348,11 @@ export default function SettingsPage() {
   const [original,  setOriginal]  = useState({});
   const [loading,   setLoading]   = useState(true);
   const [saving,    setSaving]    = useState(false);
-  const [users,     setUsers]     = useState([]);
+  const [users,         setUsers]         = useState([]);
+  const [paymentTerms,  setPaymentTerms]  = useState([]);
+  const [newTermName,   setNewTermName]   = useState('');
+  const [newTermDays,   setNewTermDays]   = useState('30');
+  const [addingTerm,    setAddingTerm]    = useState(false);
   const [dbStats,   setDbStats]   = useState(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
@@ -397,6 +404,14 @@ export default function SettingsPage() {
       const r = await settingsApi.listUsers();
       setUsers(r.data);
     } catch { toast.error('Failed to load users'); }
+  }, []);
+
+  // Load payment terms
+  const loadPaymentTerms = useCallback(async () => {
+    try {
+      const r = await settingsApi.listPaymentTerms();
+      setPaymentTerms(r.data);
+    } catch { toast.error('Failed to load payment terms'); }
   }, []);
 
   // Load DB stats
@@ -484,10 +499,11 @@ export default function SettingsPage() {
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
   useEffect(() => {
-    if (activeTab === 'users')       loadUsers();
-    if (activeTab === 'database')    { loadDbStats(); loadModuleList(); }
-    if (activeTab === 'permissions') loadPermissions();
-    if (activeTab === 'inquiries')   loadInquiries();
+    if (activeTab === 'users')         loadUsers();
+    if (activeTab === 'paymentTerms')  loadPaymentTerms();
+    if (activeTab === 'database')      { loadDbStats(); loadModuleList(); }
+    if (activeTab === 'permissions')   loadPermissions();
+    if (activeTab === 'inquiries')     loadInquiries();
   }, [activeTab]);
 
   const togglePerm = (role, moduleKey) => {
@@ -548,6 +564,41 @@ export default function SettingsPage() {
       toast.success('Backup downloaded');
     } catch { toast.error('Backup failed'); }
     finally { setBackingUp(false); }
+  };
+
+  const handleAddTerm = async () => {
+    if (!newTermName.trim()) { toast.error('Enter a term name'); return; }
+    setAddingTerm(true);
+    try {
+      await settingsApi.createPaymentTerm({ name: newTermName.trim(), days: Number(newTermDays) || 0 });
+      setNewTermName(''); setNewTermDays('30');
+      toast.success('Payment term added');
+      loadPaymentTerms();
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to add term'); }
+    finally { setAddingTerm(false); }
+  };
+
+  const handleSetDefaultTerm = async (term) => {
+    try {
+      await settingsApi.updatePaymentTerm(term.id, { isDefault: true });
+      loadPaymentTerms();
+    } catch { toast.error('Failed to set default'); }
+  };
+
+  const handleToggleTermActive = async (term) => {
+    try {
+      await settingsApi.updatePaymentTerm(term.id, { isActive: !term.isActive });
+      loadPaymentTerms();
+    } catch { toast.error('Failed to update term'); }
+  };
+
+  const handleDeleteTerm = async (term) => {
+    if (!confirm(`Delete payment term "${term.name}"?`)) return;
+    try {
+      await settingsApi.deletePaymentTerm(term.id);
+      toast.success('Payment term deleted');
+      loadPaymentTerms();
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed to delete'); }
   };
 
   const handleDeleteUser = async (user) => {
@@ -660,6 +711,7 @@ export default function SettingsPage() {
           {activeTab === 'modules'    && <ModulesPanel />}
           {activeTab === 'plans'      && <PlansPanel />}
           {activeTab === 'orders'     && <OrdersPanel />}
+          {activeTab === 'fleet'      && <FleetPanel />}
 
           {/* ── Company ── */}
           {activeTab === 'company' && (
@@ -760,6 +812,62 @@ export default function SettingsPage() {
               <Field label="Signature" sub="optional — the block is hidden entirely when left blank">
                 <textarea className="input" rows={3} value={form.invoiceEmailSignature || ''} onChange={set('invoiceEmailSignature')} placeholder={'e.g. Juan Dela Cruz\nAccounting Department'} />
               </Field>
+            </>
+          )}
+
+          {/* ── Payment Terms ── */}
+          {activeTab === 'paymentTerms' && (
+            <>
+              <SectionTitle icon={CalendarClock}>Payment Terms</SectionTitle>
+              <p className="text-xs text-gray-400 -mt-2 mb-2">
+                Named terms selectable on Invoices, Bills, Quotations, and Purchase Orders — picking one auto-fills the due/valid/expected date, which you can still edit afterward.
+              </p>
+
+              <div className="flex items-end gap-3 p-4 bg-gray-50 rounded-xl">
+                <div className="form-group flex-1 mb-0">
+                  <label className="label">Name</label>
+                  <input className="input" value={newTermName} onChange={(e) => setNewTermName(e.target.value)} placeholder="e.g. Net 45" maxLength={50} />
+                </div>
+                <div className="form-group w-32 mb-0">
+                  <label className="label">Days</label>
+                  <input type="number" min="0" className="input" value={newTermDays} onChange={(e) => setNewTermDays(e.target.value)} />
+                </div>
+                <button onClick={handleAddTerm} disabled={addingTerm} className="btn-primary btn-sm">
+                  <Plus className="w-3.5 h-3.5" /> Add Term
+                </button>
+              </div>
+
+              <div className="table-wrapper">
+                <table className="table text-sm">
+                  <thead>
+                    <tr><th>Name</th><th className="text-right">Days</th><th>Default</th><th>Active</th><th className="text-center">Actions</th></tr>
+                  </thead>
+                  <tbody>
+                    {paymentTerms.map((t) => (
+                      <tr key={t.id}>
+                        <td className="font-medium">{t.name}</td>
+                        <td className="text-right font-mono">{t.days}</td>
+                        <td>
+                          {t.isDefault
+                            ? <span className="badge badge-blue text-xs">Default</span>
+                            : <button onClick={() => handleSetDefaultTerm(t)} className="text-xs text-gray-400 hover:text-blue-600">Set default</button>}
+                        </td>
+                        <td>
+                          <button onClick={() => handleToggleTermActive(t)} title={t.isActive ? 'Deactivate' : 'Activate'}
+                            className={`p-1.5 rounded-lg transition-colors ${t.isActive ? 'text-green-500 hover:bg-green-50' : 'text-gray-300 hover:bg-gray-50'}`}>
+                            {t.isActive ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
+                          </button>
+                        </td>
+                        <td className="text-center">
+                          <button onClick={() => handleDeleteTerm(t)} title="Delete" className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
 

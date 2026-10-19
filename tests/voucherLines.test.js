@@ -63,3 +63,18 @@ describe('normalizeVoucherItems', () => {
     )).toThrow(/Liquidation/);
   });
 });
+
+describe('normalizeVoucherItems keeps the driver / vehicle tags', () => {
+  const { normalizeVoucherItems } = require('../server/utils/voucherLines');
+
+  test('a tagged line carries its tags; an untagged line gets no tag keys', () => {
+    const rows = normalizeVoucherItems([
+      { description: 'Brake pads', accountId: 5, amount: 1500, driverId: '3', vehicleId: 7 },
+      { description: 'Oil', accountId: 5, amount: 500 },
+    ]);
+
+    expect(rows[0]).toMatchObject({ driverId: 3, vehicleId: 7 });
+    expect(rows[1]).not.toHaveProperty('driverId');
+    expect(rows[1]).not.toHaveProperty('vehicleId');
+  });
+});

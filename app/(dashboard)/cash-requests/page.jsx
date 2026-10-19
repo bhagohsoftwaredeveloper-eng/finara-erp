@@ -875,7 +875,7 @@ export default function CashRequestsPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    acctApi.list({ limit: 500 })
+    acctApi.list({ limit: 500, active: 'true' })
       .then((r) => setAccounts(r.data.data || r.data))
       .catch(() => setAccounts([]));
   }, []);

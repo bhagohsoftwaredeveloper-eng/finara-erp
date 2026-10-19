@@ -5,7 +5,7 @@
  *   const glPost = require('./glPost');
  *   await glPost.safePost({ entryDate, description, reference, lines, userId, businessId });
  *
- * Each line: { accountCode?, accountId?, debit?, credit?, description? }
+ * Each line: { accountCode?, accountId?, debit?, credit?, description?, driverId?, vehicleId? }
  * Supply EITHER accountCode (looks up by COA code within the business) OR accountId directly.
  */
 
@@ -121,6 +121,9 @@ async function post({ entryDate, description, reference, notes, lines, userId = 
         credit:      Number(l.credit || 0),
         description: l.description || null,
         lineOrder:   i + 1,
+        // Optional cost tags. Only added when set, so untagged postings are unchanged.
+        ...(l.driverId  && { driverId:  Number(l.driverId) }),
+        ...(l.vehicleId && { vehicleId: Number(l.vehicleId) }),
       };
     })
   );

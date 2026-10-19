@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import { payable as pApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
@@ -13,6 +13,7 @@ import VendorSelect from '@/components/VendorSelect';
 import DescriptionInput, { rememberDescription } from '@/components/DescriptionInput';
 import NumberInput from '@/components/NumberInput';
 import AccountSelect from '@/components/ui/AccountSelect';
+import CostTagSelects, { useFleetTags } from '@/components/ui/CostTags';
 import { useDraftGuard } from '@/lib/useDraftGuard';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
@@ -470,6 +471,7 @@ function EditPaymentModal({ bill, payment, onClose, onSaved }) {
 
 // ─── Create Bill Modal ────────────────────────────────────────
 function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAdded }) {
+  const fleet = useFleetTags();
   const [form, setForm] = useState(() => {
     if (bill) return {
       vendorId:    String(bill.vendorId),
@@ -480,6 +482,7 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
       lines: bill.lines.map((l) => ({
         accountId: String(l.accountId), description: l.description,
         quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
+        driverId: l.driverId || null, vehicleId: l.vehicleId || null,
       })),
     };
     const billDate = new Date().toISOString().split('T')[0];
@@ -556,6 +559,8 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
           quantity: Number(l.quantity),
           unitPrice: Number(l.unitPrice),
           vatCode: l.vatCode,
+          ...(l.driverId && { driverId: l.driverId }),
+          ...(l.vehicleId && { vehicleId: l.vehicleId }),
         })),
       };
       if (bill) {
@@ -638,7 +643,8 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
                       const amt = lineSign(line.accountId) * (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
                       const v = computeVAT(amt, line.vatCode);
                       return (
-                        <tr key={i} className="align-top">
+                        <Fragment key={i}>
+                        <tr className="align-top">
                           <td>
                             <AccountSelect
                               value={line.accountId}
@@ -702,6 +708,13 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
                             )}
                           </td>
                         </tr>
+                        <tr>
+                          <td colSpan={7} className="pb-3">
+                            <CostTagSelects fleet={fleet} driverId={line.driverId} vehicleId={line.vehicleId}
+                              onDriver={(v) => setLine(i, 'driverId', v)} onVehicle={(v) => setLine(i, 'vehicleId', v)} />
+                          </td>
+                        </tr>
+                        </Fragment>
                       );
                     })}
                   </tbody>

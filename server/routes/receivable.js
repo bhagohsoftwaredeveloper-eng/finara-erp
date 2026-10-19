@@ -3,6 +3,7 @@ const { body, param } = require('express-validator');
 const ctrl = require('../controllers/receivableController');
 const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const statements = require('../controllers/statementController');
 
 router.use(authenticate, resolveBusiness);
 
@@ -10,6 +11,9 @@ router.get('/customers', ctrl.listCustomers);
 router.post('/customers', authorize('ADMIN','MANAGER'),
   [body('name').notEmpty().trim()], validate, ctrl.createCustomer);
 router.put('/customers/:id', authorize('ADMIN','MANAGER'), ctrl.updateCustomer);
+
+router.get('/statements', statements.getStatements);
+router.use('/delivery-receipts', require('./deliveryReceipts'));
 
 router.get('/', ctrl.listInvoices);
 router.get('/aging', ctrl.agingReport);

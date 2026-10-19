@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import { journal as jApi, accounts as acctApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Eye, CheckCircle, XCircle, Filter, AlertTriangle, ShieldAlert, Lock, Printer, Search } from 'lucide-react';
 import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import AccountSelect from '@/components/ui/AccountSelect';
+import CostTagSelects, { useFleetTags } from '@/components/ui/CostTags';
 import NumberInput, { groupThousands } from '@/components/NumberInput';
 import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import { useDraftGuard } from '@/lib/useDraftGuard';
@@ -236,6 +237,7 @@ function printEntry(entry) {
 }
 
 function JournalModal({ entry, accounts, onClose, onSaved }) {
+  const fleet = useFleetTags();
   const [form, setForm] = useState({
     ...(entry || {
       entryDate: new Date().toISOString().split('T')[0],
@@ -313,7 +315,8 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
                   <thead><tr><th>Account</th><th className="w-36 text-right">Debit</th><th className="w-36 text-right">Credit</th><th>Memo</th><th className="w-8"></th></tr></thead>
                   <tbody>
                     {form.lines.map((line, i) => (
-                      <tr key={i}>
+                      <Fragment key={i}>
+                      <tr>
                         <td>
                           <AccountSelect
                             value={line.accountId}
@@ -327,6 +330,16 @@ function JournalModal({ entry, accounts, onClose, onSaved }) {
                         <td><input className="input w-full text-xs" value={line.description} onChange={(e) => setLine(i, 'description', e.target.value)} placeholder="Optional memo" /></td>
                         <td>{form.lines.length > 2 && <button type="button" onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>}</td>
                       </tr>
+                      {/* Cost tags only make sense on expense lines */}
+                      {accounts.find((a) => String(a.id) === String(line.accountId))?.accountType === 'EXPENSE' && (
+                        <tr>
+                          <td colSpan={5} className="pb-2">
+                            <CostTagSelects fleet={fleet} driverId={line.driverId} vehicleId={line.vehicleId}
+                              onDriver={(v) => setLine(i, 'driverId', v)} onVehicle={(v) => setLine(i, 'vehicleId', v)} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     ))}
                     <tr className="bg-gray-50 font-semibold text-sm">
                       <td className="text-right text-gray-500">Totals</td>

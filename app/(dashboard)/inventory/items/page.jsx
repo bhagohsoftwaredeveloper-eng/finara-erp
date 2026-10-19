@@ -238,7 +238,7 @@ export default function ItemsPage() {
       const [itemsRes, catsRes, accsRes] = await Promise.all([
         inventoryApi.items.list(params),
         inventoryApi.categories.list(),
-        accountsApi.list(),
+        accountsApi.list({ active: 'true' }),
       ]);
       setItems(itemsRes.data);
       setCategories(catsRes.data);

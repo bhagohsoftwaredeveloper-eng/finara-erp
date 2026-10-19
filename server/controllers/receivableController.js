@@ -6,6 +6,8 @@ const glPost = require('../utils/glPost');
 const logger = require('../utils/logger');
 const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
+const { buildAging, todayPH } = require('../../lib/arAging');
+const drCtrl = require('./deliveryReceiptController');
 
 // Derive the next number from the LAST ISSUED number, never from a row count.
 // A count is wrong the moment a row is deleted: with 5 invoices created and one
@@ -99,6 +101,15 @@ function buildInvoiceGLLines(inv) {
   ];
 }
 
+// Customer.defaultTermId: undefined = leave alone, null/'' = clear, id = must be this business's term.
+async function defaultTermValue(defaultTermId, businessId) {
+  if (defaultTermId === undefined) return undefined;
+  if (defaultTermId === null || defaultTermId === '') return null;
+  const term = await prisma.paymentTerm.findFirst({ where: { id: Number(defaultTermId), businessId } });
+  if (!term) throw createError('Payment term not found', 400);
+  return term.id;
+}
+
 exports.listCustomers = async (req, res, next) => {
   try {
     const { search, active } = req.query;
@@ -125,8 +136,10 @@ async function nextCustomerCode(businessId) {
 
 exports.createCustomer = async (req, res, next) => {
   try {
-    const { customerCode, name, tin, address, contactName, email, phone } = req.body;
+    const { customerCode, name, tin, address, contactName, email, phone, defaultTermId } = req.body;
     const base = { businessId: req.businessId, name, tin, address, contactName, email, phone };
+    const termValue = await defaultTermValue(defaultTermId, req.businessId);
+    if (termValue !== undefined) base.defaultTermId = termValue;
 
     // Manual code supplied → use as-is. Otherwise auto-generate, retrying on the
     // off chance a concurrent create grabbed the same sequential number.
@@ -148,8 +161,13 @@ exports.createCustomer = async (req, res, next) => {
 exports.updateCustomer = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { name, tin, address, contactName, email, phone, isActive } = req.body;
-    res.json(await prisma.customer.update({ where: { id }, data: { name, tin, address, contactName, email, phone, isActive } }));
+    const { name, tin, address, contactName, email, phone, isActive, defaultTermId } = req.body;
+    const termValue = await defaultTermValue(defaultTermId, req.businessId);
+    res.json(await prisma.customer.update({
+      where: { id },
+      data: { name, tin, address, contactName, email, phone, isActive,
+        ...(termValue !== undefined && { defaultTermId: termValue }) },
+    }));
   } catch (err) { next(err); }
 };
 
@@ -167,6 +185,7 @@ exports.listInvoices = async (req, res, next) => {
         include: {
           customer: { select: { name: true, customerCode: true } },
           lines: true,
+          deliveryReceipts: { select: { id: true, drNo: true, status: true } },
           payments: { orderBy: { paymentDate: 'asc' } },
         },
         orderBy: { invoiceDate: 'desc' },
@@ -182,7 +201,8 @@ exports.getInvoice = async (req, res, next) => {
   try {
     const inv = await prisma.invoice.findUnique({
       where: { id: Number(req.params.id) },
-      include: { customer: true, lines: { include: { account: true } }, payments: true },
+      include: { customer: true, lines: { include: { account: true } }, payments: true,
+        deliveryReceipts: { select: { id: true, drNo: true, status: true } } },
     });
     if (!inv) throw createError('Invoice not found', 404);
     res.json(inv);
@@ -191,16 +211,21 @@ exports.getInvoice = async (req, res, next) => {
 
 exports.createInvoice = async (req, res, next) => {
   try {
-    const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
+    const { customerId, invoiceDate, dueDate, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, totalAmount, processedLines } =
       await computeInvoiceTotals(await resolvePackageLines(lines, req.businessId));
+
+    // Validate the delivery receipt before anything is written.
+    const drLink = req.body.deliveryReceiptId
+      ? await drCtrl.prepareLink(req.body.deliveryReceiptId, customerId, req.businessId)
+      : null;
 
     const invoiceNo = await genInvNo();
     const inv = await prisma.invoice.create({
       data: {
         businessId: req.businessId,
         invoiceNo, customerId: Number(customerId),
-        invoiceDate: new Date(invoiceDate), dueDate: new Date(dueDate),
+        invoiceDate: new Date(invoiceDate), dueDate: new Date(dueDate), paymentTerms: paymentTerms || null,
         description, notes, subtotal, vatAmount, totalAmount,
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
@@ -210,6 +235,15 @@ exports.createInvoice = async (req, res, next) => {
       },
       include: { customer: true, lines: true },
     });
+
+    if (drLink) {
+      try {
+        await drCtrl.applyLink(drLink, inv.id);
+      } catch (err) {
+        // The invoice exists and is valid; do not fail the request over the link.
+        logger.error(`[INVOICE ${inv.invoiceNo} — DR LINK FAILED] dr=${drLink.id} biz=${req.businessId} — ${err.message}`);
+      }
+    }
 
     // ── Auto-post to GL ──────────────────────────────────────────────────────
     const glLines = buildInvoiceGLLines(inv);
@@ -234,7 +268,7 @@ exports.updateInvoice = async (req, res, next) => {
     if (inv.status === 'PAID') throw createError('Cannot edit a fully paid invoice.', 400);
     if (inv.status === 'VOID') throw createError('Cannot edit a voided invoice.', 400);
 
-    const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
+    const { customerId, invoiceDate, dueDate, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, totalAmount, processedLines } =
       await computeInvoiceTotals(await resolvePackageLines(lines, req.businessId));
 
@@ -254,6 +288,7 @@ exports.updateInvoice = async (req, res, next) => {
         customerId: Number(customerId),
         invoiceDate: new Date(invoiceDate),
         dueDate: new Date(dueDate),
+        paymentTerms: paymentTerms || null,
         description, notes, subtotal, vatAmount, totalAmount, status,
         lines: {
           deleteMany: {},
@@ -404,41 +439,44 @@ exports.markShipped = async (req, res, next) => {
       },
     });
 
-    res.json(updated);
+    // Shipping an invoice also produces its delivery receipt (unless one already exists
+    // or the caller opts out). A failure here must not undo the shipment.
+    let deliveryReceipt = null;
+    if (req.body.createDr !== false) {
+      try {
+        deliveryReceipt = await drCtrl.createForShipment(req.businessId, id, { shippedDate, shippingAddress, courier, trackingNumber });
+      } catch (err) {
+        logger.error(`[INVOICE ${inv.invoiceNo} — SHIP DR FAILED] biz=${req.businessId} — ${err.message}`);
+      }
+    }
+
+    res.json({ ...updated, deliveryReceipt });
   } catch (err) { next(err); }
 };
 
 exports.agingReport = async (req, res, next) => {
   try {
-    const today = new Date();
+    const asOf = req.query.asOf || todayPH();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number.isNaN(Date.parse(`${asOf}T00:00:00Z`))) {
+      throw createError('asOf must be a valid date in YYYY-MM-DD format', 400);
+    }
+    const basis = req.query.basis === 'invoice' ? 'invoice' : 'due';
+
     const invoices = await prisma.invoice.findMany({
-      where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
+      where: {
+        businessId: req.businessId,
+        status: { not: 'VOID' },
+        invoiceDate: { lte: new Date(`${asOf}T00:00:00Z`) },
+      },
+      include: { payments: { select: { amount: true, paymentDate: true, status: true } } },
     });
 
-    // Fetch customer names separately (not via `include`) so an invoice whose
-    // customer was deleted out from under it (orphaned FK) can't crash the
-    // whole report — Prisma throws on `include` when a required relation
-    // resolves to null.
-    const customerIds = [...new Set(invoices.map((inv) => inv.customerId))];
+    // Customer names are fetched separately (not via `include`) so an invoice whose
+    // customer was deleted (orphaned FK) cannot crash the whole report.
+    const customerIds = [...new Set(invoices.map((i) => i.customerId))];
     const customers = await prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, name: true } });
     const customerNames = Object.fromEntries(customers.map((c) => [c.id, c.name]));
 
-    const report = invoices.map((inv) => {
-      const due = new Date(inv.dueDate);
-      const daysOverdue = Math.max(0, Math.floor((today - due) / 86400000));
-      const outstanding = Number(inv.totalAmount) - Number(inv.paidAmount);
-      return {
-        invoiceNo: inv.invoiceNo, customer: customerNames[inv.customerId] || 'Unknown customer', customerId: inv.customerId,
-        dueDate: inv.dueDate, outstanding, daysOverdue, notes: inv.notes,
-        bucket: daysOverdue === 0 ? 'Current'
-          : daysOverdue <= 30 ? '1-30 days'
-          : daysOverdue <= 60 ? '31-60 days'
-          : daysOverdue <= 90 ? '61-90 days'
-          : 'Over 90 days',
-      };
-    });
-    const buckets = ['Current','1-30 days','31-60 days','61-90 days','Over 90 days'];
-    const summary = Object.fromEntries(buckets.map((b) => [b, report.filter((r) => r.bucket === b).reduce((s, r) => s + r.outstanding, 0)]));
-    res.json({ items: report, summary, total: report.reduce((s, r) => s + r.outstanding, 0) });
+    res.json({ ...buildAging(invoices, { asOf, basis, customerNames }), asOf, basis });
   } catch (err) { next(err); }
 };

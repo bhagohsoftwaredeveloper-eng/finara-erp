@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { receivable as rApi, accounts as acctApi, notifications as notifApi, inventory as invApi } from '@/lib/api';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { receivable as rApi, accounts as acctApi, notifications as notifApi, inventory as invApi, settings as settingsApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Ban, Filter, X,
@@ -17,6 +19,8 @@ import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import { useBusiness, isPreCutover } from '@/lib/businessContext';
 import { useDraftGuard } from '@/lib/useDraftGuard';
+import { todayPH } from '@/lib/arAging';
+import { printDr } from '@/lib/drPrint';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
 // A package line shows what it contains (names and quantities) but never the
@@ -49,7 +53,69 @@ const computeVAT = (amount, code) =>
     : { base: amount, vat: 0, total: amount };
 
 // ─── Invoice Detail Modal ─────────────────────────────────────
-function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShip }) {
+// Delivery receipts on an invoice: see them, make one, or connect one that already exists.
+function InvoiceDrSection({ invoice, onCreate, onRefresh }) {
+  const [free, setFree] = useState([]);
+  const [pick, setPick] = useState('');
+  const [busy, setBusy] = useState(false);
+  const active = (invoice.deliveryReceipts || []).filter((d) => d.status !== 'CANCELLED');
+
+  useEffect(() => {
+    rApi.deliveryReceipts.list({ customerId: invoice.customerId })
+      .then(({ data }) => setFree(data.filter((d) => !d.invoice && d.status !== 'CANCELLED')))
+      .catch(() => {}); // picker just stays empty
+  }, [invoice.id, invoice.deliveryReceipts]);
+
+  const link = async () => {
+    setBusy(true);
+    try {
+      await rApi.deliveryReceipts.link(Number(pick), invoice.id);
+      toast.success('Delivery receipt linked');
+      setPick('');
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to link delivery receipt');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <h4 className="text-sm font-semibold text-gray-700 mb-2">Delivery Receipts</h4>
+      <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-3">
+        {active.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {active.map((d) => (
+              <Link key={d.id} href={`/receivable/delivery-receipts?open=${d.id}`}
+                className="text-xs font-mono text-blue-600 bg-blue-50 rounded px-2 py-1 hover:bg-blue-100">
+                {d.drNo} · {d.status.toLowerCase()}
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No delivery receipt yet for this invoice.</p>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-secondary btn-sm" onClick={onCreate}>
+            <FileText className="w-3.5 h-3.5" /> Create DR
+          </button>
+          {free.length > 0 && (
+            <>
+              <select className="select text-sm min-w-[13rem]" value={pick} onChange={(e) => setPick(e.target.value)}>
+                <option value="">— Link an existing DR —</option>
+                {free.map((d) => <option key={d.id} value={d.id}>{d.drNo} · {formatDate(d.drDate)} · {d.status.toLowerCase()}</option>)}
+              </select>
+              <button type="button" className="btn-secondary btn-sm" disabled={!pick || busy} onClick={link}>Link</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShip, onCreateDr, onRefresh }) {
   const balance = Number(invoice.totalAmount) - Number(invoice.paidAmount);
   const pct = invoice.totalAmount > 0
     ? (Number(invoice.paidAmount) / Number(invoice.totalAmount)) * 100
@@ -112,6 +178,7 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
         <div class="info-box"><div class="info-lbl">Status</div><div class="info-val">${badge(invoice.status)}</div></div>
         <div class="info-box"><div class="info-lbl">Invoice Date</div><div class="info-val">${dateFmt(invoice.invoiceDate)}</div></div>
         <div class="info-box"><div class="info-lbl">Due Date</div><div class="info-val">${dateFmt(invoice.dueDate)}</div></div>
+        ${invoice.paymentTerms ? `<div class="info-box"><div class="info-lbl">Payment Terms</div><div class="info-val">${invoice.paymentTerms}</div></div>` : ''}
         <div class="info-box"><div class="info-lbl">Customer TIN</div><div class="info-val mono small">${invoice.customer?.tin || '—'}</div></div>
       </div>
       ${invoice.description ? `<div class="desc-box">${invoice.description}</div>` : ''}
@@ -177,6 +244,12 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
                 </span>}
               </span>
             </div>
+            {invoice.paymentTerms && (
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Payment Terms</span>
+                <span className="font-medium">{invoice.paymentTerms}</span>
+              </div>
+            )}
             <div>
               <span className="text-gray-500 block text-xs uppercase tracking-wide mb-0.5">Customer TIN</span>
               <span className="font-mono text-xs">{invoice.customer?.tin || '—'}</span>
@@ -298,6 +371,10 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
               </div>
             </div>
           )}
+
+          {invoice.status !== 'VOID' && (
+            <InvoiceDrSection invoice={invoice} onCreate={onCreateDr} onRefresh={onRefresh} />
+          )}
         </div>
 
         <div className="modal-footer">
@@ -349,7 +426,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
   const [form, setForm] = useState({
     paymentDate:   new Date().toISOString().split('T')[0],
     amount:        balance.toFixed(2),
-    paymentMethod: 'Bank Transfer',
+    paymentMethod: 'Cash',
     reference:     '',
     notes:         '',
   });
@@ -385,7 +462,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-md">
+      <div className="modal max-w-2xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">Record Collection</h3>
           <button onClick={handleClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -398,9 +475,9 @@ function CollectionModal({ invoice, onClose, onCollected }) {
                 <span className="text-gray-600">Invoice</span>
                 <span className="font-mono font-medium">{invoice.invoiceNo}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Customer</span>
-                <span className="font-medium">{invoice.customer?.name}</span>
+              <div className="flex justify-between gap-6">
+                <span className="text-gray-600 flex-shrink-0">Customer</span>
+                <span className="font-medium text-right">{invoice.customer?.name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Invoice Total</span>
@@ -418,6 +495,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="label">Collection Date *</label>
               <input type="date" className="input" required value={form.paymentDate} onChange={set('paymentDate')} />
@@ -448,7 +526,9 @@ function CollectionModal({ invoice, onClose, onCollected }) {
                 ))}
               </div>
             </div>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="label">Payment Method *</label>
               <select className="select" required value={form.paymentMethod} onChange={set('paymentMethod')}>
@@ -464,6 +544,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
                 onChange={set('reference')}
                 placeholder="Official receipt no., transaction ID..."
               />
+            </div>
             </div>
 
             <div className="form-group">
@@ -495,13 +576,20 @@ function ShippingModal({ invoice, onClose, onShipped }) {
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const alreadyShipped = invoice.deliveryStatus === 'SHIPPED';
+  // Shipping an invoice also makes its delivery receipt and prints it, unless it already has one.
+  const existingDr = (invoice.deliveryReceipts || []).find((d) => d.status !== 'CANCELLED');
+  const [makeDr, setMakeDr] = useState(true);
 
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await rApi.invoices.ship(invoice.id, form);
+      const { data } = await rApi.invoices.ship(invoice.id, { ...form, createDr: !existingDr && makeDr });
       toast.success(alreadyShipped ? 'Shipping info updated' : 'Invoice marked as shipped');
+      if (data.deliveryReceipt) {
+        toast.success(`${data.deliveryReceipt.drNo} created`);
+        printDr(data.deliveryReceipt); // opens the print window straight away
+      }
       onShipped();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update shipping info');
@@ -537,6 +625,19 @@ function ShippingModal({ invoice, onClose, onShipped }) {
                 <input className="input" value={form.trackingNumber} onChange={set('trackingNumber')} />
               </div>
             </div>
+            {existingDr ? (
+              <p className="text-xs text-gray-500">
+                Delivery receipt <span className="font-mono">{existingDr.drNo}</span> already exists for this invoice.
+              </p>
+            ) : (
+              <label className="flex items-start gap-3 bg-gray-50 rounded-xl px-4 py-3 cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={makeDr} onChange={(e) => setMakeDr(e.target.checked)} />
+                <span>
+                  <span className="text-sm font-medium text-gray-700 block">Create the delivery receipt and print it</span>
+                  <span className="text-xs text-gray-500">Uses this ship date, address and courier. It will also appear under Delivery Receipts.</span>
+                </span>
+              </label>
+            )}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
@@ -551,12 +652,13 @@ function ShippingModal({ invoice, onClose, onShipped }) {
 }
 
 // ─── Create Invoice Modal ─────────────────────────────────────
-function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, onCustomerAdded }) {
+function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, prefill, onClose, onSaved, onCustomerAdded, onTermAdded }) {
   const [form, setForm] = useState(() => {
     if (invoice) return {
       customerId:  String(invoice.customerId),
       invoiceDate: invoice.invoiceDate.slice(0, 10),
       dueDate:     invoice.dueDate.slice(0, 10),
+      paymentTerms: invoice.paymentTerms || '',
       description: invoice.description || '',
       notes:       invoice.notes || '',
       lines: invoice.lines.map((l) => ({
@@ -571,13 +673,28 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
         }),
       })),
     };
+    const defaultTerm = paymentTerms.find((t) => t.isDefault);
+    if (prefill) {
+      // Converting a delivery receipt: its customer, lines and (if set) the customer's default term.
+      const customerTermId = customers.find((c) => c.id === prefill.customerId)?.defaultTermId;
+      const term = paymentTerms.find((t) => t.id === customerTermId) || defaultTerm;
+      const invoiceDate = new Date().toISOString().split('T')[0];
+      const due = new Date(invoiceDate);
+      due.setDate(due.getDate() + (term ? term.days : 30));
+      return {
+        customerId: String(prefill.customerId), invoiceDate, dueDate: due.toISOString().split('T')[0],
+        paymentTerms: term ? term.name : '', description: `Per delivery receipt ${prefill.drNo}`, notes: '',
+        lines: prefill.lines,
+      };
+    }
     const invoiceDate = new Date().toISOString().split('T')[0];
     const due = new Date(invoiceDate);
-    due.setDate(due.getDate() + 30);
+    due.setDate(due.getDate() + (defaultTerm ? defaultTerm.days : 30));
     return {
       customerId:   '',
       invoiceDate,
       dueDate:      due.toISOString().split('T')[0],
+      paymentTerms: defaultTerm ? defaultTerm.name : '',
       description:  '',
       notes:        '',
       lines: [
@@ -592,10 +709,43 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
       .then((r) => setPackages(r.data || []))
       .catch(() => {}); // the picker simply stays empty
   }, []);
-  const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : 'invoice:new');
+  const [quick, setQuick]   = useState(null); // null | { name, days, saving } while the quick-add term row is open
+  // A prefilled invoice gets its own draft key so a saved blank-invoice draft never overwrites it.
+  const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : prefill ? `invoice:dr:${prefill.id}` : 'invoice:new');
   const { clearDraft: clearInvoiceDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // Quick add: create a term without leaving the invoice, then select it. Selecting it
+  // changes form.paymentTerms, so the due-date effect below fills in the due date.
+  const addTerm = async () => {
+    const name = quick.name.trim();
+    if (!name) { toast.error('Enter a name for the term'); return; }
+    if (quick.days === '' || Number(quick.days) < 0) { toast.error('Enter the number of days (0 or more)'); return; }
+    setQuick((q) => ({ ...q, saving: true }));
+    try {
+      const { data } = await settingsApi.createPaymentTerm({ name, days: Number(quick.days) });
+      onTermAdded(data);
+      setForm((f) => ({ ...f, paymentTerms: data.name }));
+      setQuick(null);
+      toast.success(`Term "${data.name}" added`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to add term');
+      setQuick((q) => ({ ...q, saving: false }));
+    }
+  };
+
+  // New invoices only: choosing a customer pre-selects that customer's default term.
+  // The due-date effect below then recomputes the date. An edit keeps its own terms.
+  const setCustomer = (id) => {
+    setForm((f) => {
+      const next = { ...f, customerId: id };
+      const termId = !invoice && customers.find((c) => String(c.id) === String(id))?.defaultTermId;
+      const term = termId && paymentTerms.find((t) => t.id === termId);
+      if (term) next.paymentTerms = term.name;
+      return next;
+    });
+  };
   const setLine = (i, k, v) =>
     setForm((f) => ({ ...f, lines: f.lines.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)) }));
   const addLine = () =>
@@ -629,14 +779,25 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
     });
   };
 
-  // Auto due date: +30 days from invoice date
+  // Due date = invoice date + the selected term's days (falls back to 30 if no term is set).
+  // Only recompute when invoiceDate/paymentTerms actually change from their last-seen values —
+  // the initial due date is already correct (computed in the useState initializer for a new
+  // invoice, or loaded verbatim from the existing invoice for an edit), so recomputing on mount
+  // would silently clobber a due date the user had manually overridden before saving. Comparing
+  // against last-seen values (rather than a simple "has this effect run before" flag) keeps this
+  // correct under React StrictMode, which double-invokes effects on mount in development.
+  const lastDueDateDepsRef = useRef({ invoiceDate: form.invoiceDate, paymentTerms: form.paymentTerms });
   useEffect(() => {
-    if (form.invoiceDate && !form.dueDate) {
-      const d = new Date(form.invoiceDate);
-      d.setDate(d.getDate() + 30);
-      setForm((f) => ({ ...f, dueDate: d.toISOString().split('T')[0] }));
-    }
-  }, [form.invoiceDate]);
+    if (!form.invoiceDate) return;
+    const prev = lastDueDateDepsRef.current;
+    if (prev.invoiceDate === form.invoiceDate && prev.paymentTerms === form.paymentTerms) return;
+    lastDueDateDepsRef.current = { invoiceDate: form.invoiceDate, paymentTerms: form.paymentTerms };
+    const term = paymentTerms.find((t) => t.name === form.paymentTerms);
+    const days = term ? term.days : 30;
+    const d = new Date(form.invoiceDate);
+    d.setDate(d.getDate() + days);
+    setForm((f) => ({ ...f, dueDate: d.toISOString().split('T')[0] }));
+  }, [form.invoiceDate, form.paymentTerms]);
 
   const revenueAccounts = accounts.filter((a) => a.accountType === 'REVENUE');
 
@@ -667,6 +828,7 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
       const payload = {
         ...form,
         customerId: Number(form.customerId),
+        ...(prefill && { deliveryReceiptId: prefill.id }),
         lines: validLines.map((l) => ({
           accountId:   Number(l.accountId),
           description: l.description,
@@ -710,7 +872,7 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
                 <CustomerSelect
                   customers={customers}
                   value={form.customerId}
-                  onChange={(id) => setForm((f) => ({ ...f, customerId: id }))}
+                  onChange={setCustomer}
                   onCustomerAdded={onCustomerAdded}
                   required
                 />
@@ -729,6 +891,30 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
               <div className="form-group">
                 <label className="label">Due Date *</label>
                 <input type="date" className="input" required value={form.dueDate} onChange={set('dueDate')} />
+              </div>
+              <div className="form-group">
+                <label className="label">Payment Terms</label>
+                <select className="select" value={form.paymentTerms} onChange={set('paymentTerms')}>
+                  <option value="">— none —</option>
+                  {paymentTerms.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+                </select>
+                {quick ? (
+                  <div className="flex flex-wrap items-center gap-2 mt-2 p-2 bg-gray-50 rounded-xl">
+                    <input className="input flex-1 min-w-[7rem]" placeholder="Name, e.g. Net 45" maxLength={50} autoFocus
+                      value={quick.name} onChange={(e) => setQuick((q) => ({ ...q, name: e.target.value }))} />
+                    <input className="input w-20" type="number" min="0" max="365" step="1" placeholder="Days"
+                      value={quick.days} onChange={(e) => setQuick((q) => ({ ...q, days: e.target.value }))} />
+                    <button type="button" className="btn-primary btn-sm" disabled={quick.saving} onClick={addTerm}>
+                      {quick.saving ? 'Adding…' : 'Add'}
+                    </button>
+                    <button type="button" className="btn-secondary btn-sm" onClick={() => setQuick(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <button type="button" className="text-xs text-blue-600 hover:underline mt-1"
+                    onClick={() => setQuick({ name: '', days: '', saving: false })}>
+                    + New payment term
+                  </button>
+                )}
               </div>
             </div>
 
@@ -894,6 +1080,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices]   = useState([]);
   const [customers, setCustomers] = useState([]);
   const [accounts, setAccounts]   = useState([]);
+  const [paymentTerms, setPaymentTerms] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
@@ -901,6 +1088,8 @@ export default function InvoicesPage() {
   const [filter, setFilter]       = useState({ status: '', customerId: '', from: '', to: '', search: '' });
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [modal, setModal]         = useState(null);
+  const [prefill, setPrefill]     = useState(null);
+  const router = useRouter();
   const autoOpenedRef = useRef(false);
   const LIMIT = 15;
 
@@ -935,7 +1124,56 @@ export default function InvoicesPage() {
   useEffect(() => {
     rApi.customers.list({ active: true }).then((r) => setCustomers(r.data));
     acctApi.list({ active: true }).then((r) => setAccounts(r.data));
+    settingsApi.listPaymentTerms().then((r) => setPaymentTerms(r.data.filter((t) => t.isActive)));
   }, []);
+
+  // "Convert to Invoice" on a delivery receipt arrives here as ?fromDr=<id>.
+  useEffect(() => {
+    const fromDr = new URLSearchParams(window.location.search).get('fromDr');
+    if (!fromDr) return;
+    window.history.replaceState(null, '', window.location.pathname); // a refresh must not reopen it
+    rApi.deliveryReceipts.get(fromDr).then(({ data: dr }) => {
+      if (dr.invoice) { toast.error(`${dr.drNo} is already linked to ${dr.invoice.invoiceNo}`); return; }
+      if (dr.status === 'CANCELLED') { toast.error(`${dr.drNo} is cancelled`); return; }
+      setPrefill({
+        id: dr.id, drNo: dr.drNo, customerId: dr.customerId,
+        lines: dr.lines.map((l) => ({
+          accountId: l.item?.revenueAccountId ? String(l.item.revenueAccountId) : '',
+          description: l.description, quantity: String(Number(l.quantity)),
+          unitPrice: l.item ? String(Number(l.item.sellingPrice)) : '', vatCode: 'EXEMPT',
+        })),
+      });
+      setModal({ type: 'create' });
+    }).catch(() => toast.error('Could not load that delivery receipt'));
+  }, []);
+
+  // After a collection is recorded, offer to make the delivery receipt right away.
+  const offerDr = (inv) => {
+    if ((inv.deliveryReceipts || []).some((d) => d.status !== 'CANCELLED')) return;
+    toast((t) => (
+      <span className="text-sm">
+        Create a delivery receipt for {inv.invoiceNo}?
+        <button className="ml-3 btn-primary btn-sm" onClick={() => { toast.dismiss(t.id); createDr(inv); }}>Create DR</button>
+        <button className="ml-2 text-gray-400" onClick={() => toast.dismiss(t.id)}>No</button>
+      </span>
+    ), { duration: 10000 });
+  };
+
+  const refreshDetail = async () => {
+    const { data } = await rApi.invoices.get(modal.invoice.id);
+    setModal({ type: 'detail', invoice: data });
+    load();
+  };
+
+  const createDr = async (inv) => {
+    try {
+      const { data } = await rApi.deliveryReceipts.create({ invoiceId: inv.id, drDate: todayPH() });
+      toast.success(`${data.drNo} created`);
+      router.push(`/receivable/delivery-receipts?open=${data.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create delivery receipt');
+    }
+  };
 
   useEffect(() => {
     if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
@@ -1172,6 +1410,14 @@ export default function InvoicesPage() {
                   >
                     <td>
                       <span className="font-mono font-medium text-green-700 text-sm">{inv.invoiceNo}</span>
+                      {(inv.deliveryReceipts || []).filter((d) => d.status !== 'CANCELLED').map((d) => (
+                        <Link key={d.id} href={`/receivable/delivery-receipts?open=${d.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-2 text-[10px] font-mono text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 hover:bg-blue-100"
+                          title={`Delivery receipt ${d.drNo} (${d.status.toLowerCase()})`}>
+                          {d.drNo}
+                        </Link>
+                      ))}
                       {isPreCutover(inv.invoiceDate, booksStartDate) && (
                         <span
                           className="badge badge-gray ml-2"
@@ -1189,6 +1435,7 @@ export default function InvoicesPage() {
                     <td>
                       <span className={`text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
                         {formatDate(inv.dueDate)}
+                        {inv.paymentTerms && <span className="block text-xs text-gray-400">{inv.paymentTerms}</span>}
                         {isOverdue && <span className="block text-xs">⚠ Overdue</span>}
                       </span>
                     </td>
@@ -1261,6 +1508,15 @@ export default function InvoicesPage() {
                             <Truck className="w-4 h-4" />
                           </button>
                         )}
+                        {inv.status !== 'VOID' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); createDr(inv); }}
+                            className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Create delivery receipt"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1302,8 +1558,11 @@ export default function InvoicesPage() {
         <CreateInvoiceModal
           customers={customers}
           accounts={accounts}
-          onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); load(); }}
+          paymentTerms={paymentTerms}
+          onTermAdded={(t) => setPaymentTerms((prev) => [...prev, t].sort((a, b) => a.days - b.days))}
+          prefill={prefill}
+          onClose={() => { setModal(null); setPrefill(null); }}
+          onSaved={() => { setModal(null); setPrefill(null); load(); }}
           onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])}
         />
       )}
@@ -1311,6 +1570,8 @@ export default function InvoicesPage() {
         <CreateInvoiceModal
           customers={customers}
           accounts={accounts}
+          paymentTerms={paymentTerms}
+          onTermAdded={(t) => setPaymentTerms((prev) => [...prev, t].sort((a, b) => a.days - b.days))}
           invoice={modal.invoice}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
@@ -1325,13 +1586,15 @@ export default function InvoicesPage() {
           onVoid={() => { handleVoid(modal.invoice); setModal(null); }}
           onEdit={() => setModal({ type: 'edit', invoice: modal.invoice })}
           onShip={() => setModal({ type: 'ship', invoice: modal.invoice })}
+          onCreateDr={() => createDr(modal.invoice)}
+          onRefresh={refreshDetail}
         />
       )}
       {modal?.type === 'collect' && (
         <CollectionModal
           invoice={modal.invoice}
           onClose={() => setModal(null)}
-          onCollected={() => { setModal(null); load(); }}
+          onCollected={() => { const inv = modal.invoice; setModal(null); load(); offerDr(inv); }}
         />
       )}
       {modal?.type === 'ship' && (

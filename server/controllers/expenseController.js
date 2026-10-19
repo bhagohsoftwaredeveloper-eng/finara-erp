@@ -6,6 +6,32 @@ const { recordAudit, diff } = require('../utils/audit');
 const logger = require('../utils/logger');
 const { resolveCount, saveCount } = require('../utils/cashDenomination');
 const { normalizeVoucherItems, totalDebit } = require('../utils/voucherLines');
+const { getFundSettings } = require('../utils/fundSettings');
+
+// The Marketing Fund account a voucher is paid from, when the fund is on and the voucher's
+// category is one of its marketing categories. null otherwise. Never throws: the fund is an
+// extra, and a problem with it must not stop a payment, so any failure (or a fund account
+// that is not in the chart yet, which would make the journal entry fail) means "pay from cash".
+async function marketingFundCode(voucher) {
+  try {
+    const { marketing } = await getFundSettings(voucher.businessId);
+    if (!marketing.enabled || !marketing.categories.includes(voucher.category)) return null;
+    const account = await prisma.account.findFirst({
+      where: { businessId: voucher.businessId, accountCode: marketing.accountCode },
+    });
+    return account ? marketing.accountCode : null;
+  } catch (err) {
+    logger.error(`[MARKETING FUND LOOKUP FAILED] voucher=${voucher.voucherNo} — ${err.message}`);
+    return null;
+  }
+}
+
+// Optional Driver / Vehicle cost tags on an item. Added only when set, so untagged
+// items are stored exactly as before.
+const itemTags = (it) => ({
+  ...(it.driverId && { driverId: Number(it.driverId) }),
+  ...(it.vehicleId && { vehicleId: Number(it.vehicleId) }),
+});
 
 // Compact item snapshot for audit diffs — avoids dumping full nested objects.
 const itemSnapshot = (items = []) => items.map(it => ({ description: it.description, amount: Number(it.amount), creditAmount: Number(it.creditAmount || 0) }));
@@ -400,6 +426,7 @@ exports.pay = async (req, res, next) => {
     const cashCode = linkedRequest?.cashAccountCode
                   || creditCode
                   || paymentAccountCode
+                  || await marketingFundCode(voucher)
                   || (voucher.type === 'PETTY_CASH' ? '1011' : '1020');
     const totalAmt = Number(voucher.totalAmount);
 
@@ -435,10 +462,10 @@ exports.pay = async (req, res, next) => {
       for (const item of voucher.items) {
         if (Number(item.amount) <= 0) continue; // credit-only line
         if (item.accountId) {
-          drLines.push({ accountId: item.accountId, debit: Number(item.amount), description: item.description });
+          drLines.push({ accountId: item.accountId, debit: Number(item.amount), description: item.description, ...itemTags(item) });
         } else {
           const code = CATEGORY_ACCOUNT[voucher.category] || '6390';
-          drLines.push({ accountCode: code, debit: Number(item.amount), description: item.description });
+          drLines.push({ accountCode: code, debit: Number(item.amount), description: item.description, ...itemTags(item) });
         }
       }
     } else {
@@ -456,6 +483,7 @@ exports.pay = async (req, res, next) => {
           description: i.description,
           amount:      Number(i.amount),
           accountId:   i.accountId,
+          ...itemTags(i),
         })),
         cashAccountCode: request.cashAccountCode,
       });

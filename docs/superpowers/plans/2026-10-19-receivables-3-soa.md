@@ -12,7 +12,7 @@ Spec: `docs/superpowers/specs/2026-10-19-receivables-docs-design.md` (section 3)
 
 **Spec note:** the aging page already prints/exports a basic per-customer statement (open invoices with payment history). It stays as it is. The new page adds the ledger mode, the as-of date, terms, the aging summary and all-customers printing.
 
-**Prerequisites:** phases 1 and 2 merged (`termsName` on invoices, `lib/arAging.js`).
+**Prerequisites:** phases 1 and 2 merged (`paymentTerms` on invoices, `lib/arAging.js`).
 
 ## Global Constraints
 
@@ -33,7 +33,7 @@ Spec: `docs/superpowers/specs/2026-10-19-receivables-docs-design.md` (section 3)
 - Test: `tests/arStatement.test.js`
 
 **Interfaces:**
-- Consumes: invoices shaped `{ invoiceNo, status, invoiceDate, totalAmount, paidAmount, termsName, payments: [{ paymentNo, paymentDate, amount, paymentMethod, reference, status }] }`.
+- Consumes: invoices shaped `{ invoiceNo, status, invoiceDate, totalAmount, paidAmount, paymentTerms, payments: [{ paymentNo, paymentDate, amount, paymentMethod, reference, status }] }`.
 - Produces: `buildLedger(invoices, { from, to }): { openingBalance, rows, totalDebits, totalCredits, closingBalance }` with `from`/`to` as `'YYYY-MM-DD'` (inclusive). Each row: `{ date, type: 'INVOICE'|'PAYMENT', reference, description, debit, credit, balance }`.
 - Produces: `dateKey(d): string` exported from `lib/arAging.js`.
 
@@ -53,7 +53,7 @@ const pay = (over = {}) => ({
 });
 const inv = (over = {}) => ({
   invoiceNo: 'INV-000001', status: 'OPEN', invoiceDate: '2026-01-10', totalAmount: 1000, paidAmount: 0,
-  termsName: 'Net 30', payments: [], ...over,
+  paymentTerms: 'Net 30', payments: [], ...over,
 });
 
 const inv1 = inv({ status: 'PARTIAL', paidAmount: 400, payments: [pay()] });
@@ -146,7 +146,7 @@ function buildLedger(invoices, { from, to }) {
     const date = dateKey(inv.invoiceDate);
     txns.push({
       date, order: 0, type: 'INVOICE', reference: inv.invoiceNo,
-      description: inv.termsName ? `Invoice · ${inv.termsName}` : 'Invoice',
+      description: inv.paymentTerms ? `Invoice · ${inv.paymentTerms}` : 'Invoice',
       debit: round2(inv.totalAmount), credit: 0,
     });
 
@@ -239,7 +239,7 @@ const run = (fn, req) => new Promise((resolve, reject) => {
 const cust = (id, name) => ({ id, customerCode: `CUS-00${id}`, name, tin: null, address: null, email: null, phone: null });
 const inv = (over = {}) => ({
   invoiceNo: 'INV-000001', customerId: 4, status: 'OPEN', invoiceDate: new Date('2026-01-01T00:00:00Z'),
-  dueDate: new Date('2026-01-31T00:00:00Z'), totalAmount: 1000, paidAmount: 0, termsName: 'Net 30',
+  dueDate: new Date('2026-01-31T00:00:00Z'), totalAmount: 1000, paidAmount: 0, paymentTerms: 'Net 30',
   notes: null, payments: [], ...over,
 });
 
@@ -261,7 +261,7 @@ describe('getStatements, open items', () => {
     expect(r.statements).toHaveLength(1);
     expect(r.statements[0].customer.name).toBe('ACME');
     expect(r.statements[0].total).toBe(1000);
-    expect(r.statements[0].items[0]).toMatchObject({ invoiceNo: 'INV-000001', termsName: 'Net 30', bucket: '1-30 days' });
+    expect(r.statements[0].items[0]).toMatchObject({ invoiceNo: 'INV-000001', paymentTerms: 'Net 30', bucket: '1-30 days' });
   });
 
   test('404 when the customer belongs to another business', async () => {
@@ -472,7 +472,7 @@ function openStatementHtml(st) {
     <tr>
       <td class="mono">${esc(i.invoiceNo)}</td>
       <td>${dateFmt(i.invoiceDate)}</td>
-      <td>${esc(i.termsName || '—')}</td>
+      <td>${esc(i.paymentTerms || '—')}</td>
       <td>${dateFmt(i.dueDate)}</td>
       <td class="right">${phpFmt(i.total)}</td>
       <td class="right">${phpFmt(i.paid)}</td>
@@ -556,7 +556,7 @@ function StatementCard({ st, mode }) {
                 <tr key={i.invoiceNo} className="border-b border-gray-100">
                   <td className="pl-4 font-mono text-sm text-green-700">{i.invoiceNo}</td>
                   <td>{formatDate(i.invoiceDate)}</td>
-                  <td>{i.termsName || '—'}</td>
+                  <td>{i.paymentTerms || '—'}</td>
                   <td>
                     {formatDate(i.dueDate)}
                     {i.daysOverdue > 0 && <span className="text-xs text-red-500 ml-2">{i.daysOverdue}d overdue</span>}

@@ -6,7 +6,7 @@ import {
   Users, ClipboardList, Building2, ChevronDown, LogOut, Settings,
   Package, Landmark, Wallet,
   ShoppingCart, Banknote, BarChart3, Repeat,
-  PanelLeftClose, PanelLeftOpen, HandCoins, Scale,
+  PanelLeftClose, PanelLeftOpen, HandCoins, Scale, PiggyBank,
   GraduationCap,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
@@ -40,9 +40,11 @@ const NAV = [
         label: 'Accounts Receivable', icon: PesoReceipt,
         children: [
           { label: 'Invoices',   href: '/receivable' },
+          { label: 'Delivery Receipts', href: '/receivable/delivery-receipts' },
           { label: 'Quotations', href: '/receivable/quotations' },
           { label: 'Customers',  href: '/receivable/customers' },
           { label: 'AR Aging',   href: '/receivable/aging' },
+          { label: 'Statements', href: '/receivable/statements' },
         ],
       },
       { label: 'Cash Sales', icon: Banknote, href: '/receivable/cash-sales' },
@@ -82,6 +84,7 @@ const NAV = [
       { label: 'Purchase Orders',  icon: ShoppingCart, href: '/purchase-orders' },
       { label: 'Expense Vouchers', icon: Wallet,       href: '/expenses' },
       { label: 'Cash Requests',    icon: HandCoins,    href: '/cash-requests' },
+      { label: 'Funds',            icon: PiggyBank,    href: '/funds' },
     ],
   },
   {
@@ -145,6 +148,9 @@ const NAV = [
         label: 'Reports', icon: FileText,
         children: [
           { label: 'Sales Report',     href: '/reports/sales' },
+          { label: 'Sales Summary',    href: '/reports/sales-summary' },
+          { label: 'Profit & Loss',    href: '/reports/profit-loss' },
+          { label: 'Expenses Summary', href: '/reports/expenses-summary' },
           { label: 'Trial Balance',    href: '/reports/trial-balance' },
           { label: 'Income Statement', href: '/reports/income-statement' },
           { label: 'Balance Sheet',    href: '/reports/balance-sheet' },

@@ -232,10 +232,48 @@ model JournalLine {
   credit      Decimal      @default(0) @db.Decimal(15, 2)
   description String?      @db.VarChar(255)
   lineOrder   Int          @default(0)
+  // Optional cost tags (see Driver / Vehicle). Plain columns, no relation, so a
+  // report can group by them without joins and deleting a tag never touches the books.
+  driverId    Int?
+  vehicleId   Int?
 
   @@index([entryId])
   @@index([accountId])
+  @@index([driverId])
+  @@index([vehicleId])
   @@map("journal_lines")
+}
+
+// ─── Cost tags: Drivers and Vehicles ───────────────────────
+// Optional tags on expense lines so reports can show cost per driver or per
+// vehicle (e.g. repairs & maintenance). JournalLine/ExpenseVoucherItem/BillLine
+// store only the ids.
+model Driver {
+  id         Int      @id @default(autoincrement())
+  businessId Int      @default(1)
+  code       String   @db.VarChar(30)
+  name       String   @db.VarChar(100)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("drivers")
+}
+
+model Vehicle {
+  id          Int      @id @default(autoincrement())
+  businessId  Int      @default(1)
+  code        String   @db.VarChar(30)
+  description String?  @db.VarChar(150)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@map("vehicles")
 }
 
 enum JournalStatus {
@@ -275,6 +313,7 @@ model Bill {
   vendor      Vendor     @relation(fields: [vendorId], references: [id])
   billDate    DateTime   @db.Date
   dueDate     DateTime   @db.Date
+  paymentTerms String?   @db.VarChar(50)
   description String?    @db.Text
   notes       String?    @db.Text
   subtotal    Decimal    @default(0) @db.Decimal(15, 2)
@@ -306,6 +345,8 @@ model BillLine {
   unitPrice   Decimal @default(0) @db.Decimal(15, 2)
   amount      Decimal @default(0) @db.Decimal(15, 2)
   vatCode     VatCode @default(VAT)
+  driverId    Int?
+  vehicleId   Int?
 
   @@index([billId])
   @@map("bill_lines")
@@ -363,12 +404,14 @@ model Customer {
   contactName  String?   @db.VarChar(100)
   email        String?   @db.VarChar(150)
   phone        String?   @db.VarChar(30)
+  defaultTermId Int?
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   invoices    Invoice[]
   quotations  Quotation[]
+  deliveryReceipts DeliveryReceipt[]
   student     Student?
 
   @@unique([businessId, customerCode])
@@ -384,6 +427,7 @@ model Invoice {
   customer    Customer      @relation(fields: [customerId], references: [id])
   invoiceDate DateTime      @db.Date
   dueDate     DateTime      @db.Date
+  paymentTerms String?      @db.VarChar(50)
   description String?       @db.Text
   notes       String?       @db.Text
   subtotal    Decimal       @default(0) @db.Decimal(15, 2)
@@ -402,6 +446,7 @@ model Invoice {
   lines       InvoiceLine[]
   payments    PaymentAR[]
   installment Installment?
+  deliveryReceipts DeliveryReceipt[]
 
   @@index([businessId])
   @@index([customerId])
@@ -429,6 +474,63 @@ model InvoiceLine {
 
   @@index([invoiceId])
   @@map("invoice_lines")
+}
+
+// ─── Delivery Receipts ─────────────────────────────────────
+enum DeliveryReceiptStatus {
+  DRAFT
+  DELIVERED
+  CANCELLED
+}
+
+model DeliveryReceipt {
+  id              Int                   @id @default(autoincrement())
+  businessId      Int                   @default(1)
+  drNo            String                @unique @db.VarChar(30)
+  customerId      Int
+  customer        Customer              @relation(fields: [customerId], references: [id])
+  invoiceId       Int?
+  invoice         Invoice?              @relation(fields: [invoiceId], references: [id])
+  drDate          DateTime              @db.Date
+  deliveryAddress String?               @db.Text
+  driverName      String?               @db.VarChar(100)
+  vehicleNo       String?               @db.VarChar(50)
+  // Optional links to the Drivers / Vehicles lists; driverName and vehicleNo keep the
+  // text that prints on the receipt (a courier such as LBC has no driver record).
+  driverId        Int?
+  vehicleId       Int?
+  notes           String?               @db.Text
+  status          DeliveryReceiptStatus @default(DRAFT)
+  // When true, marking DELIVERED takes the stocked lines out of inventory.
+  deductStock     Boolean               @default(false)
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?               @db.VarChar(255)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  lines           DeliveryReceiptLine[]
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([invoiceId])
+  @@index([status])
+  @@map("delivery_receipts")
+}
+
+model DeliveryReceiptLine {
+  id                Int             @id @default(autoincrement())
+  deliveryReceiptId Int
+  deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id], onDelete: Cascade)
+  itemId            Int?
+  item              InventoryItem?  @relation(fields: [itemId], references: [id])
+  description       String          @db.VarChar(255)
+  quantity          Decimal         @default(1) @db.Decimal(12, 3)
+  unit              String?         @db.VarChar(20)
+
+  @@index([deliveryReceiptId])
+  @@index([itemId])
+  @@map("delivery_receipt_lines")
 }
 
 model PaymentAR {
@@ -481,6 +583,7 @@ model Quotation {
   customer      Customer        @relation(fields: [customerId], references: [id])
   quotationDate DateTime        @db.Date
   validUntil    DateTime        @db.Date
+  paymentTerms  String?         @db.VarChar(50)
   description   String?         @db.Text
   notes         String?         @db.Text
   subtotal      Decimal         @default(0) @db.Decimal(15, 2)
@@ -641,6 +744,23 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+// ─── Payment Terms ──────────────────────────────────────────
+model PaymentTerm {
+  id         Int      @id @default(autoincrement())
+  businessId Int      @default(1)
+  name       String   @db.VarChar(50)
+  days       Int      @default(0)
+  isDefault  Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("payment_terms")
+}
+
 // ─── Inventory ─────────────────────────────────────────────
 model InventoryCategory {
   id          Int               @id @default(autoincrement())
@@ -689,6 +809,7 @@ model InventoryItem {
   quotationLines      QuotationLine[]
   cashSaleItems       CashSaleItem[]
   packageItems        PackageItem[]
+  deliveryReceiptLines DeliveryReceiptLine[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -855,6 +976,8 @@ model ExpenseVoucherItem {
   // voucher (credit is the payment account chosen at Pay); amount is the debit.
   creditAmount Decimal        @default(0) @db.Decimal(15, 2)
   receiptNo   String?         @db.VarChar(100)
+  driverId    Int?
+  vehicleId   Int?
 
   @@index([voucherId])
   @@map("expense_voucher_items")
@@ -987,6 +1110,7 @@ model PurchaseOrder {
   vendor       Vendor    @relation(fields: [vendorId], references: [id])
   orderDate    DateTime  @db.Date
   expectedDate DateTime? @db.Date
+  paymentTerms String?   @db.VarChar(50)
   status       POStatus  @default(DRAFT)
   notes        String?   @db.Text
   subtotal     Decimal   @default(0) @db.Decimal(15, 2)

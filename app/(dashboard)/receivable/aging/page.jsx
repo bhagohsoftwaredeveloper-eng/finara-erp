@@ -1,23 +1,25 @@
 'use client';
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { receivable as rApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   RefreshCw, AlertCircle, CheckCircle2, TrendingUp,
-  Users, ChevronDown, ChevronUp, Filter, Printer, History, FileSpreadsheet, Eye, X, Download,
+  Users, ChevronDown, ChevronUp, Filter, Printer, History, FileSpreadsheet, Eye, X, Download, FileText,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
 import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 import { exportToExcel } from '@/lib/export';
+import { AR_BUCKETS, ageOf, todayPH } from '@/lib/arAging';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Cell, PieChart, Pie, Legend,
 } from 'recharts';
 
 // ─── Constants ────────────────────────────────────────────────
-const BUCKETS = ['Current', '1-30 days', '31-60 days', '61-90 days', 'Over 90 days'];
+const BUCKETS = AR_BUCKETS;
 
 const BUCKET_COLORS = {
   'Current':       '#22c55e',
@@ -43,17 +45,6 @@ const STATUS_BADGE_CLASS = {
   VOID:    'bg-gray-100 text-gray-500',
 };
 
-// Days-overdue → bucket, mirrors the server-side aging calculation
-function bucketFor(dueDate) {
-  const daysOverdue = Math.max(0, Math.floor((new Date() - new Date(dueDate)) / 86400000));
-  const bucket = daysOverdue === 0 ? 'Current'
-    : daysOverdue <= 30 ? '1-30 days'
-    : daysOverdue <= 60 ? '31-60 days'
-    : daysOverdue <= 90 ? '61-90 days'
-    : 'Over 90 days';
-  return { daysOverdue, bucket };
-}
-
 // ─── Print a per-customer Statement of Account (outstanding invoices only) ──
 // Each invoice row is followed by its payment history (if any were recorded
 // against it) so the reader can see exactly what was collected and when.
@@ -78,7 +69,7 @@ async function printCustomerStatement(customerName, outstandingItems) {
       return `
       <tr>
         <td class="mono">${i.invoiceNo}</td>
-        <td>${dateFmt(i.dueDate)}</td>
+        <td>${dateFmt(i.dueDate)}${i.paymentTerms ? ` · ${esc(i.paymentTerms)}` : ''}</td>
         <td><span class="badge" style="background:${BUCKET_COLORS[i.bucket]}22;color:${BUCKET_COLORS[i.bucket]}">${i.bucket}</span></td>
         <td class="right bold">${phpFmt(i.outstanding)}</td>
       </tr>
@@ -177,7 +168,7 @@ function exportCustomerStatement(customerName, outstandingItems) {
     .slice()
     .sort((a, b) => b.daysOverdue - a.daysOverdue)
     .forEach((i) => {
-      rows.push({ type: 'Invoice', invoiceNo: i.invoiceNo, dueDate: i.dueDate, bucket: i.bucket, outstanding: i.outstanding, amount: '', notes: i.notes });
+      rows.push({ type: 'Invoice', invoiceNo: i.invoiceNo, dueDate: i.dueDate, terms: i.paymentTerms || '', bucket: i.bucket, outstanding: i.outstanding, amount: '', notes: i.notes });
       // `payments` is undefined when the source list didn't fetch payment history at
       // all (e.g. the main aging table) — omit the rows rather than claim "none".
       if (Array.isArray(i.payments)) {
@@ -199,6 +190,7 @@ function exportCustomerStatement(customerName, outstandingItems) {
     [
       { key: 'invoiceNo', label: 'Invoice # / Payment #' },
       { key: 'dueDate', label: 'Due / Payment Date', format: (v) => (v ? dateFmt(v) : '') },
+      { key: 'terms', label: 'Terms' },
       { key: 'bucket', label: 'Aging / Method' },
       { key: 'outstanding', label: 'Outstanding', format: (v) => (v === '' ? '' : phpFmt(v)) },
       { key: 'amount', label: 'Amount Paid', format: (v) => (v === '' ? '' : phpFmt(v)) },
@@ -279,7 +271,7 @@ const PieTooltip = ({ active, payload }) => {
 };
 
 // ─── Expandable Customer Row ──────────────────────────────────
-function CustomerRow({ customerName, items, onView }) {
+function CustomerRow({ customerName, items, onView, basis }) {
   const [expanded, setExpanded] = useState(false);
 
   const total = items.reduce((s, i) => s + i.outstanding, 0);
@@ -332,6 +324,14 @@ function CustomerRow({ customerName, items, onView }) {
             >
               <Eye className="w-4 h-4" />
             </button>
+            <Link
+              href={`/receivable/statements?customerId=${customerId}`}
+              onClick={(e) => e.stopPropagation()}
+              title={`Statement of account — ${customerName}`}
+              className="text-gray-400 hover:text-green-600 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+            </Link>
             <ExportMenu
               label={customerName}
               onPrint={() => printCustomerStatement(customerName, items)}
@@ -350,8 +350,9 @@ function CustomerRow({ customerName, items, onView }) {
             <div>
               <span className="font-mono text-sm text-green-700">{item.invoiceNo}</span>
               <span className="text-xs text-gray-400 ml-2">Due: {formatDate(item.dueDate)}</span>
+              {item.paymentTerms && <span className="text-xs text-gray-400 ml-2">· {item.paymentTerms}</span>}
               {item.daysOverdue > 0 && (
-                <span className="text-xs text-red-500 ml-2">({item.daysOverdue}d overdue)</span>
+                <span className="text-xs text-red-500 ml-2">({item.daysOverdue}d {basis === 'invoice' ? 'old' : 'overdue'})</span>
               )}
             </div>
           </td>
@@ -416,7 +417,7 @@ function HistoryTable({ invoices }) {
             .sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate))
             .map((inv) => {
               const isOutstanding = ['OPEN', 'PARTIAL', 'OVERDUE'].includes(inv.status);
-              const { bucket } = isOutstanding ? bucketFor(inv.dueDate) : { bucket: null };
+              const { bucket } = isOutstanding ? ageOf(inv, todayPH(), 'due') : { bucket: null };
               const payments = inv.payments || [];
               const expanded = expandedIds.has(inv.id);
               return (
@@ -493,9 +494,9 @@ function outstandingItemsFrom(invoices) {
   return invoices
     .filter((inv) => ['OPEN', 'PARTIAL', 'OVERDUE'].includes(inv.status))
     .map((inv) => {
-      const { daysOverdue, bucket } = bucketFor(inv.dueDate);
+      const { days: daysOverdue, bucket } = ageOf(inv, todayPH(), 'due');
       return {
-        invoiceNo: inv.invoiceNo, dueDate: inv.dueDate, daysOverdue, bucket, notes: inv.notes,
+        invoiceNo: inv.invoiceNo, dueDate: inv.dueDate, paymentTerms: inv.paymentTerms, daysOverdue, bucket, notes: inv.notes,
         outstanding: Number(inv.totalAmount) - Number(inv.paidAmount),
         // `undefined` (not `[]`) when the source list didn't fetch payments at all —
         // print/export treat that as "unknown" rather than falsely claiming none were made.
@@ -621,6 +622,8 @@ export default function ARAgingPage() {
   const [dateTo, setDateTo]       = useState('');
   const [chartType, setChartType] = useState('bar'); // 'bar' | 'pie'
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [asOf, setAsOf]   = useState(todayPH());
+  const [basis, setBasis] = useState('due'); // 'due' | 'invoice'
   const [historyResults, setHistoryResults] = useState([]); // [{ customer, invoices }] — full history for search
   const [historyLoading, setHistoryLoading] = useState(false);
   const [viewCustomer, setViewCustomer] = useState(null); // { customerId, customerName } — drawer target
@@ -644,7 +647,7 @@ export default function ARAgingPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await rApi.invoices.aging();
+      const r = await rApi.invoices.aging({ asOf, basis });
       setData(r.data);
       setLastRefresh(new Date());
     } catch {
@@ -652,7 +655,7 @@ export default function ARAgingPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [asOf, basis]);
 
   // Searching a client name pulls their FULL invoice history (paid, open, void — everything),
   // not just what's currently outstanding — debounced so typing doesn't fire a fetch per keystroke.
@@ -688,7 +691,7 @@ export default function ARAgingPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return (
+  if (loading && !data) return (
     <div className="flex flex-col items-center justify-center py-24 gap-3 text-gray-400">
       <div className="w-8 h-8 border-3 border-green-500 border-t-transparent rounded-full animate-spin" />
       <p>Building AR aging report...</p>
@@ -748,16 +751,36 @@ export default function ARAgingPage() {
         <div>
           <h1 className="page-title">AR Aging Report</h1>
           <p className="page-subtitle">
-            As of {new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
+            As of {formatDate(asOf)}
             {lastRefresh && (
               <span className="ml-2 text-gray-400">· Refreshed {lastRefresh.toLocaleTimeString()}</span>
             )}
           </p>
         </div>
-        <button onClick={load} disabled={loading} className="btn-secondary">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </button>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-xs text-gray-500 block mb-0.5">As of</label>
+            <input type="date" className="input text-sm py-1.5 w-40" max={todayPH()}
+              value={asOf} onChange={(e) => e.target.value && setAsOf(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-0.5">Age by</label>
+            <select className="select text-sm py-1.5 w-40" value={basis} onChange={(e) => setBasis(e.target.value)}>
+              <option value="due">Due date</option>
+              <option value="invoice">Invoice date</option>
+            </select>
+          </div>
+          <button onClick={load} disabled={loading} className="btn-secondary">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
       </div>
+
+      {basis === 'invoice' && (
+        <p className="text-xs text-gray-500 -mt-3">
+          Aged from the invoice date. “Current” means issued on the as-of date; the other columns count days since the invoice was issued.
+        </p>
+      )}
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 xl:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -966,7 +989,7 @@ export default function ARAgingPage() {
                 value={bucketFilter}
                 onChange={(e) => setBucketFilter(e.target.value)}
               >
-                <option value="">All Terms</option>
+                <option value="">All Aging</option>
                 {BUCKETS.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
               <div className="flex items-center gap-2">
@@ -1012,7 +1035,7 @@ export default function ARAgingPage() {
                       </td>
                     </tr>
                   ) : sortedCustomers.map(([customerName, items]) => (
-                    <CustomerRow key={customerName} customerName={customerName} items={items} onView={openHistoryDrawer} />
+                    <CustomerRow key={customerName} customerName={customerName} items={items} onView={openHistoryDrawer} basis={basis} />
                   ))}
                 </tbody>
 

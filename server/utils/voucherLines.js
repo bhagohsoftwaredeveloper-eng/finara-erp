@@ -15,6 +15,9 @@ function normalizeVoucherItems(items, { type } = {}) {
     amount:       round2(it.amount),
     creditAmount: round2(it.creditAmount),
     receiptNo:    it.receiptNo || null,
+    // Optional Driver / Vehicle cost tags, added only when set so untagged lines are unchanged.
+    ...(it.driverId && { driverId: Number(it.driverId) }),
+    ...(it.vehicleId && { vehicleId: Number(it.vehicleId) }),
   }));
 
   if (!rows.some((r) => r.creditAmount > 0)) return rows;

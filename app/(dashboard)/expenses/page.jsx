@@ -1,12 +1,13 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { expenses as expApi, accounts as accountsApi, audit as auditApi } from '@/lib/api';
+import { expenses as expApi, accounts as accountsApi, audit as auditApi, funds as fundsApi } from '@/lib/api';
 import { formatCurrency, formatDate, getUser, scopedKey } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
 import Attachments from '@/components/Attachments';
 import AccountSelect from '@/components/ui/AccountSelect';
 import CategoryCombobox from '@/components/ui/CategoryCombobox';
 import NumberInput from '@/components/NumberInput';
+import CostTagSelects, { useFleetTags } from '@/components/ui/CostTags';
 import DenominationCounter, { useDenominationCount } from '@/components/ui/DenominationCounter';
 import toast from 'react-hot-toast';
 import {
@@ -92,6 +93,7 @@ function Drawer({ open, onClose, title, subtitle, children, footer, wide, xwide 
 // line and a CR line, which are merged back into one row when loaded.
 const blankItem = () => ({
   description: '', accountId: null, amount: '', crAccountId: null, creditAmount: '', receiptNo: '',
+  driverId: null, vehicleId: null, // optional cost tags (the debit side)
 });
 
 // Stored lines -> rows. A CR line directly under a DR line joins that row;
@@ -110,7 +112,8 @@ function toFormItems(lines) {
         creditAmount: String(it.creditAmount), receiptNo: it.receiptNo || '' });
     } else {
       rows.push({ ...blankItem(), description: it.description, accountId: it.accountId || null,
-        amount: dr ? String(it.amount) : '', receiptNo: it.receiptNo || '' });
+        amount: dr ? String(it.amount) : '', receiptNo: it.receiptNo || '',
+        driverId: it.driverId || null, vehicleId: it.vehicleId || null });
     }
   }
   return rows.length ? rows : [blankItem()];
@@ -128,7 +131,8 @@ function toPayloadItems(rows) {
     const cr = Number(r.creditAmount || 0);
     if (dr > 0 || !(cr > 0)) {
       out.push({ description: r.description, accountId: r.accountId || null, amount: dr, creditAmount: 0,
-        receiptNo: r.receiptNo || '' });
+        receiptNo: r.receiptNo || '',
+        ...(r.driverId && { driverId: r.driverId }), ...(r.vehicleId && { vehicleId: r.vehicleId }) });
     }
     if (cr > 0) {
       out.push({ description: r.description || 'Payment', accountId: r.crAccountId || null, amount: 0,
@@ -219,7 +223,7 @@ function LineTotals({ items }) {
 }
 
 // ─── Line-item row ────────────────────────────────────────────────
-function ItemRow({ item, index, accounts, onChange, onRemove, creditDisabled }) {
+function ItemRow({ item, index, accounts, onChange, onRemove, creditDisabled, fleet }) {
   return (
     <div className={`border border-gray-100 rounded-lg p-3 space-y-2 lg:border-0 lg:p-0 lg:space-y-0 lg:items-start ${LINE_GRID}`}>
       <div>
@@ -266,12 +270,18 @@ function ItemRow({ item, index, accounts, onChange, onRemove, creditDisabled }) 
           <X className="w-4 h-4" />
         </button>
       </div>
+      {/* Optional cost tags: shows up under Repairs & Maintenance etc. in the P&L by driver / vehicle */}
+      <div className="lg:col-span-7">
+        <CostTagSelects fleet={fleet} driverId={item.driverId} vehicleId={item.vehicleId}
+          onDriver={(v) => onChange(index, 'driverId', v)} onVehicle={(v) => onChange(index, 'vehicleId', v)} />
+      </div>
     </div>
   );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────
 export default function ExpensesPage() {
+  const fleet = useFleetTags();
   const user = typeof window !== 'undefined' ? getUser() : null;
   const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
 
@@ -318,6 +328,9 @@ export default function ExpensesPage() {
   });
   const [actionItems,  setActionItems]  = useState([]);
   const [cashAccounts, setCashAccounts] = useState([]);
+  // Marketing Fund settings: a marketing-category voucher is paid from the fund by default.
+  const [fundCfg, setFundCfg] = useState(null);
+  useEffect(() => { fundsApi.config().then((r) => setFundCfg(r.data)).catch(() => {}); }, []); // optional: no fund, no default
 
   // History drawer
   const [historyOpen,    setHistoryOpen]    = useState(false);
@@ -524,7 +537,10 @@ export default function ExpensesPage() {
                        : mode === 'pay'     ? rec.paidBy
                        : '';
     // Default payment account: Petty Cash (1011) for PETTY_CASH type, else Cash in Bank (1020)
-    const defaultCashCode = rec.type === 'PETTY_CASH' ? '1011' : '1020';
+    const marketing = fundCfg?.marketing;
+    const fromMarketingFund = marketing?.enabled && marketing.categories.includes(rec.category)
+      && accounts.some(ac => ac.accountCode === marketing.accountCode);
+    const defaultCashCode = fromMarketingFund ? marketing.accountCode : (rec.type === 'PETTY_CASH' ? '1011' : '1020');
     setActionForm({ name: existingName || userName, date: todayStr(), reason: '', paymentAccountCode: defaultCashCode });
     dn.counterProps.setCounts({});
     setActionItems(mode === 'approve'
@@ -870,7 +886,7 @@ export default function ExpensesPage() {
 
           <div className="space-y-2">
             {fItems.map((it, idx) => (
-              <ItemRow key={idx} item={it} index={idx} accounts={accounts}
+              <ItemRow key={idx} item={it} index={idx} accounts={accounts} fleet={fleet}
                 onChange={updateItem} onRemove={removeItem} creditDisabled={fType === 'LIQUIDATION'} />
             ))}
           </div>
@@ -927,7 +943,7 @@ export default function ExpensesPage() {
 
                 <div className="space-y-2">
                   {actionItems.map((it, idx) => (
-                    <ItemRow key={idx} item={it} index={idx} accounts={accounts}
+                    <ItemRow key={idx} item={it} index={idx} accounts={accounts} fleet={fleet}
                       onChange={updateActionItem} onRemove={removeActionItem}
                       creditDisabled={actionRecord.type === 'LIQUIDATION'} />
                   ))}
@@ -967,6 +983,9 @@ export default function ExpensesPage() {
                         ))}
                       </select>
                       <p className="text-xs text-gray-400 mt-1">Where the funds came from (Petty Cash, Cash in Bank, etc.)</p>
+                      {fundCfg?.marketing?.enabled && actionForm.paymentAccountCode === fundCfg.marketing.accountCode && (
+                        <p className="text-xs text-blue-600 mt-1">Paid from the Marketing Fund.</p>
+                      )}
                     </div>
                     )}
                     {dn.required && (

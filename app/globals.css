@@ -76,6 +76,10 @@
     max-height: 94vh;
     animation: topDrawerIn 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
+  /* Modals whose header sits outside a <form> that wraps the body and footer: the form must be a
+     flex column too, otherwise .modal-body cannot scroll within the modal's max-height and the
+     content spills out of the white panel. */
+  .modal > form { @apply flex flex-col flex-1 min-h-0; }
   .modal-header { @apply px-4 lg:px-6 py-3 lg:py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 dark:border-gray-800; }
   .modal-body   { @apply p-4 lg:p-6 overflow-y-auto flex-1; }
   .modal-footer { @apply px-4 lg:px-6 py-3 lg:py-4 border-t border-gray-200 flex flex-wrap items-center justify-end gap-3 flex-shrink-0 bg-gray-50 dark:border-gray-800 dark:bg-gray-800/50; }
@@ -182,3 +186,29 @@
     animation: none !important;
   }
 }
+
+/* ── Wider modals and top drawers ─────────────────────────────────────────────
+   Every modal (.modal) and top drawer (an element animated with topDrawerIn) names its width with a
+   Tailwind max-w-* class. These rules raise each size by roughly 40-60% so forms get more room,
+   never wider than the screen. The extra class/attribute makes them win over the plain utilities.
+   Plain CSS on purpose (outside @layer) so it is never purged. */
+.modal.max-w-sm,
+[style*="topDrawerIn"].max-w-sm { max-width: min(32rem, calc(100vw - 2rem)); }
+.modal.max-w-md,
+[style*="topDrawerIn"].max-w-md { max-width: min(40rem, calc(100vw - 2rem)); }
+.modal.max-w-lg,
+[style*="topDrawerIn"].max-w-lg { max-width: min(46rem, calc(100vw - 2rem)); }
+.modal.max-w-xl,
+[style*="topDrawerIn"].max-w-xl { max-width: min(52rem, calc(100vw - 2rem)); }
+.modal.max-w-2xl,
+[style*="topDrawerIn"].max-w-2xl { max-width: min(60rem, calc(100vw - 2rem)); }
+.modal.max-w-3xl,
+[style*="topDrawerIn"].max-w-3xl { max-width: min(68rem, calc(100vw - 2rem)); }
+.modal.max-w-4xl,
+[style*="topDrawerIn"].max-w-4xl { max-width: min(78rem, calc(100vw - 2rem)); }
+.modal.max-w-5xl,
+[style*="topDrawerIn"].max-w-5xl { max-width: min(88rem, calc(100vw - 2rem)); }
+.modal.max-w-6xl,
+[style*="topDrawerIn"].max-w-6xl { max-width: min(96rem, calc(100vw - 2rem)); }
+.modal.max-w-7xl,
+[style*="topDrawerIn"].max-w-7xl { max-width: min(108rem, calc(100vw - 2rem)); }
