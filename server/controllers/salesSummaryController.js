@@ -1,13 +1,11 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
-const { rangeLabel } = require('../../lib/salesRanges');
+const { isDate, parseRanges } = require('../utils/rangeParams');
 const { normalizeDocs, summarizeByPeriod, summarizeComparison } = require('../utils/salesSummary');
 
-const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
 const GROUPS = ['day', 'week', 'month', 'quarter', 'year'];
 const DIMENSIONS = ['account', 'customer', 'item'];
 const MAX_PERIOD_ROWS = 800;   // e.g. a little over two years of daily rows
-const MAX_RANGES = 3;
 
 async function loadDocs(businessId, from, to) {
   const span = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) };
@@ -28,22 +26,6 @@ async function loadDocs(businessId, from, to) {
     }),
   ]);
   return normalizeDocs(invoices, cashSales);
-}
-
-// "from:to,from:to" (1 to 3 ranges), optionally with "labels=a,b,c" to name them.
-function parseRanges(raw, rawLabels) {
-  const parts = String(raw || '').split(',').filter(Boolean);
-  if (parts.length < 1 || parts.length > MAX_RANGES) {
-    throw createError(`ranges must list 1 to ${MAX_RANGES} date ranges as from:to,from:to`, 400);
-  }
-  const labels = String(rawLabels || '').split(',');
-  return parts.map((p, i) => {
-    const [from, to] = p.split(':');
-    if (!isDate(from) || !isDate(to) || from > to) {
-      throw createError('ranges must be valid YYYY-MM-DD dates written as from:to, with from not after to', 400);
-    }
-    return { from, to, label: (labels[i] && labels[i].trim()) || rangeLabel(from, to) };
-  });
 }
 
 exports.getSummary = async (req, res, next) => {
