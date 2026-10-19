@@ -20,6 +20,7 @@ import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import { useBusiness, isPreCutover } from '@/lib/businessContext';
 import { useDraftGuard } from '@/lib/useDraftGuard';
 import { todayPH } from '@/lib/arAging';
+import { printDr } from '@/lib/drPrint';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -558,13 +559,20 @@ function ShippingModal({ invoice, onClose, onShipped }) {
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const alreadyShipped = invoice.deliveryStatus === 'SHIPPED';
+  // Shipping an invoice also makes its delivery receipt and prints it, unless it already has one.
+  const existingDr = (invoice.deliveryReceipts || []).find((d) => d.status !== 'CANCELLED');
+  const [makeDr, setMakeDr] = useState(true);
 
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await rApi.invoices.ship(invoice.id, form);
+      const { data } = await rApi.invoices.ship(invoice.id, { ...form, createDr: !existingDr && makeDr });
       toast.success(alreadyShipped ? 'Shipping info updated' : 'Invoice marked as shipped');
+      if (data.deliveryReceipt) {
+        toast.success(`${data.deliveryReceipt.drNo} created`);
+        printDr(data.deliveryReceipt); // opens the print window straight away
+      }
       onShipped();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update shipping info');
@@ -600,6 +608,19 @@ function ShippingModal({ invoice, onClose, onShipped }) {
                 <input className="input" value={form.trackingNumber} onChange={set('trackingNumber')} />
               </div>
             </div>
+            {existingDr ? (
+              <p className="text-xs text-gray-500">
+                Delivery receipt <span className="font-mono">{existingDr.drNo}</span> already exists for this invoice.
+              </p>
+            ) : (
+              <label className="flex items-start gap-3 bg-gray-50 rounded-xl px-4 py-3 cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={makeDr} onChange={(e) => setMakeDr(e.target.checked)} />
+                <span>
+                  <span className="text-sm font-medium text-gray-700 block">Create the delivery receipt and print it</span>
+                  <span className="text-xs text-gray-500">Uses this ship date, address and courier. It will also appear under Delivery Receipts.</span>
+                </span>
+              </label>
+            )}
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
