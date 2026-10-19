@@ -288,10 +288,13 @@ export default function BusinessesPanel() {
                           <button onClick={() => openEdit(biz)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
                             <Pencil className="w-3 h-3" /> Edit
                           </button>
-                          <button onClick={() => openManage(biz.id)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
-                            <Users className="w-3 h-3" /> Users
-                          </button>
                         </>
+                      )}
+                      {/* Staff access is administered by the operator for every business. */}
+                      {(biz.isOwned !== false || isSuperAdmin) && (
+                        <button onClick={() => openManage(biz.id)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
+                          <Users className="w-3 h-3" /> Users
+                        </button>
                       )}
                       {/* Manage mode: switch into this business's context and open
                           Settings → Modules (SUPER_ADMIN only). */}
