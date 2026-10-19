@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { expenses as expApi, accounts as accountsApi, audit as auditApi } from '@/lib/api';
+import { expenses as expApi, accounts as accountsApi, audit as auditApi, funds as fundsApi } from '@/lib/api';
 import { formatCurrency, formatDate, getUser, scopedKey } from '@/lib/auth';
 import { printDocument } from '@/lib/print';
 import Attachments from '@/components/Attachments';
@@ -168,6 +168,9 @@ export default function ExpensesPage() {
   });
   const [actionItems,  setActionItems]  = useState([]);
   const [cashAccounts, setCashAccounts] = useState([]);
+  // Marketing Fund settings: a marketing-category voucher is paid from the fund by default.
+  const [fundCfg, setFundCfg] = useState(null);
+  useEffect(() => { fundsApi.config().then((r) => setFundCfg(r.data)).catch(() => {}); }, []); // optional: no fund, no default
 
   // History drawer
   const [historyOpen,    setHistoryOpen]    = useState(false);
@@ -371,7 +374,10 @@ export default function ExpensesPage() {
                        : mode === 'pay'     ? rec.paidBy
                        : '';
     // Default payment account: Petty Cash (1011) for PETTY_CASH type, else Cash in Bank (1020)
-    const defaultCashCode = rec.type === 'PETTY_CASH' ? '1011' : '1020';
+    const marketing = fundCfg?.marketing;
+    const fromMarketingFund = marketing?.enabled && marketing.categories.includes(rec.category)
+      && accounts.some(ac => ac.accountCode === marketing.accountCode);
+    const defaultCashCode = fromMarketingFund ? marketing.accountCode : (rec.type === 'PETTY_CASH' ? '1011' : '1020');
     setActionForm({ name: existingName || userName, date: todayStr(), reason: '', paymentAccountCode: defaultCashCode });
     dn.counterProps.setCounts({});
     setActionItems(mode === 'approve'
@@ -830,6 +836,9 @@ export default function ExpensesPage() {
                         ))}
                       </select>
                       <p className="text-xs text-gray-400 mt-1">Where the funds came from (Petty Cash, Cash in Bank, etc.)</p>
+                      {fundCfg?.marketing?.enabled && actionForm.paymentAccountCode === fundCfg.marketing.accountCode && (
+                        <p className="text-xs text-blue-600 mt-1">Paid from the Marketing Fund.</p>
+                      )}
                     </div>
                     {dn.required && (
                       <DenominationCounter {...dn.counterProps} title="Count the cash being paid out" />
