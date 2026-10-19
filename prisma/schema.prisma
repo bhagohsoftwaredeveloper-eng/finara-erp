@@ -490,6 +490,10 @@ model DeliveryReceipt {
   deliveryAddress String?               @db.Text
   driverName      String?               @db.VarChar(100)
   vehicleNo       String?               @db.VarChar(50)
+  // Optional links to the Drivers / Vehicles lists; driverName and vehicleNo keep the
+  // text that prints on the receipt (a courier such as LBC has no driver record).
+  driverId        Int?
+  vehicleId       Int?
   notes           String?               @db.Text
   status          DeliveryReceiptStatus @default(DRAFT)
   // When true, marking DELIVERED takes the stocked lines out of inventory.

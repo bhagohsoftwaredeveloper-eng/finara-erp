@@ -85,12 +85,21 @@ async function insertDr(data) {
   }
 }
 
+// driverId / vehicleId link to the Drivers and Vehicles lists. They are written only
+// when the caller sends them (null clears), so receipts that never use them are
+// stored exactly as before.
+const linkFields = (b) => ({
+  ...('driverId' in b && { driverId: b.driverId ? Number(b.driverId) : null }),
+  ...('vehicleId' in b && { vehicleId: b.vehicleId ? Number(b.vehicleId) : null }),
+});
+
 const headerFields = (b) => ({
   deliveryAddress: b.deliveryAddress || null,
   driverName: b.driverName || null,
   vehicleNo: b.vehicleNo || null,
   notes: b.notes || null,
   deductStock: !!b.deductStock,
+  ...linkFields(b),
 });
 
 exports.list = async (req, res, next) => {

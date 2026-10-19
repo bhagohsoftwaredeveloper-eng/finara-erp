@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Plus, Search, Printer, Truck, X, Ban, FileText, RefreshCw } from 'lucide-react';
 import CustomerSelect from '@/components/CustomerSelect';
 import NumberInput from '@/components/NumberInput';
+import { TagSelect, useFleetTags } from '@/components/ui/CostTags';
 import { printDr } from '@/lib/drPrint';
 import { formatDate, formatCurrency } from '@/lib/auth';
 import { todayPH } from '@/lib/arAging';
@@ -17,11 +18,12 @@ const NEW_ITEM = '__new__';
 // ─── Create / edit / view modal ───────────────────────────────
 function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose, onChanged }) {
   const router = useRouter();
+  const fleet = useFleetTags();
   const [dr, setDr]           = useState(null);       // loaded record (null while creating)
   const [loading, setLoading] = useState(!!drId);
   const [saving, setSaving]   = useState(false);
   const [form, setForm] = useState({
-    customerId: '', drDate: todayPH(), deliveryAddress: '', driverName: '', vehicleNo: '',
+    customerId: '', drDate: todayPH(), deliveryAddress: '', driverName: '', vehicleNo: '', driverId: null, vehicleId: null,
     notes: '', deductStock: false, lines: [blankLine()],
   });
 
@@ -30,6 +32,7 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
     setForm({
       customerId: String(data.customerId), drDate: String(data.drDate).slice(0, 10),
       deliveryAddress: data.deliveryAddress || '', driverName: data.driverName || '', vehicleNo: data.vehicleNo || '',
+      driverId: data.driverId || null, vehicleId: data.vehicleId || null,
       notes: data.notes || '', deductStock: data.deductStock,
       lines: data.lines.map((l) => ({
         itemId: l.itemId ? String(l.itemId) : '', description: l.description,
@@ -109,10 +112,23 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
     setForm((f) => ({ ...f, customerId: id, deliveryAddress: f.deliveryAddress || c?.address || '' }));
   };
 
+  // Picking from the lists also fills the text that prints on the receipt (still editable).
+  const pickDriver = (id) => {
+    const d = fleet.drivers.find((x) => x.id === id);
+    setForm((f) => ({ ...f, driverId: id, ...(d && { driverName: `${d.code} · ${d.name}` }) }));
+  };
+  const pickVehicle = (id) => {
+    const v = fleet.vehicles.find((x) => x.id === id);
+    setForm((f) => ({ ...f, vehicleId: id, ...(v && { vehicleNo: v.code }) }));
+  };
+
   const payload = () => ({
     ...(dr ? {} : { customerId: Number(form.customerId) }),
     drDate: form.drDate, deliveryAddress: form.deliveryAddress, driverName: form.driverName,
     vehicleNo: form.vehicleNo, notes: form.notes, deductStock: form.deductStock,
+    // Only sent when used (or when clearing one that was set), so untouched receipts are unaffected.
+    ...((form.driverId || dr?.driverId) && { driverId: form.driverId || null }),
+    ...((form.vehicleId || dr?.vehicleId) && { vehicleId: form.vehicleId || null }),
     lines: form.lines.filter((l) => l.description.trim()).map((l) => ({
       itemId: l.itemId ? Number(l.itemId) : undefined, description: l.description,
       quantity: Number(l.quantity), unit: l.unit,
@@ -185,8 +201,8 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
                 <input type="date" className="input" required disabled={readOnly} value={form.drDate} onChange={set('drDate')} />
               </div>
               <div className="form-group">
-                <label className="label">Driver / Courier</label>
-                <input className="input" disabled={readOnly} value={form.driverName} onChange={set('driverName')} />
+                <label className="label">Assign driver</label>
+                <TagSelect kind="driver" fleet={fleet} value={form.driverId} onChange={pickDriver} disabled={readOnly} className="select" />
               </div>
               <div className="form-group md:col-span-2">
                 <label className="label">Delivery Address</label>
@@ -194,7 +210,15 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
                   value={form.deliveryAddress} onChange={set('deliveryAddress')} />
               </div>
               <div className="form-group">
-                <label className="label">Vehicle / Plate No.</label>
+                <label className="label">Assign vehicle</label>
+                <TagSelect kind="vehicle" fleet={fleet} value={form.vehicleId} onChange={pickVehicle} disabled={readOnly} className="select" />
+              </div>
+              <div className="form-group">
+                <label className="label">Driver / Courier <span className="text-xs font-normal text-gray-400">prints on the receipt</span></label>
+                <input className="input" disabled={readOnly} value={form.driverName} onChange={set('driverName')} placeholder="e.g. a courier such as LBC" />
+              </div>
+              <div className="form-group">
+                <label className="label">Vehicle / Plate No. <span className="text-xs font-normal text-gray-400">prints on the receipt</span></label>
                 <input className="input" disabled={readOnly} value={form.vehicleNo} onChange={set('vehicleNo')} />
               </div>
             </div>
@@ -416,13 +440,13 @@ export default function DeliveryReceiptsPage() {
         <table className="table w-full">
           <thead>
             <tr>
-              <th className="pl-4">DR No.</th><th>Date</th><th>Customer</th><th>Invoice</th>
+              <th className="pl-4">DR No.</th><th>Date</th><th>Customer</th><th>Invoice</th><th>Driver</th>
               <th className="text-center">Items</th><th>Stock</th><th className="pr-4">Status</th>
             </tr>
           </thead>
           <tbody>
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-10 text-gray-400">No delivery receipts yet.</td></tr>
+              <tr><td colSpan={8} className="text-center py-10 text-gray-400">No delivery receipts yet.</td></tr>
             )}
             {rows.map((r) => (
               <tr key={r.id} className="cursor-pointer hover:bg-green-50/40 border-b border-gray-100" onClick={() => setModal({ id: r.id })}>
@@ -430,6 +454,7 @@ export default function DeliveryReceiptsPage() {
                 <td>{formatDate(r.drDate)}</td>
                 <td>{r.customer.name}</td>
                 <td className="font-mono text-sm">{r.invoice?.invoiceNo || <span className="text-gray-300">—</span>}</td>
+                <td className="text-sm text-gray-600">{r.driverName || <span className="text-gray-300">—</span>}</td>
                 <td className="text-center">{r._count.lines}</td>
                 <td>{r.deductStock ? <span className="badge badge-blue">Deducts stock</span> : <span className="text-gray-300">—</span>}</td>
                 <td className="pr-4"><span className={`badge ${STATUS_BADGE[r.status]}`}>{r.status}</span></td>

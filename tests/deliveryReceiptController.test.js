@@ -323,3 +323,44 @@ describe('createForShipment (Mark as Shipped makes the DR)', () => {
     expect(prisma.deliveryReceipt.create).not.toHaveBeenCalled();
   });
 });
+
+describe('assigning a driver and a vehicle', () => {
+  test('create stores the chosen driver and vehicle alongside the printed names', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 9, address: null });
+    prisma.deliveryReceipt.create.mockResolvedValue({ id: 1 });
+
+    await run(ctrl.create, {
+      body: { customerId: 9, drDate: '2026-02-03', driverName: 'DRV-001 · Juan', vehicleNo: 'ABC 123', driverId: '3', vehicleId: 7,
+        lines: [{ description: 'Box', quantity: 1 }] },
+    });
+
+    expect(prisma.deliveryReceipt.create.mock.calls[0][0].data).toMatchObject({
+      driverName: 'DRV-001 · Juan', vehicleNo: 'ABC 123', driverId: 3, vehicleId: 7,
+    });
+  });
+
+  test('without a choice no driver or vehicle keys are written', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 9, address: null });
+    prisma.deliveryReceipt.create.mockResolvedValue({ id: 1 });
+
+    await run(ctrl.create, { body: { customerId: 9, drDate: '2026-02-03', driverName: 'LBC', lines: [{ description: 'Box', quantity: 1 }] } });
+
+    const data = prisma.deliveryReceipt.create.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('driverId');
+    expect(data).not.toHaveProperty('vehicleId');
+  });
+
+  test('update can change or clear the driver, and leaves it alone when the field is not sent', async () => {
+    prisma.deliveryReceipt.findFirst.mockResolvedValue({ id: 1, status: 'DRAFT' });
+    prisma.deliveryReceipt.update.mockResolvedValue({ id: 1 });
+    const lines = [{ description: 'Box', quantity: 1 }];
+
+    await run(ctrl.update, { params: { id: '1' }, body: { driverId: 4, vehicleId: null, lines } });
+    expect(prisma.deliveryReceipt.update.mock.calls[0][0].data).toMatchObject({ driverId: 4, vehicleId: null });
+
+    await run(ctrl.update, { params: { id: '1' }, body: { lines } });
+    const data = prisma.deliveryReceipt.update.mock.calls[1][0].data;
+    expect(data).not.toHaveProperty('driverId');
+    expect(data).not.toHaveProperty('vehicleId');
+  });
+});
