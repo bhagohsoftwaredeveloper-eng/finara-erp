@@ -11,6 +11,12 @@ const adminOnly = authorize('ADMIN');
 router.get('/',            authenticate,     ctrl.list);
 router.post('/onboard',    authenticate,     ctrl.onboard);
 
+// The operator's module switches for ANY business. Like `list`, these skip resolveBusiness on purpose:
+// they touch only that business's module settings (never its books), and must keep working
+// whatever business the operator currently has selected.
+router.get('/:id/modules', authenticate, authorize('SUPER_ADMIN'), ctrl.getModules);
+router.put('/:id/modules', authenticate, authorize('SUPER_ADMIN'), ctrl.saveModules);
+
 router.use(authenticate, resolveBusiness);
 
 router.post('/reset-demo', adminOnly,        ctrl.resetDemo);

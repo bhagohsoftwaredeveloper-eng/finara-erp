@@ -70,45 +70,56 @@ const DISABLED_KEY = 'disabledModules';
 const ADMIN_EXEMPT_KEY = 'adminExemptFromDisabled';
 const NON_TOGGLEABLE = ['dashboard', 'settings'];
 
+// The disabled modules and the admin-exempt flag of ANY business, by id. Shared by the
+// active-business endpoints below and by the super admin's "manage a business's modules"
+// endpoints (businessController), which never open that business's books.
+async function readModules(businessId) {
+  const [disabledRow, exemptRow] = await Promise.all([
+    prisma.systemSetting.findUnique({ where: { businessId_key: { businessId, key: DISABLED_KEY } } }),
+    prisma.systemSetting.findUnique({ where: { businessId_key: { businessId, key: ADMIN_EXEMPT_KEY } } }),
+  ]);
+  let list = [];
+  if (disabledRow?.value) {
+    try { list = JSON.parse(disabledRow.value); } catch { list = []; }
+  }
+  const disabled = Array.isArray(list) ? list.filter((k) => ALL_KEYS.includes(k) && !NON_TOGGLEABLE.includes(k)) : [];
+  return { disabled, adminExempt: exemptRow?.value === 'true' };
+}
+
+async function writeModules(businessId, body) {
+  const list = Array.isArray(body.disabled) ? body.disabled : [];
+  const disabled = list.filter((k) => ALL_KEYS.includes(k) && !NON_TOGGLEABLE.includes(k));
+  const adminExempt = !!body.adminExempt;
+  await Promise.all([
+    prisma.systemSetting.upsert({
+      where:  { businessId_key: { businessId, key: DISABLED_KEY } },
+      update: { value: JSON.stringify(disabled) },
+      create: { businessId, key: DISABLED_KEY, value: JSON.stringify(disabled) },
+    }),
+    prisma.systemSetting.upsert({
+      where:  { businessId_key: { businessId, key: ADMIN_EXEMPT_KEY } },
+      update: { value: String(adminExempt) },
+      create: { businessId, key: ADMIN_EXEMPT_KEY, value: String(adminExempt) },
+    }),
+  ]);
+  return { disabled, adminExempt };
+}
+
+exports.readModules = readModules;
+exports.writeModules = writeModules;
+
 // GET currently disabled modules for the active business (any authenticated
 // user — the Sidebar/route guard need this to know what to hide)
 exports.getDisabled = async (req, res, next) => {
   try {
-    const [disabledRow, exemptRow] = await Promise.all([
-      prisma.systemSetting.findUnique({
-        where: { businessId_key: { businessId: req.businessId, key: DISABLED_KEY } },
-      }),
-      prisma.systemSetting.findUnique({
-        where: { businessId_key: { businessId: req.businessId, key: ADMIN_EXEMPT_KEY } },
-      }),
-    ]);
-    let list = [];
-    if (disabledRow?.value) {
-      try { list = JSON.parse(disabledRow.value); } catch { list = []; }
-    }
-    const clean = Array.isArray(list) ? list.filter((k) => ALL_KEYS.includes(k) && !NON_TOGGLEABLE.includes(k)) : [];
-    res.json({ disabled: clean, adminExempt: exemptRow?.value === 'true' });
+    res.json(await readModules(req.businessId));
   } catch (err) { next(err); }
 };
 
 // PUT save disabled modules + the admin-exempt flag (SUPER_ADMIN only)
 exports.saveDisabled = async (req, res, next) => {
   try {
-    const list = Array.isArray(req.body.disabled) ? req.body.disabled : [];
-    const clean = list.filter((k) => ALL_KEYS.includes(k) && !NON_TOGGLEABLE.includes(k));
-    const adminExempt = !!req.body.adminExempt;
-    await Promise.all([
-      prisma.systemSetting.upsert({
-        where:  { businessId_key: { businessId: req.businessId, key: DISABLED_KEY } },
-        update: { value: JSON.stringify(clean) },
-        create: { businessId: req.businessId, key: DISABLED_KEY, value: JSON.stringify(clean) },
-      }),
-      prisma.systemSetting.upsert({
-        where:  { businessId_key: { businessId: req.businessId, key: ADMIN_EXEMPT_KEY } },
-        update: { value: String(adminExempt) },
-        create: { businessId: req.businessId, key: ADMIN_EXEMPT_KEY, value: String(adminExempt) },
-      }),
-    ]);
-    res.json({ message: 'Disabled modules saved', disabled: clean, adminExempt });
+    const saved = await writeModules(req.businessId, req.body);
+    res.json({ message: 'Disabled modules saved', ...saved });
   } catch (err) { next(err); }
 };

@@ -4,6 +4,8 @@ const { clearBusinessCache } = require('../utils/glPost');
 const { cloneChartOfAccounts } = require('../utils/cloneChartOfAccounts');
 const { resetDemoBusiness } = require('../../prisma/seedDemo');
 const mailer = require('../utils/mailer');
+const { recordAudit } = require('../utils/audit');
+const { readModules, writeModules } = require('./permissionsController');
 const paymongo = require('../utils/paymongo');
 
 const LICENSE_TRANSITIONS = {
@@ -61,6 +63,36 @@ exports.list = async (req, res, next) => {
 };
 
 // ─── Get one ─────────────────────────────────────────────────────
+// ─── Modules of any business, for the operator (SUPER_ADMIN) ─────────────────────
+// The operator controls which modules a client business has without being able to open
+// that business's books: these two endpoints touch only the module switches, by the id in
+// the URL, and skip the data-access check that resolveBusiness applies to everything else.
+async function businessForModules(req) {
+  if (req.user?.role !== 'SUPER_ADMIN') throw createError('Insufficient permissions', 403);
+  const business = await prisma.business.findUnique({ where: { id: Number(req.params.id) }, select: { id: true, name: true } });
+  if (!business) throw createError('Business not found', 404);
+  return business;
+}
+
+exports.getModules = async (req, res, next) => {
+  try {
+    const business = await businessForModules(req);
+    res.json({ business, ...(await readModules(business.id)) });
+  } catch (err) { next(err); }
+};
+
+exports.saveModules = async (req, res, next) => {
+  try {
+    const business = await businessForModules(req);
+    const saved = await writeModules(business.id, req.body);
+    await recordAudit({
+      req, businessId: business.id, action: 'UPDATE', entity: 'Business', entityId: business.id,
+      summary: `Modules of ${business.name} changed by the operator: ${saved.disabled.length ? `off: ${saved.disabled.join(', ')}` : 'all on'}`,
+    });
+    res.json({ business, message: 'Modules saved', ...saved });
+  } catch (err) { next(err); }
+};
+
 exports.get = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
