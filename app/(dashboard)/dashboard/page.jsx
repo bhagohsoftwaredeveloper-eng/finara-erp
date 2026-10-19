@@ -9,6 +9,7 @@ import {
   ShoppingCart, FileText, CheckCircle, Clock, Circle, CheckCircle2,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
+import RenewalReminders from '@/components/subscription/RenewalReminders';
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -91,6 +92,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Subscriptions that are ending, have ended, or have a scheduled suspension */}
+      <RenewalReminders />
+
       {/* Welcome */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
         <div className="flex items-center justify-between">
