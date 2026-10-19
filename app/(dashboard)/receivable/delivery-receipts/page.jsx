@@ -132,7 +132,7 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-4xl">
+      <div className="modal max-w-6xl">
         <div className="modal-header">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-semibold">{dr ? dr.drNo : 'New Delivery Receipt'}</h3>
@@ -144,7 +144,7 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
 
         <form onSubmit={save}>
           <div className="modal-body space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="form-group">
                 <label className="label">Customer *</label>
                 {dr ? (
@@ -158,14 +158,14 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
                 <label className="label">Date *</label>
                 <input type="date" className="input" required disabled={readOnly} value={form.drDate} onChange={set('drDate')} />
               </div>
+              <div className="form-group">
+                <label className="label">Driver / Courier</label>
+                <input className="input" disabled={readOnly} value={form.driverName} onChange={set('driverName')} />
+              </div>
               <div className="form-group md:col-span-2">
                 <label className="label">Delivery Address</label>
                 <textarea className="input resize-none" rows={2} disabled={readOnly}
                   value={form.deliveryAddress} onChange={set('deliveryAddress')} />
-              </div>
-              <div className="form-group">
-                <label className="label">Driver / Courier</label>
-                <input className="input" disabled={readOnly} value={form.driverName} onChange={set('driverName')} />
               </div>
               <div className="form-group">
                 <label className="label">Vehicle / Plate No.</label>
@@ -177,7 +177,7 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
               <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
               <div className="space-y-2">
                 {form.lines.map((l, i) => (
-                  <div key={i} className="grid grid-cols-1 md:grid-cols-[1.4fr_2fr_6rem_5rem_2rem] gap-2 items-start">
+                  <div key={i} className="grid grid-cols-1 md:grid-cols-[1.3fr_3fr_6rem_6rem_2rem] gap-2 items-start">
                     <select className="select text-sm" disabled={readOnly} value={l.itemId} onChange={(e) => pickItem(i, e.target.value)}>
                       <option value="">— Not a stocked item —</option>
                       {items.map((it) => (
