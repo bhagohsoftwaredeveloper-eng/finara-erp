@@ -5,6 +5,9 @@ jest.mock('../server/config/database', () => ({
     update: jest.fn(),
     updateMany: jest.fn(),
     delete: jest.fn(),
+    count: jest.fn(),
+    createMany: jest.fn(),
+    findFirst: jest.fn(),
   },
 }));
 
@@ -17,7 +20,11 @@ const run = (fn, req) => new Promise((resolve, reject) => {
      reject);
 });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  prisma.paymentTerm.count.mockResolvedValue(5);
+  prisma.paymentTerm.findFirst.mockResolvedValue({ id: 1, businessId: 1 });
+});
 
 describe('settingsController — payment terms', () => {
   test('listPaymentTerms scopes by businessId and orders by sortOrder', async () => {
@@ -95,5 +102,51 @@ describe('settingsController — payment terms', () => {
     expect(statusCode).toBe(200);
     expect(body.message).toMatch(/deleted/i);
     expect(prisma.paymentTerm.delete).toHaveBeenCalledWith({ where: { id: 7 } });
+  });
+
+  test('listPaymentTerms seeds the standard terms for a business that has none', async () => {
+    prisma.paymentTerm.count.mockResolvedValue(0);
+    prisma.paymentTerm.findMany.mockResolvedValue([]);
+
+    await run(ctrl.listPaymentTerms, {});
+
+    expect(prisma.paymentTerm.createMany).toHaveBeenCalledWith({
+      data: [
+        { businessId: 1, name: 'Due on Receipt', days: 0,  isDefault: false, sortOrder: 0 },
+        { businessId: 1, name: 'COD',            days: 0,  isDefault: false, sortOrder: 1 },
+        { businessId: 1, name: 'Net 15',         days: 15, isDefault: false, sortOrder: 2 },
+        { businessId: 1, name: 'Net 30',         days: 30, isDefault: true,  sortOrder: 3 },
+        { businessId: 1, name: 'Net 60',         days: 60, isDefault: false, sortOrder: 4 },
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  test('listPaymentTerms does not seed when the business already has terms', async () => {
+    prisma.paymentTerm.findMany.mockResolvedValue([]);
+
+    await run(ctrl.listPaymentTerms, {});
+
+    expect(prisma.paymentTerm.createMany).not.toHaveBeenCalled();
+  });
+
+  test('updatePaymentTerm 404s for a term of another business and changes nothing', async () => {
+    prisma.paymentTerm.findFirst.mockResolvedValue(null);
+
+    const { statusCode } = await run(ctrl.updatePaymentTerm, { params: { id: '3' }, body: { isDefault: true } });
+
+    expect(statusCode).toBe(404);
+    expect(prisma.paymentTerm.findFirst).toHaveBeenCalledWith({ where: { id: 3, businessId: 1 } });
+    expect(prisma.paymentTerm.updateMany).not.toHaveBeenCalled();
+    expect(prisma.paymentTerm.update).not.toHaveBeenCalled();
+  });
+
+  test('deletePaymentTerm 404s for a term of another business and deletes nothing', async () => {
+    prisma.paymentTerm.findFirst.mockResolvedValue(null);
+
+    const { statusCode } = await run(ctrl.deletePaymentTerm, { params: { id: '7' } });
+
+    expect(statusCode).toBe(404);
+    expect(prisma.paymentTerm.delete).not.toHaveBeenCalled();
   });
 });

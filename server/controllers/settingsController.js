@@ -306,8 +306,27 @@ const resetUserPassword = async (req, res, next) => {
 };
 
 // ─── Payment Terms ────────────────────────────────────────────────
+const STANDARD_TERMS = [
+  { name: 'Due on Receipt', days: 0,  isDefault: false },
+  { name: 'COD',            days: 0,  isDefault: false },
+  { name: 'Net 15',         days: 15, isDefault: false },
+  { name: 'Net 30',         days: 30, isDefault: true  },
+  { name: 'Net 60',         days: 60, isDefault: false },
+];
+
+// A business with no terms at all gets the standard set. skipDuplicates makes a race
+// between two first requests harmless (unique on businessId + name).
+async function ensureStandardTerms(businessId) {
+  if ((await prisma.paymentTerm.count({ where: { businessId } })) > 0) return;
+  await prisma.paymentTerm.createMany({
+    data: STANDARD_TERMS.map((t, i) => ({ businessId, ...t, sortOrder: i })),
+    skipDuplicates: true,
+  });
+}
+
 const listPaymentTerms = async (req, res, next) => {
   try {
+    await ensureStandardTerms(req.businessId);
     const terms = await prisma.paymentTerm.findMany({
       where: { businessId: req.businessId },
       orderBy: { sortOrder: 'asc' },
@@ -349,6 +368,8 @@ const createPaymentTerm = async (req, res, next) => {
 const updatePaymentTerm = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const owned = await prisma.paymentTerm.findFirst({ where: { id: Number(id), businessId: req.businessId } });
+    if (!owned) return res.status(404).json({ error: 'Payment term not found' });
     const { name, days, isDefault, isActive } = req.body;
 
     if (isDefault) {
@@ -377,6 +398,8 @@ const updatePaymentTerm = async (req, res, next) => {
 const deletePaymentTerm = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const owned = await prisma.paymentTerm.findFirst({ where: { id: Number(id), businessId: req.businessId } });
+    if (!owned) return res.status(404).json({ error: 'Payment term not found' });
     await prisma.paymentTerm.delete({ where: { id: Number(id) } });
     res.json({ message: 'Payment term deleted' });
   } catch (err) { next(err); }
