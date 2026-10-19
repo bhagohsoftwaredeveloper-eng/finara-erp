@@ -52,6 +52,14 @@ export default function SubscriptionPanel() {
   }, [activeBusiness]);
   useEffect(() => { load(); }, [load]);
 
+  // An unpaid order keeps the price it was placed at; cancelling lets the next order use today's price.
+  const cancelOrder = async () => {
+    const o = orders.find((x) => x.status === 'PENDING_PAYMENT');
+    if (!o || !confirm(`Cancel order ${o.orderNo}? You can place a new one at the current price.`)) return;
+    try { await ordersApi.cancel(o.id); toast.success('Order cancelled'); load(); }
+    catch (err) { toast.error(err.response?.data?.error || 'Could not cancel the order'); }
+  };
+
   if (!activeBusiness) return <p className="text-sm text-gray-400">Choose a business first.</p>;
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
 
@@ -98,7 +106,10 @@ export default function SubscriptionPanel() {
                 <div className="space-y-1.5">
                   <p className="text-sm"><span className={`badge ${STATUS[open.status].cls}`}>{STATUS[open.status].label}</span> <span className="text-xs text-gray-500">order {open.orderNo}</span></p>
                   {open.status === 'PENDING_PAYMENT' && canPay && (
-                    <button className="btn-primary btn-sm" onClick={() => { setResume(open); setRenewOpen(true); }}>Pay now</button>
+                    <div className="flex items-center gap-3">
+                      <button className="btn-primary btn-sm" onClick={() => { setResume(open); setRenewOpen(true); }}>Pay now</button>
+                      <button className="text-xs text-red-600 hover:underline" onClick={cancelOrder}>Cancel order</button>
+                    </div>
                   )}
                 </div>
               ) : canPay ? (

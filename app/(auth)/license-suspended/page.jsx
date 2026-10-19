@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, ShieldAlert, RefreshCw, LogOut, Send, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { businesses as bizApi } from '@/lib/api';
+import { businesses as bizApi, orders as ordersApi } from '@/lib/api';
 import { isAuthenticated, clearSession, getUser, formatCurrency, formatDate } from '@/lib/auth';
 import { RENEW_ROLES } from '@/lib/subscription';
 import { STATUS } from '@/lib/orderStatus';
@@ -55,6 +55,19 @@ export default function LicenseSuspendedPage() {
     } finally { setBusyId(null); }
   };
 
+  // An unpaid order keeps the price it was placed at; cancelling lets the next Pay now use today's price.
+  const cancelOrder = async (biz) => {
+    if (!confirm(`Cancel order ${biz.openOrder.orderNo}? You can place a new one at the current price.`)) return;
+    setBusyId(biz.id);
+    try {
+      await ordersApi.cancel(biz.openOrder.id);
+      toast.success('Order cancelled');
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not cancel the order');
+    } finally { setBusyId(null); }
+  };
+
   const signOut = () => { clearSession(); router.replace('/login'); };
 
   if (!list) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
@@ -89,7 +102,15 @@ export default function LicenseSuspendedPage() {
                     : <p className="text-sm text-gray-600 mt-1">Choose your plan when you pay</p>}
                   {b.period && b.amountDue != null && <p className="text-xs text-gray-500">per {PERIOD[b.period] || b.period}</p>}
                 </div>
-                {open && <span className={`badge ${STATUS[open.status].cls}`}>Payment {STATUS[open.status].label.toLowerCase()}</span>}
+                {open && (
+                  <div className="text-right space-y-1">
+                    <span className={`badge ${STATUS[open.status].cls}`}>{STATUS[open.status].label}</span>
+                    <p className="text-xs text-gray-500">Order {open.orderNo}</p>
+                    {open.status === 'PENDING_PAYMENT' && open.mine && (
+                      <button className="text-xs text-red-600 hover:underline disabled:opacity-50" disabled={busyId === b.id} onClick={() => cancelOrder(b)}>Cancel order</button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {waiting && <p className="text-sm text-blue-700 dark:text-blue-300">Your payment is being reviewed. This page updates once it is approved.</p>}
