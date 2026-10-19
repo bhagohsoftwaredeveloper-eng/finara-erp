@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { receivable as rApi, accounts as acctApi, notifications as notifApi, settings as settingsApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
@@ -17,6 +19,7 @@ import { printDocument, phpFmt, dateFmt, badge } from '@/lib/print';
 import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import { useBusiness, isPreCutover } from '@/lib/businessContext';
 import { useDraftGuard } from '@/lib/useDraftGuard';
+import { todayPH } from '@/lib/arAging';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -541,7 +544,7 @@ function ShippingModal({ invoice, onClose, onShipped }) {
 }
 
 // ─── Create Invoice Modal ─────────────────────────────────────
-function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, onClose, onSaved, onCustomerAdded }) {
+function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, prefill, onClose, onSaved, onCustomerAdded }) {
   const [form, setForm] = useState(() => {
     if (invoice) return {
       customerId:  String(invoice.customerId),
@@ -556,6 +559,19 @@ function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, onClos
       })),
     };
     const defaultTerm = paymentTerms.find((t) => t.isDefault);
+    if (prefill) {
+      // Converting a delivery receipt: its customer, lines and (if set) the customer's default term.
+      const customerTermId = customers.find((c) => c.id === prefill.customerId)?.defaultTermId;
+      const term = paymentTerms.find((t) => t.id === customerTermId) || defaultTerm;
+      const invoiceDate = new Date().toISOString().split('T')[0];
+      const due = new Date(invoiceDate);
+      due.setDate(due.getDate() + (term ? term.days : 30));
+      return {
+        customerId: String(prefill.customerId), invoiceDate, dueDate: due.toISOString().split('T')[0],
+        paymentTerms: term ? term.name : '', description: `Per delivery receipt ${prefill.drNo}`, notes: '',
+        lines: prefill.lines,
+      };
+    }
     const invoiceDate = new Date().toISOString().split('T')[0];
     const due = new Date(invoiceDate);
     due.setDate(due.getDate() + (defaultTerm ? defaultTerm.days : 30));
@@ -572,7 +588,8 @@ function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, onClos
     };
   });
   const [saving, setSaving] = useState(false);
-  const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : 'invoice:new');
+  // A prefilled invoice gets its own draft key so a saved blank-invoice draft never overwrites it.
+  const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : prefill ? `invoice:dr:${prefill.id}` : 'invoice:new');
   const { clearDraft: clearInvoiceDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -646,6 +663,7 @@ function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, onClos
       const payload = {
         ...form,
         customerId: Number(form.customerId),
+        ...(prefill && { deliveryReceiptId: prefill.id }),
         lines: validLines.map((l) => ({
           accountId:   Number(l.accountId),
           description: l.description,
@@ -867,6 +885,8 @@ export default function InvoicesPage() {
   const [filter, setFilter]       = useState({ status: '', customerId: '', from: '', to: '', search: '' });
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [modal, setModal]         = useState(null);
+  const [prefill, setPrefill]     = useState(null);
+  const router = useRouter();
   const autoOpenedRef = useRef(false);
   const LIMIT = 15;
 
@@ -903,6 +923,36 @@ export default function InvoicesPage() {
     acctApi.list({ active: true }).then((r) => setAccounts(r.data));
     settingsApi.listPaymentTerms().then((r) => setPaymentTerms(r.data.filter((t) => t.isActive)));
   }, []);
+
+  // "Convert to Invoice" on a delivery receipt arrives here as ?fromDr=<id>.
+  useEffect(() => {
+    const fromDr = new URLSearchParams(window.location.search).get('fromDr');
+    if (!fromDr) return;
+    window.history.replaceState(null, '', window.location.pathname); // a refresh must not reopen it
+    rApi.deliveryReceipts.get(fromDr).then(({ data: dr }) => {
+      if (dr.invoice) { toast.error(`${dr.drNo} is already linked to ${dr.invoice.invoiceNo}`); return; }
+      if (dr.status === 'CANCELLED') { toast.error(`${dr.drNo} is cancelled`); return; }
+      setPrefill({
+        id: dr.id, drNo: dr.drNo, customerId: dr.customerId,
+        lines: dr.lines.map((l) => ({
+          accountId: l.item?.revenueAccountId ? String(l.item.revenueAccountId) : '',
+          description: l.description, quantity: String(Number(l.quantity)),
+          unitPrice: l.item ? String(Number(l.item.sellingPrice)) : '', vatCode: 'EXEMPT',
+        })),
+      });
+      setModal({ type: 'create' });
+    }).catch(() => toast.error('Could not load that delivery receipt'));
+  }, []);
+
+  const createDr = async (inv) => {
+    try {
+      const { data } = await rApi.deliveryReceipts.create({ invoiceId: inv.id, drDate: todayPH() });
+      toast.success(`${data.drNo} created`);
+      router.push(`/receivable/delivery-receipts?open=${data.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create delivery receipt');
+    }
+  };
 
   useEffect(() => {
     if (autoOpenedRef.current || loading || typeof window === 'undefined') return;
@@ -1139,6 +1189,14 @@ export default function InvoicesPage() {
                   >
                     <td>
                       <span className="font-mono font-medium text-green-700 text-sm">{inv.invoiceNo}</span>
+                      {(inv.deliveryReceipts || []).filter((d) => d.status !== 'CANCELLED').map((d) => (
+                        <Link key={d.id} href={`/receivable/delivery-receipts?open=${d.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-2 text-[10px] font-mono text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 hover:bg-blue-100"
+                          title={`Delivery receipt ${d.drNo} (${d.status.toLowerCase()})`}>
+                          {d.drNo}
+                        </Link>
+                      ))}
                       {isPreCutover(inv.invoiceDate, booksStartDate) && (
                         <span
                           className="badge badge-gray ml-2"
@@ -1229,6 +1287,15 @@ export default function InvoicesPage() {
                             <Truck className="w-4 h-4" />
                           </button>
                         )}
+                        {inv.status !== 'VOID' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); createDr(inv); }}
+                            className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Create delivery receipt"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1271,8 +1338,9 @@ export default function InvoicesPage() {
           customers={customers}
           accounts={accounts}
           paymentTerms={paymentTerms}
-          onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); load(); }}
+          prefill={prefill}
+          onClose={() => { setModal(null); setPrefill(null); }}
+          onSaved={() => { setModal(null); setPrefill(null); load(); }}
           onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])}
         />
       )}
