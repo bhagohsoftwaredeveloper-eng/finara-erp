@@ -21,4 +21,10 @@ router.put('/users/:id',          authorize('ADMIN'), ctrl.updateUser);
 router.delete('/users/:id',       authorize('ADMIN'), ctrl.deleteUser);
 router.post('/users/:id/reset-password', authorize('ADMIN'), ctrl.resetUserPassword);
 
+// Payment Terms
+router.get('/payment-terms',        ctrl.listPaymentTerms);
+router.post('/payment-terms',       authorize('ADMIN', 'MANAGER'), ctrl.createPaymentTerm);
+router.put('/payment-terms/:id',    authorize('ADMIN', 'MANAGER'), ctrl.updatePaymentTerm);
+router.delete('/payment-terms/:id', authorize('ADMIN', 'MANAGER'), ctrl.deletePaymentTerm);
+
 module.exports = router;

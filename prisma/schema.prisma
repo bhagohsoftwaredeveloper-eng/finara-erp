@@ -275,6 +275,7 @@ model Bill {
   vendor      Vendor     @relation(fields: [vendorId], references: [id])
   billDate    DateTime   @db.Date
   dueDate     DateTime   @db.Date
+  paymentTerms String?   @db.VarChar(50)
   description String?    @db.Text
   notes       String?    @db.Text
   subtotal    Decimal    @default(0) @db.Decimal(15, 2)
@@ -384,6 +385,7 @@ model Invoice {
   customer    Customer      @relation(fields: [customerId], references: [id])
   invoiceDate DateTime      @db.Date
   dueDate     DateTime      @db.Date
+  paymentTerms String?      @db.VarChar(50)
   description String?       @db.Text
   notes       String?       @db.Text
   subtotal    Decimal       @default(0) @db.Decimal(15, 2)
@@ -476,6 +478,7 @@ model Quotation {
   customer      Customer        @relation(fields: [customerId], references: [id])
   quotationDate DateTime        @db.Date
   validUntil    DateTime        @db.Date
+  paymentTerms  String?         @db.VarChar(50)
   description   String?         @db.Text
   notes         String?         @db.Text
   subtotal      Decimal         @default(0) @db.Decimal(15, 2)
@@ -634,6 +637,23 @@ model SystemSetting {
   @@unique([businessId, key])
   @@index([businessId])
   @@map("system_settings")
+}
+
+// ─── Payment Terms ──────────────────────────────────────────
+model PaymentTerm {
+  id         Int      @id @default(autoincrement())
+  businessId Int      @default(1)
+  name       String   @db.VarChar(50)
+  days       Int      @default(0)
+  isDefault  Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("payment_terms")
 }
 
 // ─── Inventory ─────────────────────────────────────────────
@@ -978,6 +998,7 @@ model PurchaseOrder {
   vendor       Vendor    @relation(fields: [vendorId], references: [id])
   orderDate    DateTime  @db.Date
   expectedDate DateTime? @db.Date
+  paymentTerms String?   @db.VarChar(50)
   status       POStatus  @default(DRAFT)
   notes        String?   @db.Text
   subtotal     Decimal   @default(0) @db.Decimal(15, 2)
