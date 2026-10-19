@@ -16,6 +16,13 @@ const genEntryNo = async (businessId = 1) => {
   return `JE-${businessId}-${String(n + 1).padStart(6, '0')}`;
 };
 
+// Optional Driver / Vehicle cost tags on a line. Added only when set, so untagged
+// lines are stored exactly as before.
+const lineTags = (l) => ({
+  ...(l.driverId && { driverId: Number(l.driverId) }),
+  ...(l.vehicleId && { vehicleId: Number(l.vehicleId) }),
+});
+
 // Validate a set of journal lines before they are written.
 // Balanced is not enough: an entry that debits and credits the SAME account
 // nets to zero economically but still inflates that account's debit and credit
@@ -114,6 +121,7 @@ exports.create = async (req, res, next) => {
             credit: l.credit || 0,
             description: l.description,
             lineOrder: i,
+            ...lineTags(l),
           })),
         },
       },
@@ -138,7 +146,7 @@ exports.update = async (req, res, next) => {
       if (lines) {
         await tx.journalLine.deleteMany({ where: { entryId: id } });
         await tx.journalLine.createMany({
-          data: lines.map((l, i) => ({ entryId: id, accountId: l.accountId, debit: l.debit || 0, credit: l.credit || 0, description: l.description, lineOrder: i })),
+          data: lines.map((l, i) => ({ entryId: id, accountId: l.accountId, debit: l.debit || 0, credit: l.credit || 0, description: l.description, lineOrder: i, ...lineTags(l) })),
         });
       }
       return tx.journalEntry.update({ where: { id }, data: { description, reference, notes }, include: { lines: true } });
