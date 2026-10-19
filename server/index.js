@@ -154,6 +154,7 @@ app.use('/api/cash-sales',     routes.cashSales);
 app.use('/api/reports/sales-summary', routes.salesSummary);
 app.use('/api/fleet',          routes.fleet);
 app.use('/api/reports',        routes.financialReports);
+app.use('/api/funds',          routes.funds);
 app.use('/api/opening-balances', routes.openingBalances);
 app.use('/api/reports',          routes.cashPosition);
 app.use('/api/school',           routes.school);

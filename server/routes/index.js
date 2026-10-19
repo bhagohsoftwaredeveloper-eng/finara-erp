@@ -34,6 +34,7 @@ module.exports = {
   salesSummary:  require('./salesSummary'),
   fleet:         require('./fleet'),
   financialReports: require('./financialReports'),
+  funds:         require('./funds'),
   openingBalances: require('./openingBalances'),
   cashPosition:  require('./cashPosition'),
   webhooks:      require('./webhooks'),
