@@ -342,7 +342,7 @@ function CollectionModal({ invoice, onClose, onCollected }) {
   const [form, setForm] = useState({
     paymentDate:   new Date().toISOString().split('T')[0],
     amount:        balance.toFixed(2),
-    paymentMethod: 'Bank Transfer',
+    paymentMethod: 'Cash',
     reference:     '',
     notes:         '',
   });
