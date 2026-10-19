@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Lock } from 'lucide-react';
 import { MODULES, setDisabledModules } from '@/lib/permissions';
-import { permissions as permApi } from '@/lib/api';
+import { businesses as bizApi } from '@/lib/api';
+import { useBusiness } from '@/lib/businessContext';
 import { getUser } from '@/lib/auth';
 
 const DESCRIPTIONS = {
@@ -39,28 +40,48 @@ const Switch = ({ on, disabled, onClick, label }) => (
 
 export default function ModulesPanel() {
   const router = useRouter();
+  const { activeBusinessId } = useBusiness();
   const [allowed, setAllowed]       = useState(false);
+  const [bizList, setBizList]       = useState([]);   // every company, for the operator
+  const [bizId, setBizId]           = useState(null); // the company whose modules are shown
   const [disabled, setDisabled]     = useState(null); // string[] | null while loading
   const [adminExempt, setExempt]    = useState(false);
   const [saving, setSaving]         = useState(false);
 
-  // Only a SUPER_ADMIN may change this (the API enforces it as well).
+  // Only a SUPER_ADMIN may change this (the API enforces it as well). The operator picks
+  // which company to manage; this reads and changes only that company's module switches and
+  // never opens its books, so it works for clients the operator cannot otherwise enter.
   useEffect(() => {
     if (getUser()?.role !== 'SUPER_ADMIN') { router.replace('/dashboard'); return; }
     setAllowed(true);
-    permApi.getDisabled()
+    bizApi.list({ scope: 'manage' })
+      .then(({ data }) => setBizList(data))
+      .catch(() => toast.error('Failed to load businesses'));
+  }, [router]);
+
+  // Start on the company the operator is working in, else the first one.
+  useEffect(() => {
+    if (bizId || bizList.length === 0) return;
+    setBizId(bizList.some((b) => b.id === activeBusinessId) ? activeBusinessId : bizList[0].id);
+  }, [bizList, bizId, activeBusinessId]);
+
+  useEffect(() => {
+    if (!bizId) return;
+    setDisabled(null);
+    bizApi.getModules(bizId)
       .then(({ data }) => { setDisabled(data.disabled); setExempt(!!data.adminExempt); })
       .catch(() => toast.error('Failed to load modules'));
-  }, [router]);
+  }, [bizId]);
 
   // Save immediately, update the nav live, and roll back if the server refuses.
   async function save(nextDisabled, nextExempt) {
     const prev = { disabled, adminExempt };
     setDisabled(nextDisabled); setExempt(nextExempt); setSaving(true);
     try {
-      const { data } = await permApi.saveDisabled({ disabled: nextDisabled, adminExempt: nextExempt });
+      const { data } = await bizApi.saveModules(bizId, { disabled: nextDisabled, adminExempt: nextExempt });
       setDisabled(data.disabled); setExempt(data.adminExempt);
-      setDisabledModules(data.disabled, data.adminExempt);
+      // The nav only changes live when it is the company the operator is currently in.
+      if (bizId === activeBusinessId) setDisabledModules(data.disabled, data.adminExempt);
       return true;
     } catch (err) {
       setDisabled(prev.disabled); setExempt(prev.adminExempt);
@@ -90,6 +111,21 @@ export default function ModulesPanel() {
           </p>
         </div>
         {disabled && <span className="badge-blue whitespace-nowrap flex-shrink-0">{enabledCount} of {MODULES.length} enabled</span>}
+      </div>
+
+      <div className="card">
+        <div className="card-body flex flex-wrap items-end gap-4">
+          <div className="form-group mb-0 min-w-[18rem]">
+            <label className="label">Business</label>
+            <select className="select" value={bizId || ''} onChange={(e) => setBizId(Number(e.target.value))} disabled={saving}>
+              {bizList.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <p className="text-xs text-gray-500 flex-1 min-w-[16rem]">
+            You are changing only which modules this company has. Its books, invoices and ledger stay private
+            to its owners; this page never opens them.
+          </p>
+        </div>
       </div>
 
       {!disabled ? (
