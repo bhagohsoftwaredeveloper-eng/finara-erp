@@ -208,6 +208,8 @@ export default function BusinessesPanel() {
       }
       const { data } = await bizApi.listUsers(manageId);
       setBizUsers(data);
+      // The business switcher is loaded once per page load: reload so your own change shows in it.
+      if (userId === me?.id) setTimeout(() => window.location.reload(), 700);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update access');
     }
