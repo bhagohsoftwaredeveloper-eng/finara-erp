@@ -5,6 +5,7 @@ const { cloneChartOfAccounts } = require('../utils/cloneChartOfAccounts');
 const { resetDemoBusiness } = require('../../prisma/seedDemo');
 const mailer = require('../utils/mailer');
 const { recordAudit } = require('../utils/audit');
+const { isDue, parseEffective, applyDueSuspension } = require('../utils/licenseSchedule');
 const { readModules, writeModules } = require('./permissionsController');
 const paymongo = require('../utils/paymongo');
 
@@ -99,6 +100,8 @@ exports.get = async (req, res, next) => {
     await assertBusinessAccess(req.user, id);
     const biz = await prisma.business.findUnique({ where: { id } });
     if (!biz) throw createError('Business not found', 404);
+    // A scheduled suspension whose date has arrived takes effect on first contact.
+    if (isDue(biz) && (await applyDueSuspension(biz))) biz.licenseStatus = 'SUSPENDED';
 
     if (req.user.role !== 'SUPER_ADMIN' && biz.licenseStatus !== 'ACTIVE') {
       throw createError(
@@ -236,12 +239,30 @@ exports.updateLicense = async (req, res, next) => {
       throw createError(`Cannot transition license from ${biz.licenseStatus} to ${status}`, 400);
     }
 
+    // Suspending with a future effective date is a grace period for the client to pay: the
+    // license stays ACTIVE and is locked automatically when the date arrives.
+    if (status === 'SUSPENDED') {
+      const eff = parseEffective(req.body.effectiveDate);
+      if (!eff.immediate) {
+        const scheduled = await prisma.business.update({ where: { id }, data: { suspendAt: eff.at } });
+        await prisma.licenseEvent.create({
+          data: {
+            businessId: id, eventType: 'SUSPENSION_SCHEDULED', actorUserId: req.user.id,
+            note: `Suspension effective ${eff.dateStr}${note ? `. ${note}` : ''}`,
+          },
+        });
+        const owner = biz.createdByUserId ? await prisma.user.findUnique({ where: { id: biz.createdByUserId } }) : null;
+        mailer.sendLicenseSuspensionScheduledNotice(scheduled, owner, eff.dateStr);
+        return res.json(scheduled);
+      }
+    }
+
     const isActivating = status === 'ACTIVE';
     const updated = await prisma.business.update({
       where: { id },
       data: isActivating
         ? { licenseStatus: status, licenseActivatedAt: new Date(), licenseActivatedBy: req.user.id }
-        : { licenseStatus: status },
+        : { licenseStatus: status, ...(biz.suspendAt && { suspendAt: null }) },
     });
 
     await prisma.licenseEvent.create({
@@ -254,6 +275,22 @@ exports.updateLicense = async (req, res, next) => {
     if (isActivating) mailer.sendLicenseActivatedNotice(updated, requester);
     else mailer.sendLicenseSuspendedNotice(updated, requester);
 
+    res.json(updated);
+  } catch (err) { next(err); }
+};
+
+// Cancel a scheduled suspension (SUPER_ADMIN): the client paid, or it was a mistake.
+exports.cancelScheduledSuspension = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const biz = await prisma.business.findUnique({ where: { id } });
+    if (!biz) throw createError('Business not found', 404);
+    if (!biz.suspendAt) throw createError('No suspension is scheduled for this business', 400);
+
+    const updated = await prisma.business.update({ where: { id }, data: { suspendAt: null } });
+    await prisma.licenseEvent.create({
+      data: { businessId: id, eventType: 'SUSPENSION_CANCELLED', note: req.body?.note || null, actorUserId: req.user.id },
+    });
     res.json(updated);
   } catch (err) { next(err); }
 };

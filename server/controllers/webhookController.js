@@ -45,7 +45,19 @@ exports.paymongo = async (req, res) => {
       return res.sendStatus(200);
     }
     if (business.licenseStatus === 'ACTIVE') {
-      logger.info(`[paymongoWebhook] business ${business.id} is already ACTIVE — ignoring`);
+      // Paid inside the grace period: the scheduled suspension is cancelled.
+      if (business.suspendAt) {
+        const paidPayment = link?.attributes?.payments?.[0]?.data;
+        const amount = Number(paidPayment?.attributes?.amount ?? link?.attributes?.amount ?? 0) / 100;
+        await prisma.$transaction([
+          prisma.business.update({ where: { id: business.id }, data: { suspendAt: null } }),
+          prisma.licenseEvent.create({ data: { businessId: business.id, eventType: 'PAYMENT_RECEIVED', amount, note: `PayMongo payment ${paidPayment?.id || linkId}`, actorUserId: null } }),
+          prisma.licenseEvent.create({ data: { businessId: business.id, eventType: 'SUSPENSION_CANCELLED', note: 'Payment received before the effective date', actorUserId: null } }),
+        ]);
+        logger.info(`[paymongoWebhook] business ${business.id} paid before its scheduled suspension — suspension cancelled`);
+      } else {
+        logger.info(`[paymongoWebhook] business ${business.id} is already ACTIVE — ignoring`);
+      }
       return res.sendStatus(200);
     }
 

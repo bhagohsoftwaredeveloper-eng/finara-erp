@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/database');
 const { canAccessBusinessData, defaultBusinessId } = require('../utils/businessAccess');
+const { isDue, applyDueSuspension } = require('../utils/licenseSchedule');
 
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -27,8 +28,13 @@ const authenticate = (req, res, next) => {
 async function assertLicenseActive(req, res, businessId) {
   const biz = await prisma.business.findUnique({
     where: { id: businessId },
-    select: { licenseStatus: true },
+    select: { id: true, name: true, email: true, createdByUserId: true, licenseStatus: true, suspendAt: true },
   });
+  // A scheduled suspension whose date has arrived locks the business on first contact.
+  if (biz && isDue(biz)) {
+    await applyDueSuspension(biz).catch(() => {});
+    biz.licenseStatus = 'SUSPENDED';
+  }
   if (biz && biz.licenseStatus !== 'ACTIVE') {
     res.status(403).json({
       error: biz.licenseStatus === 'PENDING' ? 'License not yet activated' : 'Business license suspended',

@@ -21,6 +21,8 @@ enum LicenseEventType {
   ACTIVATED
   SUSPENDED
   REACTIVATED
+  SUSPENSION_SCHEDULED
+  SUSPENSION_CANCELLED
 }
 
 model Business {
@@ -50,6 +52,10 @@ model Business {
   licenseStatus          LicenseStatus @default(ACTIVE)
   licenseActivatedAt     DateTime?
   licenseActivatedBy     Int?
+  // When set (and the license is still ACTIVE) the license will be suspended from this
+  // moment: a grace period for the client to pay. Cleared when it takes effect, is
+  // cancelled, or a payment is received. See server/utils/licenseSchedule.js.
+  suspendAt              DateTime?
   createdByUserId        Int?
   paymentLinkId          String?       @db.VarChar(100)
   paymentLinkUrl         String?       @db.Text

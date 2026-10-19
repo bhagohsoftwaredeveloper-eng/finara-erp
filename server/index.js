@@ -173,4 +173,14 @@ app.listen(PORT, () => {
   logger.info(`PH-ERP API running on port ${PORT} [${process.env.NODE_ENV}]`);
 });
 
+// Scheduled license suspensions lock a business the moment anyone uses it after the date;
+// this hourly sweep also catches businesses nobody has touched, records the event and sends
+// the notice. unref() so it never keeps the process alive on its own.
+if (process.env.NODE_ENV !== 'test') {
+  const { sweepDueSuspensions } = require('./utils/licenseSchedule');
+  const sweep = () => sweepDueSuspensions().catch((err) => logger.error(`[license] sweep failed: ${err.message}`));
+  setTimeout(sweep, 30 * 1000).unref();
+  setInterval(sweep, 60 * 60 * 1000).unref();
+}
+
 module.exports = app;

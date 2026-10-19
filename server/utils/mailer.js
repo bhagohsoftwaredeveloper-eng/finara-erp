@@ -261,8 +261,21 @@ async function sendLicenseSuspendedNotice(business, requester) {
   return results.some(Boolean);
 }
 
+// Sent when the operator schedules a suspension: the grace period to pay.
+async function sendLicenseSuspensionScheduledNotice(business, requester, effectiveDate) {
+  const recipients = [...new Set([requester?.email, business.email].filter(Boolean))];
+  if (!recipients.length) return false;
+  const html = wrap('Your Finara License Will Be Suspended',
+    `<p>The license for <strong>${escapeHtml(business.name)}</strong> will be suspended on <strong>${escapeHtml(effectiveDate)}</strong> unless payment is received before then.</p>
+     <p>You can keep using Finara normally until that date. Once payment is confirmed the suspension is cancelled.</p>`);
+  const results = await Promise.all(
+    recipients.map((to) => sendMail({ to, subject: `Your Finara license will be suspended on ${effectiveDate} — ${business.name}`, html }))
+  );
+  return results.some(Boolean);
+}
+
 module.exports = {
   sendMail, sendPasswordReset, sendInvoiceEmail, sendAssessmentEmail, sendOverdueReminder, sendPayslipEmail,
-  sendLicensePendingNotice, sendLicenseActivatedNotice, sendLicenseSuspendedNotice,
+  sendLicensePendingNotice, sendLicenseActivatedNotice, sendLicenseSuspendedNotice, sendLicenseSuspensionScheduledNotice,
   wrap, getTransporter, APP_URL, fillTemplate,
 };

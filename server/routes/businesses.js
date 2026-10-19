@@ -24,6 +24,7 @@ router.get('/:id',                           ctrl.get);
 router.post('/',           adminOnly,        ctrl.create);
 router.put('/:id',         adminOnly,        ctrl.update);
 router.patch('/:id/license', authorize('SUPER_ADMIN'), ctrl.updateLicense);
+router.delete('/:id/license/schedule', authorize('SUPER_ADMIN'), ctrl.cancelScheduledSuspension);
 router.post('/:id/license/payment-link', authorize('SUPER_ADMIN'), ctrl.generatePaymentLink);
 router.get('/:id/users',   adminOnly,        ctrl.listUsers);
 router.post('/:id/users',  adminOnly,        ctrl.grantUser);
