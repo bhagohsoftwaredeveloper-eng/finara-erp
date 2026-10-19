@@ -6,7 +6,7 @@ import {
   Users, ClipboardList, Building2, ChevronDown, LogOut, Settings,
   Package, Landmark, Wallet,
   ShoppingCart, Banknote, BarChart3, Repeat,
-  PanelLeftClose, PanelLeftOpen, HandCoins, Scale,
+  PanelLeftClose, PanelLeftOpen, HandCoins, Scale, PiggyBank,
   GraduationCap,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
@@ -84,6 +84,7 @@ const NAV = [
       { label: 'Purchase Orders',  icon: ShoppingCart, href: '/purchase-orders' },
       { label: 'Expense Vouchers', icon: Wallet,       href: '/expenses' },
       { label: 'Cash Requests',    icon: HandCoins,    href: '/cash-requests' },
+      { label: 'Funds',            icon: PiggyBank,    href: '/funds' },
     ],
   },
   {
