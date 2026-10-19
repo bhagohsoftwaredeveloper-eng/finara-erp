@@ -186,3 +186,29 @@
     animation: none !important;
   }
 }
+
+/* ── Wider modals and top drawers ─────────────────────────────────────────────
+   Every modal (.modal) and top drawer (an element animated with topDrawerIn) names its width with a
+   Tailwind max-w-* class. These rules raise each size by roughly 40-60% so forms get more room,
+   never wider than the screen. The extra class/attribute makes them win over the plain utilities.
+   Plain CSS on purpose (outside @layer) so it is never purged. */
+.modal.max-w-sm,
+[style*="topDrawerIn"].max-w-sm { max-width: min(32rem, calc(100vw - 2rem)); }
+.modal.max-w-md,
+[style*="topDrawerIn"].max-w-md { max-width: min(40rem, calc(100vw - 2rem)); }
+.modal.max-w-lg,
+[style*="topDrawerIn"].max-w-lg { max-width: min(46rem, calc(100vw - 2rem)); }
+.modal.max-w-xl,
+[style*="topDrawerIn"].max-w-xl { max-width: min(52rem, calc(100vw - 2rem)); }
+.modal.max-w-2xl,
+[style*="topDrawerIn"].max-w-2xl { max-width: min(60rem, calc(100vw - 2rem)); }
+.modal.max-w-3xl,
+[style*="topDrawerIn"].max-w-3xl { max-width: min(68rem, calc(100vw - 2rem)); }
+.modal.max-w-4xl,
+[style*="topDrawerIn"].max-w-4xl { max-width: min(78rem, calc(100vw - 2rem)); }
+.modal.max-w-5xl,
+[style*="topDrawerIn"].max-w-5xl { max-width: min(88rem, calc(100vw - 2rem)); }
+.modal.max-w-6xl,
+[style*="topDrawerIn"].max-w-6xl { max-width: min(96rem, calc(100vw - 2rem)); }
+.modal.max-w-7xl,
+[style*="topDrawerIn"].max-w-7xl { max-width: min(108rem, calc(100vw - 2rem)); }
