@@ -7,6 +7,7 @@ import { Plus, Search, Printer, Truck, X, Ban, FileText, RefreshCw } from 'lucid
 import CustomerSelect from '@/components/CustomerSelect';
 import NumberInput from '@/components/NumberInput';
 import { TagSelect, useFleetTags } from '@/components/ui/CostTags';
+import { priceLines } from '@/lib/drPricing';
 import { printDr } from '@/lib/drPrint';
 import { formatDate, formatCurrency } from '@/lib/auth';
 import { todayPH } from '@/lib/arAging';
@@ -123,6 +124,15 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
     setForm((f) => ({ ...f, vehicleId: id, ...(v && { vehicleNo: v.code }) }));
   };
 
+  // Prices are shown, not stored: from the linked invoice, or the stocked item's selling price.
+  const priced = priceLines({
+    invoice: dr?.invoice,
+    lines: form.lines.map((l) => ({
+      description: l.description, quantity: Number(l.quantity) || 0,
+      item: items.find((it) => String(it.id) === String(l.itemId)) || null,
+    })),
+  });
+
   const payload = () => ({
     ...(dr ? {} : { customerId: Number(form.customerId) }),
     drDate: form.drDate, deliveryAddress: form.deliveryAddress, driverName: form.driverName,
@@ -226,10 +236,14 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
 
             <div>
               <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
+              <div className="hidden md:grid md:grid-cols-[1.3fr_3fr_6rem_6rem_7rem_8rem_2rem] gap-2 px-0.5 mb-1 text-xs text-gray-500 font-medium">
+                <div>Stocked item</div><div>Description</div><div className="text-right">Qty</div><div>Unit</div>
+                <div className="text-right">Price</div><div className="text-right">Amount</div><div />
+              </div>
               <div className="space-y-2">
                 {form.lines.map((l, i) => (
                   <div key={i} className="space-y-2">
-                  <div className="grid grid-cols-1 md:grid-cols-[1.3fr_3fr_6rem_6rem_2rem] gap-2 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-[1.3fr_3fr_6rem_6rem_7rem_8rem_2rem] gap-2 items-start">
                     <select className="select text-sm" disabled={readOnly} value={l.itemId} onChange={(e) => pickItem(i, e.target.value)}>
                       <option value="">— Not a stocked item —</option>
                       {items.map((it) => (
@@ -245,6 +259,12 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
                       value={l.quantity} onChange={(v) => setLine(i, { quantity: v })} />
                     <input className="input text-sm" placeholder="Unit" disabled={readOnly}
                       value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })} />
+                    <div className="text-sm text-right text-gray-600 py-2">
+                      {priced.lines[i]?.unitPrice == null ? <span className="text-gray-300">—</span> : formatCurrency(priced.lines[i].unitPrice)}
+                    </div>
+                    <div className="text-sm text-right font-medium text-gray-800 py-2">
+                      {priced.lines[i]?.amount == null ? <span className="text-gray-300">—</span> : formatCurrency(priced.lines[i].amount)}
+                    </div>
                     {!readOnly && (
                       <button type="button" className="p-1.5 text-red-400 hover:text-red-600"
                         onClick={() => setForm((f) => ({ ...f, lines: f.lines.length > 1 ? f.lines.filter((_, xi) => xi !== i) : [blankLine()] }))}
@@ -287,6 +307,16 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
                   onClick={() => setForm((f) => ({ ...f, lines: [...f.lines, blankLine()] }))}>
                   <Plus className="w-3.5 h-3.5" /> Add line
                 </button>
+              )}
+              {priced.hasPrices && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
+                  <div className="w-72 space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{formatCurrency(priced.subtotal)}</span></div>
+                    {priced.vat > 0 && <div className="flex justify-between"><span className="text-gray-500">VAT (12%)</span><span>{formatCurrency(priced.vat)}</span></div>}
+                    <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(priced.total)}</span></div>
+                    <p className="text-xs text-gray-400 text-right pt-1">From the linked invoice, or the item's selling price. Not stored on the receipt.</p>
+                  </div>
+                </div>
               )}
             </div>
 
