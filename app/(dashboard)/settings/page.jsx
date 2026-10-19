@@ -8,7 +8,7 @@ import {
   Calculator, Hash, Shield, Save, RefreshCw, Download, AlertTriangle,
   CheckCircle, Eye, EyeOff, Trash2, Plus, Edit2, Key, ToggleLeft,
   ToggleRight, Server, HardDrive, Clock, Globe, Loader2, X, ChevronDown,
-  Inbox, HelpCircle, Blocks, Mail, Banknote, Tags, ClipboardCheck, CalendarClock,
+  Inbox, HelpCircle, Blocks, Mail, Banknote, Tags, ClipboardCheck, CalendarClock, Truck,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
 import { clearCompanyCache } from '@/lib/print';
@@ -17,6 +17,7 @@ import BusinessesPanel from '@/components/settings/BusinessesPanel';
 import ModulesPanel from '@/components/settings/ModulesPanel';
 import PlansPanel from '@/components/settings/PlansPanel';
 import OrdersPanel from '@/components/settings/OrdersPanel';
+import FleetPanel from '@/components/settings/FleetPanel';
 
 // ─── Tabs config ──────────────────────────────────────────────
 const TABS = [
@@ -26,6 +27,7 @@ const TABS = [
   { key: 'payroll',    label: 'Payroll',       icon: Calculator,   roles: ['ADMIN', 'MANAGER'] },
   { key: 'numbering',  label: 'Numbering',     icon: Hash,         roles: ['ADMIN', 'MANAGER'] },
   { key: 'paymentTerms', label: 'Payment Terms', icon: CalendarClock, roles: ['ADMIN', 'MANAGER'] },
+  { key: 'fleet',        label: 'Drivers & Vehicles', icon: Truck,    roles: ['ADMIN', 'MANAGER'] },
   { key: 'users',      label: 'Users',         icon: Users,        roles: ['ADMIN'] },
   { key: 'database',   label: 'Database',      icon: Database,     roles: ['ADMIN'] },
   { key: 'system',      label: 'System',       icon: SettingsIcon, roles: ['ADMIN', 'MANAGER'] },
@@ -709,6 +711,7 @@ export default function SettingsPage() {
           {activeTab === 'modules'    && <ModulesPanel />}
           {activeTab === 'plans'      && <PlansPanel />}
           {activeTab === 'orders'     && <OrdersPanel />}
+          {activeTab === 'fleet'      && <FleetPanel />}
 
           {/* ── Company ── */}
           {activeTab === 'company' && (
