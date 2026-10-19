@@ -5,9 +5,8 @@ import { CalendarClock, AlertTriangle } from 'lucide-react';
 import { useBusiness } from '@/lib/businessContext';
 import { orders as ordersApi } from '@/lib/api';
 import { getUser, formatDate } from '@/lib/auth';
-import { renewalState } from '@/lib/subscription';
+import { renewalState, RENEW_ROLES } from '@/lib/subscription';
 import { STATUS } from '@/lib/orderStatus';
-import RenewBusinessModal from '@/components/orders/RenewBusinessModal';
 
 const OPEN_ORDER = ['PENDING_PAYMENT', 'PROOF_SUBMITTED'];
 
@@ -24,15 +23,15 @@ function message(biz, s) {
 }
 
 // Dashboard reminders for the businesses whose subscription is about to end, has ended,
-// or has a scheduled suspension. Only the people who can pay (ADMIN, SUPER_ADMIN) see them.
+// or has a scheduled suspension. Only the people who can pay see them; paying happens on
+// Settings > Subscription (for the business being renewed).
 export default function RenewalReminders() {
-  const { businesses } = useBusiness();
+  const { businesses, setActive } = useBusiness();
   const [role, setRole]         = useState(null);
   const [orders, setOrders]     = useState([]);
-  const [renewBiz, setRenewBiz] = useState(null);
   useEffect(() => { setRole(getUser()?.role || null); }, []);
 
-  const canPay = role === 'ADMIN' || role === 'SUPER_ADMIN';
+  const canPay = RENEW_ROLES.includes(role);
   const due = useMemo(
     () => (businesses || []).filter((b) => !b.managed).map((biz) => ({ biz, s: renewalState(biz) })).filter((x) => x.s.level),
     [businesses]
@@ -63,7 +62,7 @@ export default function RenewalReminders() {
                   <Link href="/my-businesses" className="text-xs font-medium underline">View order</Link>
                 </div>
               ) : (
-                <button className="btn-primary btn-sm" onClick={() => setRenewBiz(biz)}>Renew now</button>
+                <Link href="/settings?tab=subscription" className="btn-primary btn-sm" onClick={() => setActive?.(biz.id)}>Renew now</Link>
               )}
             </div>
           );

@@ -29,7 +29,7 @@ const TABS = [
   { key: 'numbering',  label: 'Numbering',     icon: Hash,         roles: ['ADMIN', 'MANAGER'] },
   { key: 'paymentTerms', label: 'Payment Terms', icon: CalendarClock, roles: ['ADMIN', 'MANAGER'] },
   { key: 'fleet',        label: 'Drivers & Vehicles', icon: Truck,    roles: ['ADMIN', 'MANAGER'] },
-  { key: 'subscription', label: 'Subscription',  icon: CreditCard,   roles: ['ADMIN'] },
+  { key: 'subscription', label: 'Subscription',  icon: CreditCard,   roles: ['ADMIN', 'MANAGER'] },
   { key: 'users',      label: 'Users',         icon: Users,        roles: ['ADMIN'] },
   { key: 'database',   label: 'Database',      icon: Database,     roles: ['ADMIN'] },
   { key: 'system',      label: 'System',       icon: SettingsIcon, roles: ['ADMIN', 'MANAGER'] },

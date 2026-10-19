@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useBusiness } from '@/lib/businessContext';
 import { orders as ordersApi } from '@/lib/api';
 import { formatCurrency, formatDate, getUser } from '@/lib/auth';
-import { renewalState } from '@/lib/subscription';
+import { renewalState, RENEW_ROLES } from '@/lib/subscription';
 import { COMPANY_TYPES } from '@/lib/companyTypes';
 import { STATUS } from '@/lib/orderStatus';
 import RenewBusinessModal from '@/components/orders/RenewBusinessModal';
@@ -28,7 +28,7 @@ export default function SubscriptionPanel() {
   const [quote, setQuote]     = useState(null);   // null = no subscription on record
   const [orders, setOrders]   = useState([]);
   const [renewOpen, setRenewOpen] = useState(false);
-  const canPay = ['ADMIN', 'SUPER_ADMIN'].includes(getUser()?.role);
+  const canPay = RENEW_ROLES.includes(getUser()?.role);
 
   const load = useCallback(async () => {
     if (!activeBusiness) return;
