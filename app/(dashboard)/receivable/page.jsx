@@ -576,6 +576,17 @@ function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, onClos
   const { clearDraft: clearInvoiceDraft } = useDraftGuard(draftKey, form, setForm);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  // New invoices only: choosing a customer pre-selects that customer's default term.
+  // The due-date effect below then recomputes the date. An edit keeps its own terms.
+  const setCustomer = (id) => {
+    setForm((f) => {
+      const next = { ...f, customerId: id };
+      const termId = !invoice && customers.find((c) => String(c.id) === String(id))?.defaultTermId;
+      const term = termId && paymentTerms.find((t) => t.id === termId);
+      if (term) next.paymentTerms = term.name;
+      return next;
+    });
+  };
   const setLine = (i, k, v) =>
     setForm((f) => ({ ...f, lines: f.lines.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)) }));
   const addLine = () =>
@@ -677,7 +688,7 @@ function CreateInvoiceModal({ customers, accounts, paymentTerms, invoice, onClos
                 <CustomerSelect
                   customers={customers}
                   value={form.customerId}
-                  onChange={(id) => setForm((f) => ({ ...f, customerId: id }))}
+                  onChange={setCustomer}
                   onCustomerAdded={onCustomerAdded}
                   required
                 />
@@ -1145,6 +1156,7 @@ export default function InvoicesPage() {
                     <td>
                       <span className={`text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
                         {formatDate(inv.dueDate)}
+                        {inv.paymentTerms && <span className="block text-xs text-gray-400">{inv.paymentTerms}</span>}
                         {isOverdue && <span className="block text-xs">⚠ Overdue</span>}
                       </span>
                     </td>

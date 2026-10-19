@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { receivable as rApi } from '@/lib/api';
+import { receivable as rApi, settings as settingsApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Edit2, Users, Phone, Mail, MapPin,
@@ -17,6 +17,10 @@ function CustomerModal({ customer, onClose, onSaved }) {
     customer || { customerCode: '', name: '', tin: '', address: '', contactName: '', email: '', phone: '' }
   );
   const [saving, setSaving] = useState(false);
+  const [terms, setTerms] = useState([]);
+  useEffect(() => {
+    settingsApi.listPaymentTerms().then((r) => setTerms(r.data.filter((t) => t.isActive))).catch(() => {}); // select stays empty
+  }, []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
@@ -82,6 +86,21 @@ function CustomerModal({ customer, onClose, onSaved }) {
                 value={form.address || ''} onChange={set('address')}
                 placeholder="Complete business address"
               />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Default Payment Terms</label>
+              <select
+                className="select"
+                value={form.defaultTermId ? String(form.defaultTermId) : ''}
+                onChange={(e) => setForm((f) => ({ ...f, defaultTermId: e.target.value ? Number(e.target.value) : null }))}
+              >
+                <option value="">— None (use the business default) —</option>
+                {terms.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.days === 0 ? 'on invoice date' : `${t.days} days`})</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Pre-selected when you create an invoice for this customer.</p>
             </div>
 
             <hr className="border-gray-100" />
