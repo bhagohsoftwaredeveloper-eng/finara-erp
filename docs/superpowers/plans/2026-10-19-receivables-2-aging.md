@@ -12,7 +12,7 @@ Spec: `docs/superpowers/specs/2026-10-19-receivables-docs-design.md` (section 2)
 
 **Spec deviation found while planning:** the aging page already has Excel export and per-customer statement print/Excel (open invoices with payment history). This phase does not rebuild them; it only adds the Terms to them. The "Excel/CSV export" item in the spec is therefore already satisfied.
 
-**Prerequisite:** Phase 1 (`2026-10-19-receivables-1-terms.md`) merged: invoices carry `termsName`.
+**Prerequisite:** Phase 1 (`2026-10-19-receivables-1-terms.md`) merged: invoices carry `paymentTerms`.
 
 ## Global Constraints
 
@@ -39,7 +39,7 @@ Spec: `docs/superpowers/specs/2026-10-19-receivables-docs-design.md` (section 2)
   - `bucketForDays(days: number): string`
   - `ageOf(inv: { dueDate, invoiceDate }, asOf: string, basis?: 'due'|'invoice'): { days: number, bucket: string }` (days is never below 0)
   - `paidAsOf(inv: { paidAmount, payments? }, asOf: string): number`
-  - `buildAging(invoices, { asOf, basis?, customerNames? }): { items, summary, total }` where each item is `{ invoiceNo, customerId, customer, invoiceDate, dueDate, termsName, total, paid, outstanding, daysOverdue, bucket, notes }`.
+  - `buildAging(invoices, { asOf, basis?, customerNames? }): { items, summary, total }` where each item is `{ invoiceNo, customerId, customer, invoiceDate, dueDate, paymentTerms, total, paid, outstanding, daysOverdue, bucket, notes }`.
 
 - [ ] **Step 1: Write the failing tests** (`tests/arAging.test.js`)
 
@@ -122,7 +122,7 @@ describe('paidAsOf', () => {
 });
 
 describe('buildAging', () => {
-  const base = { customerId: 1, notes: null, termsName: 'Net 30', paidAmount: 0, payments: [] };
+  const base = { customerId: 1, notes: null, paymentTerms: 'Net 30', paidAmount: 0, payments: [] };
   const invoices = [
     { ...base, invoiceNo: 'INV-1', status: 'OPEN',    invoiceDate: '2026-01-01', dueDate: '2026-01-31', totalAmount: 1000 },
     { ...base, invoiceNo: 'INV-2', status: 'PARTIAL', invoiceDate: '2026-02-01', dueDate: '2026-03-03', totalAmount: 500, paidAmount: 200 },
@@ -137,7 +137,7 @@ describe('buildAging', () => {
 
     expect(r.items.map((i) => i.invoiceNo)).toEqual(['INV-1', 'INV-2']); // 3 paid, 4 void, 5 not issued yet
     expect(r.items[0]).toMatchObject({
-      customer: 'ACME', termsName: 'Net 30', total: 1000, paid: 0, outstanding: 1000,
+      customer: 'ACME', paymentTerms: 'Net 30', total: 1000, paid: 0, outstanding: 1000,
       daysOverdue: 30, bucket: '1-30 days',
     });
     expect(r.items[1]).toMatchObject({ outstanding: 300, daysOverdue: 0, bucket: 'Current' });
@@ -238,7 +238,7 @@ function buildAging(invoices, { asOf, basis = 'due', customerNames = {} }) {
       customer: customerNames[inv.customerId] || 'Unknown customer',
       invoiceDate: inv.invoiceDate,
       dueDate: inv.dueDate,
-      termsName: inv.termsName || null,
+      paymentTerms: inv.paymentTerms || null,
       total, paid, outstanding,
       daysOverdue: days,
       bucket,
@@ -298,7 +298,7 @@ const run = (fn, req) => new Promise((resolve, reject) => {
 
 const inv = (over = {}) => ({
   invoiceNo: 'INV-1', customerId: 4, status: 'OPEN', invoiceDate: new Date('2026-01-01T00:00:00Z'),
-  dueDate: new Date('2026-01-31T00:00:00Z'), totalAmount: 1000, paidAmount: 0, termsName: 'Net 30',
+  dueDate: new Date('2026-01-31T00:00:00Z'), totalAmount: 1000, paidAmount: 0, paymentTerms: 'Net 30',
   notes: null, payments: [], ...over,
 });
 
@@ -331,7 +331,7 @@ describe('agingReport', () => {
     expect(r.asOf).toBe('2026-03-02');
     expect(r.basis).toBe('invoice');
     expect(r.total).toBe(1000);
-    expect(r.items[0]).toMatchObject({ customer: 'ACME', termsName: 'Net 30', bucket: '31-60 days' });
+    expect(r.items[0]).toMatchObject({ customer: 'ACME', paymentTerms: 'Net 30', bucket: '31-60 days' });
   });
 
   test('defaults to the due-date basis for any unknown basis value', async () => {
@@ -410,13 +410,13 @@ git commit -m "feat(aging): as-of date and basis on the AR aging endpoint"
 - Modify: `app/(dashboard)/receivable/aging/page.jsx`
 
 **Interfaces:**
-- Consumes: `AR_BUCKETS`, `ageOf`, `todayPH` from `@/lib/arAging`; endpoint from Task 2; item fields `termsName`, `invoiceDate`.
+- Consumes: `AR_BUCKETS`, `ageOf`, `todayPH` from `@/lib/arAging`; endpoint from Task 2; item fields `paymentTerms`, `invoiceDate`.
 
 - [ ] **Step 1: Imports and buckets.** After `import { exportToExcel } from '@/lib/export';` add `import { AR_BUCKETS, ageOf, todayPH } from '@/lib/arAging';`. Replace `const BUCKETS = ['Current', '1-30 days', '31-60 days', '61-90 days', 'Over 90 days'];` with `const BUCKETS = AR_BUCKETS;`.
 
 - [ ] **Step 2: Remove the hand-copied bucket function.** Delete the local `function bucketFor(dueDate) { ... }` (lines ~46-55, with its comment). Replace its two call sites:
   - history table row (`const { bucket } = isOutstanding ? bucketFor(inv.dueDate) : { bucket: null };`) with `const { bucket } = isOutstanding ? ageOf(inv, todayPH(), 'due') : { bucket: null };`
-  - `outstandingItemsFrom` (`const { daysOverdue, bucket } = bucketFor(inv.dueDate);`) with `const { days: daysOverdue, bucket } = ageOf(inv, todayPH(), 'due');` and add `termsName: inv.termsName,` to the object it returns.
+  - `outstandingItemsFrom` (`const { daysOverdue, bucket } = bucketFor(inv.dueDate);`) with `const { days: daysOverdue, bucket } = ageOf(inv, todayPH(), 'due');` and add `paymentTerms: inv.paymentTerms,` to the object it returns.
 
 - [ ] **Step 3: State and loading.** In the main page component, next to its other `useState` calls add:
 
@@ -474,15 +474,15 @@ with
 
 ```jsx
               <span className="text-xs text-gray-400 ml-2">Due: {formatDate(item.dueDate)}</span>
-              {item.termsName && <span className="text-xs text-gray-400 ml-2">· {item.termsName}</span>}
+              {item.paymentTerms && <span className="text-xs text-gray-400 ml-2">· {item.paymentTerms}</span>}
               {item.daysOverdue > 0 && (
                 <span className="text-xs text-red-500 ml-2">({item.daysOverdue}d {basis === 'invoice' ? 'old' : 'overdue'})</span>
               )}
 ```
 
 - [ ] **Step 7: Terms in the statement print and Excel.**
-  - In `printCustomerStatement`, change the due-date cell `<td>${dateFmt(i.dueDate)}</td>` to `<td>${dateFmt(i.dueDate)}${i.termsName ? ` · ${esc(i.termsName)}` : ''}</td>`.
-  - In `exportCustomerStatement`, add `terms: i.termsName || '',` to the `type: 'Invoice'` row object, and add `{ key: 'terms', label: 'Terms' },` to the columns list right after the `dueDate` column.
+  - In `printCustomerStatement`, change the due-date cell `<td>${dateFmt(i.dueDate)}</td>` to `<td>${dateFmt(i.dueDate)}${i.paymentTerms ? ` · ${esc(i.paymentTerms)}` : ''}</td>`.
+  - In `exportCustomerStatement`, add `terms: i.paymentTerms || '',` to the `type: 'Invoice'` row object, and add `{ key: 'terms', label: 'Terms' },` to the columns list right after the `dueDate` column.
 
 - [ ] **Step 8: Commit**
 
