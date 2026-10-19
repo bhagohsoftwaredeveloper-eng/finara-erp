@@ -10,6 +10,7 @@ router.get('/', ctrl.list);
 router.get('/tree', ctrl.tree);
 router.get('/types', ctrl.getTypes);
 router.get('/:id', param('id').isInt(), validate, ctrl.getOne);
+router.post('/active', authorize('ADMIN', 'MANAGER'), ctrl.setActive);
 
 router.post('/',
   authorize('ADMIN', 'MANAGER'),

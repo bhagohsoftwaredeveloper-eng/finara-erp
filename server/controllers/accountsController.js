@@ -118,6 +118,25 @@ exports.update = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Switch accounts on or off together (e.g. a header and all its sub-accounts). An inactive
+// account disappears from the pickers but keeps its history, and auto-posting by code still works.
+exports.setActive = async (req, res, next) => {
+  try {
+    const { ids, isActive } = req.body;
+    const list = Array.isArray(ids) ? ids.map(Number) : [];
+    if (list.length < 1 || list.length > 500 || list.some((n) => !Number.isInteger(n) || n < 1)) {
+      throw createError('ids must be a list of 1 to 500 account ids', 400);
+    }
+    if (typeof isActive !== 'boolean') throw createError('isActive must be true or false', 400);
+
+    const r = await prisma.account.updateMany({
+      where: { businessId: req.businessId, id: { in: list } },
+      data: { isActive },
+    });
+    res.json({ updated: r.count });
+  } catch (err) { next(err); }
+};
+
 exports.remove = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
