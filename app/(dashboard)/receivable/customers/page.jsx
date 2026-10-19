@@ -18,10 +18,29 @@ function CustomerModal({ customer, onClose, onSaved }) {
   );
   const [saving, setSaving] = useState(false);
   const [terms, setTerms] = useState([]);
+  const [quick, setQuick]   = useState(null); // null | { name, days, saving } while the quick-add row is open
   useEffect(() => {
     settingsApi.listPaymentTerms().then((r) => setTerms(r.data.filter((t) => t.isActive))).catch(() => {}); // select stays empty
   }, []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // Quick add: create a term without leaving the customer form, then select it.
+  const addTerm = async () => {
+    const name = quick.name.trim();
+    if (!name) { toast.error('Enter a name for the term'); return; }
+    if (quick.days === '' || Number(quick.days) < 0) { toast.error('Enter the number of days (0 or more)'); return; }
+    setQuick((q) => ({ ...q, saving: true }));
+    try {
+      const { data } = await settingsApi.createPaymentTerm({ name, days: Number(quick.days) });
+      setTerms((prev) => [...prev, data].sort((a, b) => a.days - b.days));
+      setForm((f) => ({ ...f, defaultTermId: data.id }));
+      setQuick(null);
+      toast.success(`Term "${data.name}" added`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to add term');
+      setQuick((q) => ({ ...q, saving: false }));
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -100,6 +119,23 @@ function CustomerModal({ customer, onClose, onSaved }) {
                   <option key={t.id} value={t.id}>{t.name} ({t.days === 0 ? 'on invoice date' : `${t.days} days`})</option>
                 ))}
               </select>
+              {quick ? (
+                <div className="flex flex-wrap items-center gap-2 mt-2 p-3 bg-gray-50 rounded-xl">
+                  <input className="input flex-1 min-w-[8rem]" placeholder="Name, e.g. Net 45" maxLength={50} autoFocus
+                    value={quick.name} onChange={(e) => setQuick((q) => ({ ...q, name: e.target.value }))} />
+                  <input className="input w-24" type="number" min="0" max="365" step="1" placeholder="Days"
+                    value={quick.days} onChange={(e) => setQuick((q) => ({ ...q, days: e.target.value }))} />
+                  <button type="button" className="btn-primary btn-sm" disabled={quick.saving} onClick={addTerm}>
+                    {quick.saving ? 'Adding…' : 'Add'}
+                  </button>
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => setQuick(null)}>Cancel</button>
+                </div>
+              ) : (
+                <button type="button" className="text-xs text-blue-600 hover:underline mt-1"
+                  onClick={() => setQuick({ name: '', days: '', saving: false })}>
+                  + New payment term
+                </button>
+              )}
               <p className="text-xs text-gray-400 mt-1">Pre-selected when you create an invoice for this customer.</p>
             </div>
 
