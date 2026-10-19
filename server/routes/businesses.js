@@ -10,6 +10,9 @@ const adminOnly = authorize('ADMIN');
 // `onboard` works before the user has a business, so it also skips resolveBusiness.
 router.get('/',            authenticate,     ctrl.list);
 router.post('/onboard',    authenticate,     ctrl.onboard);
+// The "license suspended" screen: must work while every business is locked.
+router.get('/locked',      authenticate,     ctrl.listLocked);
+router.post('/:id/request-activation', authenticate, ctrl.requestActivation);
 
 // The operator's module switches for ANY business. Like `list`, these skip resolveBusiness on purpose:
 // they touch only that business's module settings (never its books), and must keep working

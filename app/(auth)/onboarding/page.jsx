@@ -34,6 +34,9 @@ export default function OnboardingPage() {
         router.replace('/dashboard');
         return;
       }
+      // A company exists but its license is locked: show what is owed, not the new-company form.
+      const locked = await bizApi.locked().catch(() => ({ data: [] }));
+      if (locked.data?.length) { router.replace('/license-suspended'); return; }
       setOrders(o.data || []);
       // Nothing placed yet: go straight to the order form, once.
       const hasOpen = (o.data || []).some((x) => OPEN.includes(x.status));

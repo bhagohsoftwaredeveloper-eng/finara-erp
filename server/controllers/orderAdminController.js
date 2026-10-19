@@ -157,7 +157,20 @@ exports.approve = async (req, res, next) => {
         biz = await prisma.business.findUnique({ where: { id: order.businessId } });
         const from = biz.paidUntil && biz.paidUntil > new Date() ? biz.paidUntil : new Date();
         newPaidUntil = computePaidUntil(from, order.period);
-        await prisma.business.update({ where: { id: order.businessId }, data: { paidUntil: newPaidUntil } });
+        // Paying a locked (suspended) business brings it back; any scheduled suspension is moot.
+        const wasLocked = biz.licenseStatus === 'SUSPENDED';
+        await prisma.business.update({
+          where: { id: order.businessId },
+          data: {
+            paidUntil: newPaidUntil,
+            ...(biz.suspendAt && { suspendAt: null }),
+            ...(wasLocked && { licenseStatus: 'ACTIVE', licenseActivatedAt: new Date(), licenseActivatedBy: req.user.id }),
+          },
+        });
+        const events = [];
+        if (wasLocked) events.push({ businessId: biz.id, eventType: 'REACTIVATED', note: `Renewal ${order.orderNo} approved`, actorUserId: req.user.id });
+        else if (biz.suspendAt) events.push({ businessId: biz.id, eventType: 'SUSPENSION_CANCELLED', note: `Renewal ${order.orderNo} approved`, actorUserId: req.user.id });
+        if (events.length) await prisma.licenseEvent.createMany({ data: events });
       } else {
         biz = await createProvisionedBusiness({
           name: order.companyName, tin: order.tin, address: order.address, phone: order.phone,

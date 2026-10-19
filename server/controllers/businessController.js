@@ -279,6 +279,74 @@ exports.updateLicense = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ─── Locked businesses (the "license suspended" screen) ──────────────
+// The businesses this user created or was granted whose license is not ACTIVE, which the
+// switcher hides. For each: what is owed, the order being paid (if any) and whether
+// activation was already requested. Skips resolveBusiness so it works while locked out.
+const OPEN_ORDER = ['PENDING_PAYMENT', 'PROOF_SUBMITTED'];
+
+exports.listLocked = async (req, res, next) => {
+  try {
+    const rows = await prisma.business.findMany({
+      where: { isActive: true, ...ownedWhere(req.user) },
+      orderBy: { name: 'asc' },
+    });
+    const locked = [];
+    for (const biz of rows) {
+      if (isDue(biz) && (await applyDueSuspension(biz).catch(() => false))) biz.licenseStatus = 'SUSPENDED';
+      if (biz.licenseStatus !== 'ACTIVE') locked.push(biz);
+    }
+
+    const out = [];
+    for (const biz of locked) {
+      const [last, openOrder, requested] = await Promise.all([
+        prisma.businessOrder.findFirst({ where: { businessId: biz.id }, orderBy: { createdAt: 'desc' } }),
+        prisma.businessOrder.findFirst({ where: { businessId: biz.id, status: { in: OPEN_ORDER } }, orderBy: { createdAt: 'desc' } }),
+        prisma.auditLog.findFirst({
+          where: { entity: 'Business', entityId: String(biz.id), action: 'REQUEST_ACTIVATION' },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+      const price = last
+        ? await prisma.planPrice.findUnique({ where: { companyType_period: { companyType: last.companyType, period: last.period } } })
+        : null;
+      out.push({
+        id: biz.id, name: biz.name, code: biz.code, licenseStatus: biz.licenseStatus, paidUntil: biz.paidUntil,
+        period: last?.period || null,
+        amountDue: openOrder ? openOrder.amount : (price?.isActive ? price.amount : null),
+        openOrder: openOrder
+          ? { id: openOrder.id, orderNo: openOrder.orderNo, status: openOrder.status, amount: openOrder.amount, period: openOrder.period, companyName: openOrder.companyName, mine: openOrder.userId === req.user.id }
+          : null,
+        activationRequestedAt: requested?.createdAt || null,
+      });
+    }
+    res.json(out);
+  } catch (err) { next(err); }
+};
+
+// The client asks the operator to activate a locked business again (for example after paying
+// outside the app). Recorded in the audit log and mailed to the SUPER_ADMINs; once a day at most.
+exports.requestActivation = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    await assertBusinessAccess(req.user, id);
+    const biz = await prisma.business.findUnique({ where: { id } });
+    if (!biz) throw createError('Business not found', 404);
+    if (biz.licenseStatus === 'ACTIVE') throw createError('This business is already active', 409);
+
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const recent = await prisma.auditLog.findFirst({
+      where: { entity: 'Business', entityId: String(id), action: 'REQUEST_ACTIVATION', createdAt: { gte: since } },
+    });
+    if (recent) throw createError('Activation was already requested today. We will get back to you.', 409);
+
+    await recordAudit({ req, action: 'REQUEST_ACTIVATION', entity: 'Business', entityId: id, businessId: id, summary: `Requested activation of "${biz.name}"` });
+    const superAdmins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' } });
+    mailer.sendActivationRequestNotice(biz, req.user, superAdmins.map((u) => u.email));
+    res.json({ requestedAt: new Date() });
+  } catch (err) { next(err); }
+};
+
 // Cancel a scheduled suspension (SUPER_ADMIN): the client paid, or it was a mistake.
 exports.cancelScheduledSuspension = async (req, res, next) => {
   try {

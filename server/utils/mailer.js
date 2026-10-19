@@ -274,7 +274,21 @@ async function sendLicenseSuspensionScheduledNotice(business, requester, effecti
   return results.some(Boolean);
 }
 
+// A client whose license is locked asks the operator to activate it again.
+async function sendActivationRequestNotice(business, requester, superAdminEmails) {
+  if (!superAdminEmails?.length) return false;
+  const who = requester?.email || 'A user';
+  const html = wrap('Activation Requested',
+    `<p><strong>${escapeHtml(who)}</strong> asked for the license of <strong>${escapeHtml(business.name)}</strong> (${escapeHtml(business.code)}) to be activated again.</p>
+     <p>Check the payment, then open Settings &rarr; Businesses to activate it.</p>`);
+  const results = await Promise.all(
+    superAdminEmails.map((to) => sendMail({ to, subject: `Activation requested — ${business.name}`, html }))
+  );
+  return results.some(Boolean);
+}
+
 module.exports = {
+  sendActivationRequestNotice,
   sendMail, sendPasswordReset, sendInvoiceEmail, sendAssessmentEmail, sendOverdueReminder, sendPayslipEmail,
   sendLicensePendingNotice, sendLicenseActivatedNotice, sendLicenseSuspendedNotice, sendLicenseSuspensionScheduledNotice,
   wrap, getTransporter, APP_URL, fillTemplate,
