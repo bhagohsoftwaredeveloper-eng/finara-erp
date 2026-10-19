@@ -73,6 +73,18 @@ async function cleanLines(lines, businessId) {
   return out;
 }
 
+// Insert a DR, retrying on the off chance a concurrent create took the same number.
+async function insertDr(data) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await prisma.deliveryReceipt.create({ data: { ...data, drNo: await genDrNo() }, include: DR_INCLUDE });
+    } catch (err) {
+      if (err.code === 'P2002' && attempt < 3) continue;
+      throw err;
+    }
+  }
+}
+
 const headerFields = (b) => ({
   deliveryAddress: b.deliveryAddress || null,
   driverName: b.driverName || null,
@@ -129,21 +141,11 @@ exports.create = async (req, res, next) => {
     const header = headerFields(b);
     header.deliveryAddress = b.deliveryAddress || invoice?.shippingAddress || customer.address || null;
 
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const dr = await prisma.deliveryReceipt.create({
-          data: {
-            businessId, drNo: await genDrNo(), customerId, invoiceId: invoice ? invoice.id : null,
-            drDate: new Date(b.drDate), ...header, lines: { create: lines },
-          },
-          include: DR_INCLUDE,
-        });
-        return res.status(201).json(dr);
-      } catch (err) {
-        if (err.code === 'P2002' && attempt < 3) continue; // concurrent create took the number
-        throw err;
-      }
-    }
+    const dr = await insertDr({
+      businessId, customerId, invoiceId: invoice ? invoice.id : null,
+      drDate: new Date(b.drDate), ...header, lines: { create: lines },
+    });
+    res.status(201).json(dr);
   } catch (err) { next(err); }
 };
 
@@ -237,6 +239,30 @@ exports.cancel = async (req, res, next) => {
     }
     res.json(updated);
   } catch (err) { next(err); }
+};
+
+// ─── "Mark as Shipped" on an invoice makes the delivery receipt (already delivered) ──
+// Returns the new DR, or null when the invoice already has an active one.
+exports.createForShipment = async (businessId, invoiceId, { shippedDate, shippingAddress, courier, trackingNumber }) => {
+  const existing = await prisma.deliveryReceipt.count({
+    where: { businessId, invoiceId, status: { not: 'CANCELLED' } },
+  });
+  if (existing > 0) return null;
+
+  const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, businessId }, include: { lines: true } });
+  if (!invoice) throw createError('Invoice not found', 404);
+  const customer = await prisma.customer.findFirst({ where: { id: invoice.customerId, businessId }, select: { id: true, address: true } });
+  const lines = await cleanLines(linesFromInvoice(invoice), businessId);
+
+  return insertDr({
+    businessId, customerId: invoice.customerId, invoiceId,
+    drDate: shippedDate ? new Date(shippedDate) : new Date(),
+    deliveryAddress: shippingAddress || invoice.shippingAddress || customer?.address || null,
+    driverName: courier || null,
+    notes: trackingNumber ? `Tracking: ${trackingNumber}` : null,
+    status: 'DELIVERED', deliveredAt: new Date(), deductStock: false,
+    lines: { create: lines },
+  });
 };
 
 // ─── Connect an existing DR and an existing invoice (e.g. after the invoice was paid) ──

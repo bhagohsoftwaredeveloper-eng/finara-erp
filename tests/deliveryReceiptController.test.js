@@ -275,3 +275,51 @@ describe('link / unlink an existing invoice', () => {
     await expect(run(ctrl.unlink, { params: { id: '1' } })).rejects.toThrow('not linked');
   });
 });
+
+describe('createForShipment (Mark as Shipped makes the DR)', () => {
+  const invoice = { id: 3, customerId: 9, status: 'OPEN', shippingAddress: null,
+    lines: [{ description: 'Widget', quantity: '2', packageId: null, packageComponents: null }] };
+
+  test('creates an already-delivered DR from the invoice using the shipping details', async () => {
+    prisma.deliveryReceipt.count.mockResolvedValue(0);
+    prisma.invoice.findFirst.mockResolvedValue(invoice);
+    prisma.customer.findFirst.mockResolvedValue({ id: 9, address: 'Main St' });
+    prisma.deliveryReceipt.create.mockResolvedValue({ id: 1, drNo: 'DR-000001' });
+
+    const dr = await ctrl.createForShipment(1, 3, {
+      shippedDate: '2026-02-03', shippingAddress: 'Cebu City', courier: 'LBC', trackingNumber: 'T123',
+    });
+
+    expect(prisma.deliveryReceipt.count).toHaveBeenCalledWith({
+      where: { businessId: 1, invoiceId: 3, status: { not: 'CANCELLED' } },
+    });
+    expect(prisma.deliveryReceipt.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        businessId: 1, drNo: 'DR-000001', customerId: 9, invoiceId: 3, status: 'DELIVERED', deductStock: false,
+        deliveryAddress: 'Cebu City', driverName: 'LBC', notes: 'Tracking: T123', drDate: new Date('2026-02-03'),
+        lines: { create: [{ itemId: null, description: 'Widget', quantity: 2, unit: null }] },
+      }),
+    }));
+    expect(dr).toEqual({ id: 1, drNo: 'DR-000001' });
+  });
+
+  test('falls back to the customer address and leaves driver/notes empty', async () => {
+    prisma.deliveryReceipt.count.mockResolvedValue(0);
+    prisma.invoice.findFirst.mockResolvedValue(invoice);
+    prisma.customer.findFirst.mockResolvedValue({ id: 9, address: 'Main St' });
+    prisma.deliveryReceipt.create.mockResolvedValue({ id: 1 });
+
+    await ctrl.createForShipment(1, 3, { shippedDate: '2026-02-03' });
+
+    expect(prisma.deliveryReceipt.create.mock.calls[0][0].data).toMatchObject({
+      deliveryAddress: 'Main St', driverName: null, notes: null,
+    });
+  });
+
+  test('does nothing when the invoice already has an active delivery receipt', async () => {
+    prisma.deliveryReceipt.count.mockResolvedValue(1);
+
+    expect(await ctrl.createForShipment(1, 3, { shippedDate: '2026-02-03' })).toBeNull();
+    expect(prisma.deliveryReceipt.create).not.toHaveBeenCalled();
+  });
+});

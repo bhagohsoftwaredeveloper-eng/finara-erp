@@ -405,7 +405,18 @@ exports.markShipped = async (req, res, next) => {
       },
     });
 
-    res.json(updated);
+    // Shipping an invoice also produces its delivery receipt (unless one already exists
+    // or the caller opts out). A failure here must not undo the shipment.
+    let deliveryReceipt = null;
+    if (req.body.createDr !== false) {
+      try {
+        deliveryReceipt = await drCtrl.createForShipment(req.businessId, id, { shippedDate, shippingAddress, courier, trackingNumber });
+      } catch (err) {
+        logger.error(`[INVOICE ${inv.invoiceNo} — SHIP DR FAILED] biz=${req.businessId} — ${err.message}`);
+      }
+    }
+
+    res.json({ ...updated, deliveryReceipt });
   } catch (err) { next(err); }
 };
 
