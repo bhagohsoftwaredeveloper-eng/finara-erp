@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, Edit2, Trash2, Printer, RefreshCw,
   ChevronLeft, ChevronRight, X, Landmark, CreditCard,
-  Scale, TrendingUp, LayoutGrid,
+  Scale, TrendingUp, LayoutGrid, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
 
@@ -203,6 +203,9 @@ export default function AccountsPage() {
   const [activeTab,setActiveTab]= useState('ALL');
   const [page,     setPage]     = useState(1);
   const [modal,    setModal]    = useState(null);
+  // Which accounts the list shows. Switching an account off hides it here and from the account
+  // pickers, so the chart only shows what the business actually uses; "All" brings them back.
+  const [view,     setView]     = useState('active'); // 'active' | 'all' | 'inactive'
 
   const load = useCallback(() => {
     setLoading(true);
@@ -215,18 +218,25 @@ export default function AccountsPage() {
   useEffect(() => { load(); }, [load]);
 
   // Reset page when tab or search changes
-  useEffect(() => { setPage(1); }, [activeTab, search]);
+  useEffect(() => { setPage(1); }, [activeTab, search, view]);
+
+  const viewAccounts = useMemo(
+    () => accounts.filter((a) => (view === 'all' ? true : view === 'active' ? a.isActive : !a.isActive)),
+    [accounts, view]
+  );
+  const activeTotal   = accounts.filter((a) => a.isActive).length;
+  const inactiveTotal = accounts.length - activeTotal;
 
   // ── Tab counts ──────────────────────────────────────────────
   const counts = useMemo(() => {
-    const c = { ALL: accounts.length };
-    TYPES.forEach((t) => { c[t] = accounts.filter((a) => a.accountType === t).length; });
+    const c = { ALL: viewAccounts.length };
+    TYPES.forEach((t) => { c[t] = viewAccounts.filter((a) => a.accountType === t).length; });
     return c;
-  }, [accounts]);
+  }, [viewAccounts]);
 
   // ── Filter ──────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let list = activeTab === 'ALL' ? accounts : accounts.filter((a) => a.accountType === activeTab);
+    let list = activeTab === 'ALL' ? viewAccounts : viewAccounts.filter((a) => a.accountType === activeTab);
     if (search.trim()) {
       const s = search.toLowerCase();
       list = list.filter((a) =>
@@ -234,7 +244,7 @@ export default function AccountsPage() {
       );
     }
     return list; // already sorted by accountCode from API
-  }, [accounts, activeTab, search]);
+  }, [viewAccounts, activeTab, search]);
 
   // ── Build flat rows with section headers ────────────────────
   // Rows: { rowType: 'section' | 'account', data, depth }
@@ -314,6 +324,35 @@ export default function AccountsPage() {
   }, [flatRows, page, activeTab]);
 
   // ── Handlers ────────────────────────────────────────────────
+  // Switch an account on or off. A header with sub-accounts offers to switch them together.
+  const handleToggleActive = async (acct) => {
+    const target = !acct.isActive;
+    const byParent = new Map();
+    accounts.forEach((a) => { if (a.parentId) byParent.set(a.parentId, [...(byParent.get(a.parentId) || []), a]); });
+    const subs = [];
+    const walk = (id) => (byParent.get(id) || []).forEach((c) => { subs.push(c); walk(c.id); });
+    walk(acct.id);
+    const affected = subs.filter((c) => c.isActive !== target);
+
+    let ids = [acct.id];
+    const verb = target ? 'enable' : 'disable';
+    if (affected.length > 0 && confirm(
+      `"${acct.accountName}" has ${affected.length} sub-account${affected.length > 1 ? 's' : ''}.
+
+OK: ${verb} all of them too.
+Cancel: ${verb} only "${acct.accountName}".`
+    )) {
+      ids = [acct.id, ...affected.map((c) => c.id)];
+    }
+    try {
+      await api.setActive(ids, target);
+      toast.success(target
+        ? `Enabled ${ids.length} account${ids.length > 1 ? 's' : ''}`
+        : `Disabled ${ids.length} account${ids.length > 1 ? 's' : ''}. Hidden from account pickers, history kept.`);
+      load();
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not change the account'); }
+  };
+
   const handleDelete = async (acct) => {
     if (!confirm(`Delete "${acct.accountName}"?`)) return;
     try {
@@ -414,8 +453,8 @@ export default function AccountsPage() {
 
       {/* Search */}
       <div className="card mb-4">
-        <div className="card-body py-3">
-          <div className="relative max-w-sm">
+        <div className="card-body py-3 flex flex-wrap items-center gap-3">
+          <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               className="input pl-9 w-full"
@@ -428,6 +467,20 @@ export default function AccountsPage() {
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          {/* Which accounts to list */}
+          <div className="inline-flex rounded-xl border border-gray-200 overflow-hidden text-sm">
+            {[
+              ['active', 'Active', activeTotal],
+              ['all', 'All', accounts.length],
+              ['inactive', 'Disabled', inactiveTotal],
+            ].map(([key, label, n]) => (
+              <button key={key} type="button" onClick={() => setView(key)}
+                className={`px-3 py-1.5 font-medium transition-colors ${view === key ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                {label} <span className={`ml-1 text-xs ${view === key ? 'text-white/70' : 'text-gray-400'}`}>{n}</span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -444,7 +497,7 @@ export default function AccountsPage() {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Type</th>
                 )}
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Normal Bal.</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide w-40">Status</th>
                 <th className="px-4 py-3 w-20"></th>
               </tr>
             </thead>
@@ -468,7 +521,7 @@ export default function AccountsPage() {
                           <Icon className="w-3.5 h-3.5" />
                           {meta.label}
                           <span className="font-normal normal-case tracking-normal text-gray-500">
-                            ({accounts.filter((a) => a.accountType === row.type).length} accounts)
+                            ({viewAccounts.filter((a) => a.accountType === row.type).length} accounts)
                           </span>
                         </div>
                       </td>
@@ -481,7 +534,7 @@ export default function AccountsPage() {
                 const meta = TYPE_META[a.accountType];
 
                 return (
-                  <tr key={a.id} className={`border-b border-gray-50 transition-colors group ${
+                  <tr key={a.id} className={`border-b border-gray-50 transition-colors group ${a.isActive ? '' : 'opacity-50'} ${
                     isHeader && depth === 0
                       ? `${meta.bg} hover:brightness-95`
                       : 'hover:bg-gray-50'
@@ -524,11 +577,14 @@ export default function AccountsPage() {
                       </span>
                     </td>
 
-                    {/* Status */}
+                    {/* Status: a switch to enable / disable the account */}
                     <td className="px-4 py-3 text-center">
-                      <span className={`badge ${a.isActive ? 'badge-green' : 'badge-gray'}`}>
-                        {a.isActive ? 'Active' : 'Inactive'}
-                      </span>
+                      <button type="button" onClick={() => handleToggleActive(a)}
+                        className={`inline-flex items-center gap-1.5 text-xs font-medium ${a.isActive ? 'text-green-600' : 'text-gray-400'}`}
+                        title={a.isActive ? 'Enabled. Click to disable (hides it from account pickers)' : 'Disabled. Click to enable'}>
+                        {a.isActive ? <ToggleRight className="w-7 h-7" /> : <ToggleLeft className="w-7 h-7" />}
+                        <span className="w-14 text-left">{a.isActive ? 'Enabled' : 'Disabled'}</span>
+                      </button>
                     </td>
 
                     {/* Actions */}
