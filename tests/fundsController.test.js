@@ -1,10 +1,14 @@
 jest.mock('../server/config/database', () => ({
   systemSetting: { findUnique: jest.fn(), upsert: jest.fn() },
   account: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
-  journalEntry: { findMany: jest.fn() },
+  journalEntry: { findMany: jest.fn(), findFirst: jest.fn() },
+  journalLine: { findMany: jest.fn() },
 }));
+jest.mock('../server/utils/glPost', () => ({ post: jest.fn() }));
+jest.mock('../server/utils/audit', () => ({ recordAudit: jest.fn() }));
 
 const prisma = require('../server/config/database');
+const glPost = require('../server/utils/glPost');
 const ctrl = require('../server/controllers/fundsController');
 
 const run = (fn, req) => new Promise((resolve, reject) => {
@@ -109,5 +113,78 @@ describe('getSummary', () => {
   test('needs a valid fund and dates', async () => {
     await expect(run(ctrl.getSummary, { query: { fund: 'other', from: '2026-10-01', to: '2026-10-31' } })).rejects.toThrow('fund');
     await expect(run(ctrl.getSummary, { query: { fund: 'revolving', from: 'x', to: '2026-10-31' } })).rejects.toThrow('from');
+  });
+});
+
+describe('marketing allocation', () => {
+  const REV  = acct(1, '4010', 'Service Revenue', 'REVENUE');
+  const REPR = acct(5, '6240', 'Repairs', 'EXPENSE');
+  const gl = (account, debit, credit, date) => ({ accountId: account.id, account, debit, credit, entry: { entryDate: new Date(`${date}T00:00:00Z`) } });
+  const enabled = JSON.stringify({ marketing: { enabled: true, percent: 10 } });
+  const query = { month: '2026-10' };
+
+  beforeEach(() => {
+    prisma.systemSetting.findUnique.mockResolvedValue({ value: enabled });
+    prisma.journalLine.findMany.mockResolvedValue([gl(REV, 0, 10000, '2026-10-02'), gl(REPR, 2000, 0, '2026-10-05')]);
+    prisma.journalEntry.findFirst.mockResolvedValue(null);
+    prisma.account.findMany.mockResolvedValue([acct(70, '1013', 'Marketing Fund'), acct(20, '1020', 'Cash in Bank')]);
+    glPost.post.mockResolvedValue({ id: 99, entryNo: 'JE-1-000099' });
+  });
+
+  test('preview: the percent of that month’s net income, and whether it was already allocated', async () => {
+    const r = await run(ctrl.getAllocation, { query });
+
+    expect(r).toMatchObject({
+      month: '2026-10', from: '2026-10-01', to: '2026-10-31', netIncome: 8000, percent: 10, amount: 800,
+      enabled: true, alreadyAllocated: null, accountsMissing: [],
+    });
+    expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { businessId: 1, reference: 'MKT-ALLOC-2026-10', status: 'POSTED' },
+    }));
+  });
+
+  test('preview: a loss or zero month allocates nothing, and a missing account is listed', async () => {
+    prisma.journalLine.findMany.mockResolvedValue([gl(REV, 0, 1000, '2026-10-02'), gl(REPR, 3000, 0, '2026-10-05')]);
+    prisma.account.findMany.mockResolvedValue([acct(20, '1020', 'Cash in Bank')]);
+
+    const r = await run(ctrl.getAllocation, { query });
+
+    expect(r).toMatchObject({ netIncome: -2000, amount: 0, accountsMissing: ['1013'] });
+  });
+
+  test('posting books DR marketing fund / CR source cash on the last day of the month', async () => {
+    const r = await run(ctrl.postAllocation, { user: { id: 3 }, body: query });
+
+    expect(glPost.post).toHaveBeenCalledWith(expect.objectContaining({
+      entryDate: '2026-10-31', reference: 'MKT-ALLOC-2026-10', businessId: 1, userId: 3,
+      lines: [
+        { accountCode: '1013', debit: 800, description: expect.stringContaining('10%') },
+        { accountCode: '1020', credit: 800, description: expect.stringContaining('2026-10') },
+      ],
+    }));
+    expect(r).toMatchObject({ amount: 800, entryNo: 'JE-1-000099' });
+  });
+
+  test.each([
+    ['the fund is switched off', () => prisma.systemSetting.findUnique.mockResolvedValue(null), 'switched on'],
+    ['already allocated', () => prisma.journalEntry.findFirst.mockResolvedValue({ entryNo: 'JE-7' }), 'already'],
+    ['no net income', () => prisma.journalLine.findMany.mockResolvedValue([gl(REV, 0, 100, '2026-10-02'), gl(REPR, 200, 0, '2026-10-03')]), 'net income'],
+    ['an account is missing', () => prisma.account.findMany.mockResolvedValue([]), 'account'],
+  ])('posting is refused when %s', async (_name, arrange, msg) => {
+    arrange();
+
+    await expect(run(ctrl.postAllocation, { body: query })).rejects.toThrow(msg);
+    expect(glPost.post).not.toHaveBeenCalled();
+  });
+
+  test('a month before the books start is refused', async () => {
+    glPost.post.mockResolvedValue({ skipped: 'PRE_CUTOVER' });
+
+    await expect(run(ctrl.postAllocation, { body: query })).rejects.toThrow('books');
+  });
+
+  test('the month must look like YYYY-MM', async () => {
+    await expect(run(ctrl.getAllocation, { query: { month: 'October' } })).rejects.toThrow('month');
+    await expect(run(ctrl.postAllocation, { body: { month: '2026-13' } })).rejects.toThrow('month');
   });
 });

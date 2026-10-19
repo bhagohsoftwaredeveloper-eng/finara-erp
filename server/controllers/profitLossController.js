@@ -3,30 +3,9 @@ const { createError } = require('../middleware/errorHandler');
 const { parseRanges, parsePeriod } = require('../utils/rangeParams');
 const { buildStatement, assignByTag, assignByRange, withChange } = require('../utils/profitLoss');
 const { summarizeExpenses, GROUPS } = require('../utils/expensesSummary');
+const { loadLines } = require('../utils/glLines');
 
 const TAG_DIMENSIONS = ['driver', 'vehicle'];
-
-// POSTED general-ledger lines of the given account types between two dates, with
-// their cost tags. `filters` may narrow to one account, driver or vehicle.
-async function loadLines(businessId, from, to, accountTypes, filters = {}) {
-  const lines = await prisma.journalLine.findMany({
-    where: {
-      entry: {
-        businessId, status: 'POSTED',
-        entryDate: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) },
-      },
-      account: { accountType: Array.isArray(accountTypes) ? { in: accountTypes } : accountTypes },
-      ...(filters.accountId && { accountId: filters.accountId }),
-      ...(filters.driverId && { driverId: filters.driverId }),
-      ...(filters.vehicleId && { vehicleId: filters.vehicleId }),
-    },
-    include: {
-      account: { select: { id: true, accountCode: true, accountName: true, accountType: true } },
-      entry: { select: { entryDate: true } },
-    },
-  });
-  return lines.map((l) => ({ ...l, entryDate: l.entry.entryDate }));
-}
 
 // id -> "CODE · Name" for every driver and vehicle of the business.
 async function loadTagLabels(businessId) {
