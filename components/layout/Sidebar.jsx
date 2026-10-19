@@ -105,6 +105,7 @@ const NAV = [
         children: [
           { label: 'Stock on Hand', href: '/inventory' },
           { label: 'Items',         href: '/inventory/items' },
+          { label: 'Packages',      href: '/inventory/packages' },
           { label: 'Transactions',  href: '/inventory/transactions' },
           { label: 'Reports',       href: '/inventory/reports' },
         ],

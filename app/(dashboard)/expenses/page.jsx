@@ -58,7 +58,7 @@ const TAB_MAP = {
 };
 
 // ─── Top-drawer wrapper ───────────────────────────────────────────
-function Drawer({ open, onClose, title, subtitle, children, footer, wide }) {
+function Drawer({ open, onClose, title, subtitle, children, footer, wide, xwide }) {
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
@@ -66,7 +66,7 @@ function Drawer({ open, onClose, title, subtitle, children, footer, wide }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-start overflow-y-auto">
-      <div className={`bg-white ${wide ? 'max-w-4xl' : 'max-w-2xl'} w-full shadow-2xl flex flex-col`}
+      <div className={`bg-white ${xwide ? 'max-w-7xl' : wide ? 'max-w-4xl' : 'max-w-2xl'} w-full shadow-2xl flex flex-col`}
         style={{ borderRadius: '0 0 1rem 1rem', maxHeight: '92vh', animation: 'topDrawerIn .28s cubic-bezier(.4,0,.2,1)' }}>
         <div className="px-4 lg:px-6 py-3 lg:py-4 border-b border-gray-200 flex items-start justify-between flex-shrink-0">
           <div>
@@ -86,43 +86,185 @@ function Drawer({ open, onClose, title, subtitle, children, footer, wide }) {
   );
 }
 
-// ─── Line-item row ────────────────────────────────────────────────
-function ItemRow({ item, index, accounts, onChange, onRemove }) {
+// ─── Line items: one row = one entry, DR with an optional CR ─────
+// A row has a debit side (account + amount) and an optional credit side
+// (account + amount). On save a row with a credit becomes two stored lines, a DR
+// line and a CR line, which are merged back into one row when loaded.
+const blankItem = () => ({
+  description: '', accountId: null, amount: '', crAccountId: null, creditAmount: '', receiptNo: '',
+});
+
+// Stored lines -> rows. A CR line directly under a DR line joins that row;
+// any other CR line becomes a row of its own with only the credit side filled.
+function toFormItems(lines) {
+  const rows = [];
+  for (const it of lines || []) {
+    const cr = Number(it.creditAmount) || 0;
+    const dr = Number(it.amount) || 0;
+    const prev = rows[rows.length - 1];
+    if (cr > 0 && dr <= 0 && prev && !prev.crAccountId && !Number(prev.creditAmount)) {
+      prev.crAccountId = it.accountId || null;
+      prev.creditAmount = String(it.creditAmount);
+    } else if (cr > 0 && dr <= 0) {
+      rows.push({ ...blankItem(), description: it.description || '', crAccountId: it.accountId || null,
+        creditAmount: String(it.creditAmount), receiptNo: it.receiptNo || '' });
+    } else {
+      rows.push({ ...blankItem(), description: it.description, accountId: it.accountId || null,
+        amount: dr ? String(it.amount) : '', receiptNo: it.receiptNo || '' });
+    }
+  }
+  return rows.length ? rows : [blankItem()];
+}
+
+// Drafts saved before this layout carry stored-line fields; new ones are rows.
+const draftToRows = (items) =>
+  items.some(it => 'crAccountId' in it) ? items : toFormItems(items);
+
+// Rows -> stored lines (what the API takes).
+function toPayloadItems(rows) {
+  const out = [];
+  for (const r of rows) {
+    const dr = Number(r.amount || 0);
+    const cr = Number(r.creditAmount || 0);
+    if (dr > 0 || !(cr > 0)) {
+      out.push({ description: r.description, accountId: r.accountId || null, amount: dr, creditAmount: 0,
+        receiptNo: r.receiptNo || '' });
+    }
+    if (cr > 0) {
+      out.push({ description: r.description || 'Payment', accountId: r.crAccountId || null, amount: 0,
+        creditAmount: cr, receiptNo: dr > 0 ? '' : (r.receiptNo || '') });
+    }
+  }
+  return out;
+}
+
+// Edit one row. Picking a credit account (or changing the debit) fills the
+// credit with the debit while the credit is still empty or following it.
+function applyItemChange(items, idx, field, val) {
+  return items.map((it, i) => {
+    if (i !== idx) return it;
+    const next = { ...it, [field]: val };
+    const follows = it.creditAmount === '' || Number(it.creditAmount) === Number(it.amount || 0);
+    if (field === 'crAccountId' && val && it.creditAmount === '') next.creditAmount = it.amount;
+    if (field === 'amount' && it.crAccountId && follows) next.creditAmount = val;
+    return next;
+  });
+}
+
+const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+const sumDebit  = (items) => round2(items.reduce((s, it) => s + Number(it.amount || 0), 0));
+const sumCredit = (items) => round2(items.reduce((s, it) => s + Number(it.creditAmount || 0), 0));
+
+// Returns an error message, or '' when the rows are fine to save.
+function validateLines(items, type) {
+  if (items.some(it => !it.description || !(Number(it.amount) > 0))) {
+    return 'Each line item needs a description and a debit amount';
+  }
+  const cr = sumCredit(items);
+  if (cr <= 0) return '';
+  if (type === 'LIQUIDATION') return 'Liquidation vouchers settle against their cash request — credit is not supported';
+  if (items.some(it => Number(it.creditAmount) > 0 && !it.crAccountId)) return 'Choose a credit account for every line that has a credit';
+  const dr = sumDebit(items);
+  if (dr !== cr) return `Debits (${fmt(dr)}) and credits (${fmt(cr)}) must balance`;
+  return '';
+}
+
+// Shared by the header and every row so the columns always line up.
+const LINE_GRID = 'lg:grid lg:grid-cols-[minmax(0,3.2fr)_minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_2rem] lg:gap-2';
+
+function LineHeader() {
   return (
-    <div className="border border-gray-100 rounded-lg p-3 space-y-2 lg:border-0 lg:p-0 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-2 lg:items-start">
-      {/* Description */}
-      <div className="lg:col-span-5">
+    <div className={`hidden ${LINE_GRID} lg:grid px-0.5 mb-1`}>
+      <div className="text-xs text-gray-500 font-medium">Description</div>
+      <div className="text-xs text-gray-500 font-medium">DR Account</div>
+      <div className="text-xs text-gray-500 font-medium text-right">Debit (DR)</div>
+      <div className="text-xs text-gray-500 font-medium">CR Account (opt.)</div>
+      <div className="text-xs text-gray-500 font-medium text-right">Credit (CR)</div>
+      <div className="text-xs text-gray-500 font-medium">Receipt #</div>
+      <div />
+    </div>
+  );
+}
+
+// Totals with a live balance check. With no credit the credit side is the
+// payment account picked when the voucher is paid, so it always matches.
+function LineTotals({ items }) {
+  const dr = sumDebit(items);
+  const cr = sumCredit(items);
+  const hasCredit = cr > 0;
+  const diff = round2(dr - cr);
+  return (
+    <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
+      <div className="text-right space-y-1">
+        <div>
+          <span className="text-sm text-gray-500 mr-4">Total DR</span>
+          <span className="text-xl font-bold text-gray-900">{fmt(dr)}</span>
+        </div>
+        {hasCredit ? (
+          <>
+            <div>
+              <span className="text-sm text-gray-500 mr-4">Total CR</span>
+              <span className="text-xl font-bold text-gray-900">{fmt(cr)}</span>
+            </div>
+            <div className={`text-xs font-medium ${diff === 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {diff === 0 ? 'Balanced' : `Out of balance by ${fmt(Math.abs(diff))} — ${diff > 0 ? 'credit' : 'debit'} is short`}
+            </div>
+          </>
+        ) : (
+          <div className="text-xs text-gray-400">CR: payment account, chosen when the voucher is paid</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Line-item row ────────────────────────────────────────────────
+function ItemRow({ item, index, accounts, onChange, onRemove, creditDisabled }) {
+  return (
+    <div className={`border border-gray-100 rounded-lg p-3 space-y-2 lg:border-0 lg:p-0 lg:space-y-0 lg:items-start ${LINE_GRID}`}>
+      <div>
         <label className="text-xs text-gray-400 lg:hidden">Description</label>
         <input className="input text-sm" placeholder="Description" value={item.description}
           onChange={e => onChange(index, 'description', e.target.value)} />
       </div>
-      {/* COA Account */}
-      <div className="lg:col-span-3">
-        <label className="text-xs text-gray-400 lg:hidden">COA Account</label>
+      <div>
+        <label className="text-xs text-gray-400 lg:hidden">DR Account</label>
         <AccountSelect
           value={item.accountId || ''}
           onChange={(val) => onChange(index, 'accountId', val ? Number(val) : null)}
-          accounts={accounts.filter(a => a.accountType === 'EXPENSE')}
-          placeholder="— COA Account (opt.) —"
+          accounts={accounts}
+          placeholder="— DR account (opt.) —"
         />
       </div>
-      {/* Amount + Receipt on same row on mobile */}
-      <div className="flex gap-2 lg:contents">
-        <div className="flex-1 lg:col-span-2">
-          <label className="text-xs text-gray-400 lg:hidden">Amount</label>
-          <NumberInput className="input text-sm text-right" placeholder="0.00"
-            value={item.amount} onChange={v => onChange(index, 'amount', v)} />
-        </div>
-        <div className="w-24 lg:col-span-1">
-          <label className="text-xs text-gray-400 lg:hidden">Receipt #</label>
-          <input className="input text-sm" placeholder="Receipt#" value={item.receiptNo || ''}
-            onChange={e => onChange(index, 'receiptNo', e.target.value)} />
-        </div>
-        <div className="lg:col-span-1 flex items-end justify-end pb-0.5">
-          <button type="button" onClick={() => onRemove(index)} className="p-1.5 text-red-400 hover:text-red-600">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+      <div>
+        <label className="text-xs text-gray-400 lg:hidden">Debit</label>
+        <NumberInput className="input text-sm text-right" placeholder="0.00"
+          value={item.amount} onChange={v => onChange(index, 'amount', v)} />
+      </div>
+      <div>
+        <label className="text-xs text-gray-400 lg:hidden">CR Account (opt.)</label>
+        <AccountSelect
+          value={item.crAccountId || ''}
+          onChange={(val) => onChange(index, 'crAccountId', val ? Number(val) : null)}
+          accounts={accounts}
+          placeholder="— CR account (opt.) —"
+          disabled={creditDisabled}
+        />
+      </div>
+      <div>
+        <label className="text-xs text-gray-400 lg:hidden">Credit</label>
+        <NumberInput className="input text-sm text-right" placeholder="0.00" disabled={creditDisabled}
+          value={item.creditAmount} onChange={v => onChange(index, 'creditAmount', v)} />
+      </div>
+      <div>
+        <label className="text-xs text-gray-400 lg:hidden">Receipt #</label>
+        <input className="input text-sm" placeholder="Receipt#" value={item.receiptNo || ''}
+          onChange={e => onChange(index, 'receiptNo', e.target.value)} />
+      </div>
+      <div className="flex items-end justify-end pb-0.5">
+        <button type="button" onClick={() => onRemove(index)} className="p-1.5 text-red-400 hover:text-red-600" title="Remove line">
+          <X className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
@@ -155,9 +297,24 @@ export default function ExpensesPage() {
   const [actionForm,   setActionForm]   = useState({ name: '', date: todayStr(), reason: '', paymentAccountCode: '' });
   // Cash denomination count — only for paying out of a physical cash fund.
   // Liquidation vouchers settle through their cash request instead.
+  // A voucher with explicit credit lines pays out of the account carrying the
+  // most credit (the server posts the lines as entered and ignores the form's
+  // payment account), so the count must be against that account and amount.
+  const payCredit = (() => {
+    if (actionMode !== 'pay' || !actionRecord?.items) return null;
+    const byCode = new Map();
+    for (const i of actionRecord.items) {
+      const code = i.account?.accountCode;
+      if (Number(i.creditAmount) > 0 && code) byCode.set(code, (byCode.get(code) || 0) + Number(i.creditAmount));
+    }
+    if (!byCode.size) return null;
+    const [code, amount] = [...byCode.entries()].sort((a, b) => b[1] - a[1])[0];
+    return { code, amount };
+  })();
   const dn = useDenominationCount({
-    accountCode: actionMode === 'pay' && actionRecord?.type !== 'LIQUIDATION' ? actionForm.paymentAccountCode : null,
-    amount: Number(actionRecord?.totalAmount || 0),
+    accountCode: actionMode === 'pay' && actionRecord?.type !== 'LIQUIDATION'
+      ? (payCredit?.code ?? actionForm.paymentAccountCode) : null,
+    amount: payCredit ? payCredit.amount : Number(actionRecord?.totalAmount || 0),
   });
   const [actionItems,  setActionItems]  = useState([]);
   const [cashAccounts, setCashAccounts] = useState([]);
@@ -178,9 +335,7 @@ export default function ExpensesPage() {
   const [fReceiptNo,  setFReceiptNo]  = useState('');
   const [fRequestedBy,setFRequestedBy]= useState(userName);
   const [fNotes,      setFNotes]      = useState('');
-  const [fItems,      setFItems]      = useState([{ description: '', accountId: null, amount: '', receiptNo: '' }]);
-
-  const fTotal = fItems.reduce((s, it) => s + Number(it.amount || 0), 0);
+  const [fItems,      setFItems]      = useState(() => [blankItem()]);
 
   const draftKey = scopedKey(editing?.id ? `expense:edit:${editing.id}` : 'expense:new');
   const autoOpenedRef = useRef(false);
@@ -196,7 +351,7 @@ export default function ExpensesPage() {
     if (d.fReceiptNo !== undefined) setFReceiptNo(d.fReceiptNo);
     if (d.fRequestedBy !== undefined) setFRequestedBy(d.fRequestedBy);
     if (d.fNotes !== undefined) setFNotes(d.fNotes);
-    if (Array.isArray(d.fItems)) setFItems(d.fItems);
+    if (Array.isArray(d.fItems)) setFItems(draftToRows(d.fItems));
   }, []);
 
   useEffect(() => {
@@ -272,7 +427,7 @@ export default function ExpensesPage() {
   function resetForm() {
     setFType('PETTY_CASH'); setFDate(todayStr()); setFPayee(''); setFCategory('');
     setFPurpose(''); setFReceiptNo(''); setFRequestedBy(userName); setFNotes('');
-    setFItems([{ description: '', accountId: null, amount: '', receiptNo: '' }]);
+    setFItems([blankItem()]);
   }
 
   function openNew() {
@@ -282,7 +437,7 @@ export default function ExpensesPage() {
     initialSnapshotRef.current = JSON.stringify({
       fType: 'PETTY_CASH', fDate: todayStr(), fPayee: '', fCategory: '',
       fPurpose: '', fReceiptNo: '', fRequestedBy: userName, fNotes: '',
-      fItems: [{ description: '', accountId: null, amount: '', receiptNo: '' }],
+      fItems: [blankItem()],
     });
     const d = loadDraft(window.localStorage, scopedKey('expense:new'));
     if (d) { applyDraft(d); toast('Draft restored from your last session', { icon: '📝' }); }
@@ -298,9 +453,7 @@ export default function ExpensesPage() {
     setFReceiptNo(v.receiptNo || '');
     setFRequestedBy(v.requestedBy || '');
     setFNotes(v.notes || '');
-    const items = v.items?.length
-      ? v.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
-      : [{ description: '', accountId: null, amount: '', receiptNo: '' }];
+    const items = toFormItems(v.items);
     setFItems(items);
     setDrawerOpen(true);
     initialSnapshotRef.current = JSON.stringify({
@@ -319,25 +472,32 @@ export default function ExpensesPage() {
   }
 
   function addItem() {
-    setFItems(prev => [...prev, { description: '', accountId: null, amount: '', receiptNo: '' }]);
+    setFItems(prev => [...prev, blankItem()]);
   }
 
   function updateItem(idx, field, val) {
-    setFItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+    setFItems(prev => applyItemChange(prev, idx, field, val));
   }
 
   function removeItem(idx) {
-    setFItems(prev => prev.filter((_, i) => i !== idx));
+    setFItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : [blankItem()]);
+  }
+
+  // Liquidations settle against their cash request, so they carry no credit.
+  function chooseType(t) {
+    setFType(t);
+    if (t === 'LIQUIDATION') setFItems(prev => prev.map(it => ({ ...it, crAccountId: null, creditAmount: '' })));
   }
 
   async function handleSave() {
     if (!fPayee || !fCategory || !fPurpose) { toast.error('Payee, category, and purpose are required'); return; }
-    if (fItems.some(it => !it.description || !it.amount)) { toast.error('Each line item needs a description and amount'); return; }
+    const lineError = validateLines(fItems, fType);
+    if (lineError) { toast.error(lineError); return; }
 
     const payload = {
       type: fType, date: fDate, payee: fPayee, category: fCategory, purpose: fPurpose,
       receiptNo: fReceiptNo, requestedBy: fRequestedBy, notes: fNotes,
-      items: fItems.map(it => ({ ...it, amount: Number(it.amount) })),
+      items: toPayloadItems(fItems),
     };
     try {
       if (editing) {
@@ -368,38 +528,35 @@ export default function ExpensesPage() {
     setActionForm({ name: existingName || userName, date: todayStr(), reason: '', paymentAccountCode: defaultCashCode });
     dn.counterProps.setCounts({});
     setActionItems(mode === 'approve'
-      ? (rec.items?.length
-          ? rec.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
-          : [{ description: '', accountId: null, amount: '', receiptNo: '' }])
+      ? toFormItems(rec.items)
       : []);
     setActionOpen(true);
   }
 
   function addActionItem() {
-    setActionItems(prev => [...prev, { description: '', accountId: null, amount: '', receiptNo: '' }]);
+    setActionItems(prev => [...prev, blankItem()]);
   }
 
   function updateActionItem(idx, field, val) {
-    setActionItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+    setActionItems(prev => applyItemChange(prev, idx, field, val));
   }
 
   function removeActionItem(idx) {
-    setActionItems(prev => prev.filter((_, i) => i !== idx));
+    setActionItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : [blankItem()]);
   }
-
-  const actionItemsTotal = actionItems.reduce((s, it) => s + Number(it.amount || 0), 0);
 
   async function handleAction() {
     const { id } = actionRecord;
     if (actionMode === 'approve') {
       if (!actionItems.length) { toast.error('At least one line item is required'); return; }
-      if (actionItems.some(it => !it.description || !Number(it.amount))) { toast.error('Each line item needs a description and amount'); return; }
+      const lineError = validateLines(actionItems, actionRecord.type);
+      if (lineError) { toast.error(lineError); return; }
     }
     if (actionMode === 'void' && !actionForm.reason.trim()) { toast.error('A reason is required to void this voucher'); return; }
     if (actionMode === 'pay' && dn.error) { toast.error(dn.error); return; }
     try {
       if (actionMode === 'submit')  await expApi.submit(id,  { requestedBy: actionForm.name });
-      if (actionMode === 'approve') await expApi.approve(id, { approvedBy: actionForm.name, items: actionItems.map(it => ({ ...it, amount: Number(it.amount) })) });
+      if (actionMode === 'approve') await expApi.approve(id, { approvedBy: actionForm.name, items: toPayloadItems(actionItems) });
       if (actionMode === 'pay')     await expApi.pay(id,     { paidBy: actionForm.name, paidDate: actionForm.date, paymentAccountCode: actionForm.paymentAccountCode, denominations: dn.lines });
       if (actionMode === 'reject')  await expApi.reject(id,  { rejectedReason: actionForm.reason });
       if (actionMode === 'void')    await expApi.void(id,    actionForm.reason);
@@ -436,8 +593,10 @@ export default function ExpensesPage() {
         <td style="padding:6px 10px;border:1px solid #e5e7eb">${it.description}</td>
         ${it.account ? `<td style="padding:6px 10px;border:1px solid #e5e7eb">${it.account.accountCode} — ${it.account.accountName}</td>` : '<td style="padding:6px 10px;border:1px solid #e5e7eb">—</td>'}
         <td style="padding:6px 10px;border:1px solid #e5e7eb">${it.receiptNo || '—'}</td>
-        <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right"><strong>${fmt(it.amount)}</strong></td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right">${Number(it.amount) ? `<strong>${fmt(it.amount)}</strong>` : ''}</td>
+        <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right">${Number(it.creditAmount) ? `<strong>${fmt(it.creditAmount)}</strong>` : ''}</td>
       </tr>`).join('');
+    const crTotal = (v.items || []).reduce((s, it) => s + Number(it.creditAmount || 0), 0);
 
     printDocument(
       `${typeLabel} — ${v.voucherNo}`,
@@ -467,12 +626,14 @@ export default function ExpensesPage() {
           <th style="padding:7px 10px;border:1px solid #e5e7eb;text-align:left">Description</th>
           <th style="padding:7px 10px;border:1px solid #e5e7eb;text-align:left">Account</th>
           <th style="padding:7px 10px;border:1px solid #e5e7eb;text-align:left">Receipt #</th>
-          <th style="padding:7px 10px;border:1px solid #e5e7eb;text-align:right">Amount</th>
+          <th style="padding:7px 10px;border:1px solid #e5e7eb;text-align:right">Debit</th>
+          <th style="padding:7px 10px;border:1px solid #e5e7eb;text-align:right">Credit</th>
         </tr></thead>
         <tbody>${itemRows}</tbody>
         <tfoot><tr style="background:#f3f4f6">
           <td colspan="3" style="padding:8px 10px;border:1px solid #e5e7eb;font-weight:700;text-align:right">TOTAL</td>
           <td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:right;font-weight:700;font-size:14px">${fmt(v.totalAmount)}</td>
+          <td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:right;font-weight:700;font-size:14px">${crTotal ? fmt(crTotal) : ''}</td>
         </tr></tfoot>
       </table>
       ${v.notes ? `<p style="font-size:11px;color:#6b7280"><strong>Notes:</strong> ${v.notes}</p>` : ''}
@@ -618,7 +779,7 @@ export default function ExpensesPage() {
       </div>
 
       {/* ── New / Edit Voucher Drawer ── */}
-      <Drawer wide open={drawerOpen} onClose={() => { clearDraft(window.localStorage, draftKey); setDrawerOpen(false); }}
+      <Drawer xwide open={drawerOpen} onClose={() => { clearDraft(window.localStorage, draftKey); setDrawerOpen(false); }}
         title={editing ? `Edit — ${editing.voucherNo}` : 'New Expense Voucher'}
         subtitle={editing ? `${TYPE_OPTS.find(t=>t.value===editing.type)?.label || editing.type} · ${editing.status}` : 'Fill in the details below'}
         footer={
@@ -635,7 +796,7 @@ export default function ExpensesPage() {
           <label className="label">Voucher Type</label>
           <div className="grid grid-cols-3 md:grid-cols-5 gap-2 mt-1">
             {TYPE_OPTS.map(t => (
-              <button key={t.value} type="button" onClick={() => setFType(t.value)}
+              <button key={t.value} type="button" onClick={() => chooseType(t.value)}
                 className={`border-2 rounded-xl p-2.5 text-left transition-all ${fType === t.value ? `border-blue-400 bg-blue-50` : 'border-gray-200 bg-white hover:border-gray-300'}`}>
                 <div className={`font-semibold text-xs ${fType === t.value ? 'text-blue-700' : 'text-gray-800'}`}>{t.label}</div>
                 <div className="text-xs text-gray-400 mt-0.5 leading-tight hidden sm:block">{t.sub}</div>
@@ -705,29 +866,16 @@ export default function ExpensesPage() {
             <button type="button" className="btn-secondary btn-sm" onClick={addItem}><Plus className="w-3 h-3" /> Add Line</button>
           </div>
 
-          {/* Column headers */}
-          <div className="grid grid-cols-12 gap-2 px-0.5 mb-1">
-            <div className="col-span-5 text-xs text-gray-500 font-medium">Description</div>
-            <div className="col-span-3 text-xs text-gray-500 font-medium">COA Account (opt.)</div>
-            <div className="col-span-2 text-xs text-gray-500 font-medium text-right">Amount</div>
-            <div className="col-span-1 text-xs text-gray-500 font-medium">Receipt #</div>
-            <div className="col-span-1" />
-          </div>
+          <LineHeader />
 
           <div className="space-y-2">
             {fItems.map((it, idx) => (
               <ItemRow key={idx} item={it} index={idx} accounts={accounts}
-                onChange={updateItem} onRemove={removeItem} />
+                onChange={updateItem} onRemove={removeItem} creditDisabled={fType === 'LIQUIDATION'} />
             ))}
           </div>
 
-          {/* Total */}
-          <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
-            <div className="text-right">
-              <span className="text-sm text-gray-500 mr-4">Total</span>
-              <span className="text-xl font-bold text-gray-900">{fmt(fTotal)}</span>
-            </div>
-          </div>
+          <LineTotals items={fItems} />
         </div>
 
         {/* Notes */}
@@ -751,7 +899,7 @@ export default function ExpensesPage() {
       </Drawer>
 
       {/* ── Action Sub-Drawer ── */}
-      <Drawer open={actionOpen} onClose={() => setActionOpen(false)} title={aCfg.title || ''} wide={actionMode === 'approve'}
+      <Drawer open={actionOpen} onClose={() => setActionOpen(false)} title={aCfg.title || ''} xwide={actionMode === 'approve'}
         subtitle={actionRecord ? `${actionRecord.voucherNo} · ${actionRecord.payee} · ${fmt(actionRecord.totalAmount)}` : ''}
         footer={
           <>
@@ -775,27 +923,17 @@ export default function ExpensesPage() {
                   <button type="button" className="btn-secondary btn-sm" onClick={addActionItem}><Plus className="w-3 h-3" /> Add Line</button>
                 </div>
 
-                <div className="grid grid-cols-12 gap-2 px-0.5 mb-1">
-                  <div className="col-span-5 text-xs text-gray-500 font-medium">Description</div>
-                  <div className="col-span-3 text-xs text-gray-500 font-medium">COA Account (opt.)</div>
-                  <div className="col-span-2 text-xs text-gray-500 font-medium text-right">Amount</div>
-                  <div className="col-span-1 text-xs text-gray-500 font-medium">Receipt #</div>
-                  <div className="col-span-1" />
-                </div>
+                <LineHeader />
 
                 <div className="space-y-2">
                   {actionItems.map((it, idx) => (
                     <ItemRow key={idx} item={it} index={idx} accounts={accounts}
-                      onChange={updateActionItem} onRemove={removeActionItem} />
+                      onChange={updateActionItem} onRemove={removeActionItem}
+                      creditDisabled={actionRecord.type === 'LIQUIDATION'} />
                   ))}
                 </div>
 
-                <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
-                  <div className="text-right">
-                    <span className="text-sm text-gray-500 mr-4">Total</span>
-                    <span className="text-xl font-bold text-gray-900">{fmt(actionItemsTotal)}</span>
-                  </div>
-                </div>
+                <LineTotals items={actionItems} />
               </div>
             )}
 
@@ -807,6 +945,12 @@ export default function ExpensesPage() {
                 </div>
                 {actionMode === 'pay' && (
                   <>
+                    {payCredit ? (
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700">
+                        This voucher has its own credit lines, so they are posted as entered
+                        (paid from <strong>{payCredit.code}</strong>). No payment account to choose.
+                      </div>
+                    ) : (
                     <div className="form-group">
                       <label className="label">Payment Account <span className="text-red-500">*</span></label>
                       <select
@@ -824,6 +968,7 @@ export default function ExpensesPage() {
                       </select>
                       <p className="text-xs text-gray-400 mt-1">Where the funds came from (Petty Cash, Cash in Bank, etc.)</p>
                     </div>
+                    )}
                     {dn.required && (
                       <DenominationCounter {...dn.counterProps} title="Count the cash being paid out" />
                     )}

@@ -1,5 +1,5 @@
 jest.mock('../server/config/database', () => ({
-  business:     { findUnique: jest.fn() },
+  business:     { findUnique: jest.fn(), count: jest.fn() },
   userBusiness: { findUnique: jest.fn() },
 }));
 jest.mock('../server/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
@@ -44,13 +44,20 @@ describe('businessController.get access control', () => {
     await expect(run({ id: 5, role: 'MANAGER' }, 2)).rejects.toMatchObject({ statusCode: 403 });
   });
 
-  test('ADMIN bypasses the grant check entirely', async () => {
+  test('ADMIN can fetch a business they created or were granted', async () => {
+    prisma.business.count.mockResolvedValue(1);
     prisma.business.findUnique.mockResolvedValue({ id: 2, name: 'Beulah IT', licenseStatus: 'ACTIVE' });
 
     const biz = await run({ id: 1, role: 'ADMIN' }, 2);
 
     expect(biz).toEqual({ id: 2, name: 'Beulah IT', licenseStatus: 'ACTIVE' });
-    expect(prisma.userBusiness.findUnique).not.toHaveBeenCalled();
+  });
+
+  test('ADMIN cannot fetch another tenant\'s business just by role', async () => {
+    prisma.business.count.mockResolvedValue(0);
+
+    await expect(run({ id: 1, role: 'ADMIN' }, 9)).rejects.toMatchObject({ statusCode: 403 });
+    expect(prisma.business.findUnique).not.toHaveBeenCalled();
   });
 
   test('SUPER_ADMIN bypasses the grant check entirely too', async () => {

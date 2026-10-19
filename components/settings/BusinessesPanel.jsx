@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pencil, Users, Check, X, Building2, Trash2, RotateCcw, AlertTriangle, ShieldCheck, ShieldOff, Link as LinkIcon, Copy, Mail } from 'lucide-react';
+import { Plus, Pencil, Users, Check, X, Building2, Trash2, RotateCcw, AlertTriangle, ShieldCheck, ShieldOff, Link as LinkIcon, Copy, Mail, Blocks } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { businesses as bizApi, settings as settingsApi } from '@/lib/api';
 import { getUser } from '@/lib/auth';
@@ -54,7 +54,9 @@ export default function BusinessesPanel() {
   async function load() {
     try {
       const [bRes, uRes] = await Promise.all([
-        bizApi.list(),
+        // SUPER_ADMIN manages every company's license here; client companies
+        // come back flagged isOwned:false and offer no data-level actions.
+        bizApi.list(isSuperAdmin ? { scope: 'manage' } : undefined),
         settingsApi.listUsers(),
       ]);
       setList(bRes.data);
@@ -238,12 +240,29 @@ export default function BusinessesPanel() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(biz)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
-                        <Pencil className="w-3 h-3" /> Edit
-                      </button>
-                      <button onClick={() => openManage(biz.id)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
-                        <Users className="w-3 h-3" /> Users
-                      </button>
+                      {/* A client's company is private to its owners: the operator
+                          manages its license/subscription, not its profile or staff. */}
+                      {biz.isOwned !== false && (
+                        <>
+                          <button onClick={() => openEdit(biz)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
+                            <Pencil className="w-3 h-3" /> Edit
+                          </button>
+                          <button onClick={() => openManage(biz.id)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
+                            <Users className="w-3 h-3" /> Users
+                          </button>
+                        </>
+                      )}
+                      {/* Manage mode: switch into this business's context and open
+                          Settings → Modules (SUPER_ADMIN only). */}
+                      {isSuperAdmin && (
+                        <button
+                          onClick={() => { localStorage.setItem('activeBusinessId', biz.id); window.location.href = '/settings?tab=modules'; }}
+                          className="btn-secondary py-1 px-2 text-xs flex items-center gap-1"
+                          title="Open this business's module settings (manage mode)"
+                        >
+                          <Blocks className="w-3 h-3" /> Modules
+                        </button>
+                      )}
                       <button onClick={() => { setLicenseBiz(biz); setLicenseAction(null); setLicenseNote(''); setLinkAmount(''); setLinkDescription(''); }} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1">
                         <ShieldCheck className="w-3 h-3" /> License
                       </button>

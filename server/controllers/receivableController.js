@@ -1,4 +1,5 @@
 const prisma = require('../config/database');
+const { packageComponents } = require('../utils/packageInput');
 const { createError } = require('../middleware/errorHandler');
 const { computeVAT } = require('../utils/phCompliance');
 const glPost = require('../utils/glPost');
@@ -34,6 +35,35 @@ const genPayNo = async () => {
 // Contra-revenue accounts (e.g. Sales Discounts, Sales Returns & Allowances —
 // REVENUE type but normalBalance DEBIT) reduce the subtotal instead of adding
 // to it, so their line amount is negated before VAT is applied.
+// A line carrying packageId sells a Package at its overall price. The contents
+// are snapshotted from the package (names and quantities, no item prices) so the
+// invoice can be itemized later without exposing what each item costs.
+async function resolvePackageLines(lines, businessId) {
+  const ids = [...new Set(lines.filter((l) => l.packageId).map((l) => Number(l.packageId)))];
+  if (!ids.length) return lines;
+  const pkgs = await prisma.package.findMany({
+    where: { id: { in: ids }, businessId, isActive: true },
+    include: { items: { include: { item: { select: { name: true, sku: true, unit: true } } } } },
+  });
+  const byId = new Map(pkgs.map((p) => [p.id, p]));
+  return lines.map((l) => {
+    if (!l.packageId) return l;
+    const pkg = byId.get(Number(l.packageId));
+    if (!pkg) throw createError(`Package #${l.packageId} was not found or is inactive`, 400);
+    const accountId = l.accountId || pkg.accountId;
+    if (!accountId) throw createError(`Choose a revenue account for package "${pkg.name}"`, 400);
+    return {
+      ...l,
+      accountId,
+      description: l.description || pkg.name,
+      unitPrice: l.unitPrice !== undefined && l.unitPrice !== '' ? l.unitPrice : Number(pkg.price),
+      vatCode: l.vatCode || pkg.vatCode,
+      packageId: pkg.id,
+      packageComponents: packageComponents(pkg, l.quantity),
+    };
+  });
+}
+
 async function computeInvoiceTotals(lines) {
   const accountIds = [...new Set(lines.map((l) => Number(l.accountId)))];
   const accounts = await prisma.account.findMany({
@@ -162,7 +192,8 @@ exports.getInvoice = async (req, res, next) => {
 exports.createInvoice = async (req, res, next) => {
   try {
     const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
-    const { subtotal, vatAmount, totalAmount, processedLines } = await computeInvoiceTotals(lines);
+    const { subtotal, vatAmount, totalAmount, processedLines } =
+      await computeInvoiceTotals(await resolvePackageLines(lines, req.businessId));
 
     const invoiceNo = await genInvNo();
     const inv = await prisma.invoice.create({
@@ -174,6 +205,7 @@ exports.createInvoice = async (req, res, next) => {
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+          ...(l.packageId && { packageId: l.packageId, packageComponents: l.packageComponents }),
         })) },
       },
       include: { customer: true, lines: true },
@@ -203,7 +235,8 @@ exports.updateInvoice = async (req, res, next) => {
     if (inv.status === 'VOID') throw createError('Cannot edit a voided invoice.', 400);
 
     const { customerId, invoiceDate, dueDate, description, notes, lines } = req.body;
-    const { subtotal, vatAmount, totalAmount, processedLines } = await computeInvoiceTotals(lines);
+    const { subtotal, vatAmount, totalAmount, processedLines } =
+      await computeInvoiceTotals(await resolvePackageLines(lines, req.businessId));
 
     if (totalAmount < Number(inv.paidAmount) - 0.01) {
       throw createError(
@@ -227,6 +260,7 @@ exports.updateInvoice = async (req, res, next) => {
           create: processedLines.map((l) => ({
             accountId: Number(l.accountId), description: l.description,
             quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+            ...(l.packageId && { packageId: l.packageId, packageComponents: l.packageComponents }),
           })),
         },
       },

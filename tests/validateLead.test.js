@@ -49,3 +49,24 @@ describe('validateLead', () => {
     expect(r.valid).toBe(false);
   });
 });
+
+describe('validateLead company type', () => {
+  const base = { name: 'Juan', email: 'j@x.ph', message: 'Hello' };
+
+  test('known company type is prefixed onto the message', () => {
+    const r = validateLead({ ...base, businessType: 'TRADING' });
+    expect(r.valid).toBe(true);
+    expect(r.data.message).toBe('Company type: Retail / Trading\n\nHello');
+  });
+
+  test('unknown company type is ignored', () => {
+    const r = validateLead({ ...base, businessType: 'HACKER' });
+    expect(r.data.message).toBe('Hello');
+  });
+
+  test('empty message is still rejected when a type is given', () => {
+    const r = validateLead({ ...base, message: '', businessType: 'SCHOOL' });
+    expect(r.valid).toBe(false);
+    expect(r.errors.message).toBeDefined();
+  });
+});

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Building2, ChevronDown, Check } from 'lucide-react';
+import { Building2, ChevronDown, Check, ExternalLink } from 'lucide-react';
 import { useBusiness } from '@/lib/businessContext';
 
 export default function BusinessSwitcher() {
@@ -61,10 +61,19 @@ export default function BusinessSwitcher() {
               onClick={() => { setOpen(false); if (biz.id !== activeBusinessId) setActive(biz.id); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
-              <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center shrink-0">
+              <span className={`w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
+                biz.managed
+                  ? 'bg-amber-100 dark:bg-amber-900 text-amber-600 dark:text-amber-300'
+                  : 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300'
+              }`}>
                 {biz.code?.slice(0, 2) || biz.name?.slice(0, 2)}
               </span>
               <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{biz.name}</span>
+              {biz.managed && (
+                <span className="badge-yellow text-[10px] px-1.5 py-0.5 flex items-center gap-1 shrink-0" title="Manage mode — configure this client's settings">
+                  <ExternalLink className="w-3 h-3" /> Manage
+                </span>
+              )}
               {biz.id === activeBusinessId && (
                 <Check className="w-3.5 h-3.5 text-blue-500 shrink-0" />
               )}

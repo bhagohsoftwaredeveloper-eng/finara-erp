@@ -50,6 +50,13 @@ exports.updateCategory = async (req, res, next) => {
   const { id } = req.params;
   const { name, type, description, isActive } = req.body;
   try {
+    // Tenant guard: the category must belong to the caller's business.
+    const owned = await prisma.inventoryCategory.findFirst({
+      where: { id: Number(id), businessId: req.businessId },
+      select: { id: true },
+    });
+    if (!owned) return res.status(404).json({ error: 'Category not found' });
+
     const cat = await prisma.inventoryCategory.update({
       where: { id: Number(id) },
       data: { name, type, description, ...(isActive !== undefined && { isActive }) },
@@ -61,6 +68,13 @@ exports.updateCategory = async (req, res, next) => {
 exports.deleteCategory = async (req, res, next) => {
   const { id } = req.params;
   try {
+    // Tenant guard: the category must belong to the caller's business.
+    const owned = await prisma.inventoryCategory.findFirst({
+      where: { id: Number(id), businessId: req.businessId },
+      select: { id: true },
+    });
+    if (!owned) return res.status(404).json({ error: 'Category not found' });
+
     await prisma.inventoryCategory.update({
       where: { id: Number(id) },
       data: { isActive: false },
@@ -114,8 +128,8 @@ exports.listItems = async (req, res, next) => {
 
 exports.getItem = async (req, res, next) => {
   try {
-    const item = await prisma.inventoryItem.findUniqueOrThrow({
-      where: { id: Number(req.params.id) },
+    const item = await prisma.inventoryItem.findFirst({
+      where: { id: Number(req.params.id), businessId: req.businessId },
       include: {
         category:         { select: { id: true, name: true, type: true } },
         inventoryAccount: { select: { id: true, accountCode: true, accountName: true } },
@@ -124,6 +138,7 @@ exports.getItem = async (req, res, next) => {
         transactions:     { orderBy: { txnDate: 'desc' }, take: 20 },
       },
     });
+    if (!item) return res.status(404).json({ error: 'Item not found' });
     res.json({
       ...item,
       stockValue:   Number(item.currentStock) * Number(item.costPrice),
@@ -178,6 +193,13 @@ exports.updateItem = async (req, res, next) => {
     inventoryAccountId, cogsAccountId, revenueAccountId, isActive,
   } = req.body;
   try {
+    // Tenant guard: the item must belong to the caller's business.
+    const owned = await prisma.inventoryItem.findFirst({
+      where: { id: Number(id), businessId: req.businessId },
+      select: { id: true },
+    });
+    if (!owned) return res.status(404).json({ error: 'Item not found' });
+
     const item = await prisma.inventoryItem.update({
       where: { id: Number(id) },
       data: {
@@ -212,6 +234,13 @@ exports.updateItem = async (req, res, next) => {
 exports.deleteItem = async (req, res, next) => {
   const { id } = req.params;
   try {
+    // Tenant guard: the item must belong to the caller's business.
+    const owned = await prisma.inventoryItem.findFirst({
+      where: { id: Number(id), businessId: req.businessId },
+      select: { id: true },
+    });
+    if (!owned) return res.status(404).json({ error: 'Item not found' });
+
     await prisma.inventoryItem.update({
       where: { id: Number(id) },
       data: { isActive: false },
@@ -224,7 +253,7 @@ exports.deleteItem = async (req, res, next) => {
 exports.listTransactions = async (req, res, next) => {
   const { itemId, type, from, to, search, limit = 100, offset = 0 } = req.query;
   try {
-    const where = {};
+    const where = { item: { businessId: req.businessId } };
     if (itemId) where.itemId = Number(itemId);
     if (type)   where.type   = type;
     if (from || to) {
@@ -259,7 +288,9 @@ exports.createTransaction = async (req, res, next) => {
     reference, notes, txnDate,
   } = req.body;
 
-  if (!itemId || !type || !quantity)
+  // An ADJUSTMENT quantity is the counted stock, so 0 (nothing left) is valid.
+  const hasQty = quantity !== undefined && quantity !== null && quantity !== '';
+  if (!itemId || !type || !hasQty)
     return res.status(400).json({ error: 'itemId, type, and quantity are required' });
 
   const validTypes = ['IN', 'OUT', 'ADJUSTMENT', 'RETURN_IN', 'RETURN_OUT'];
@@ -267,15 +298,24 @@ exports.createTransaction = async (req, res, next) => {
     return res.status(400).json({ error: `type must be one of: ${validTypes.join(', ')}` });
 
   const qty = Number(quantity);
-  if (qty === 0) return res.status(400).json({ error: 'Quantity cannot be zero' });
+  if (!Number.isFinite(qty) || qty < 0) return res.status(400).json({ error: 'Quantity must be 0 or more' });
+  if (qty === 0 && type !== 'ADJUSTMENT') return res.status(400).json({ error: 'Quantity cannot be zero' });
 
   try {
-    const item = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: Number(itemId) } });
+    // Tenant guard: the item must belong to the caller's business.
+    const item = await prisma.inventoryItem.findFirst({
+      where: { id: Number(itemId), businessId: req.businessId },
+    });
+    if (!item) return res.status(404).json({ error: 'Item not found' });
 
     // Determine stock delta
     let delta = qty;
     if (['OUT', 'RETURN_OUT'].includes(type)) delta = -qty;
     if (type === 'ADJUSTMENT') delta = qty - Number(item.currentStock); // absolute target
+
+    if (type === 'ADJUSTMENT' && delta === 0) {
+      return res.status(400).json({ error: 'Counted quantity matches current stock — nothing to adjust' });
+    }
 
     const newStock   = Number(item.currentStock) + delta;
     const cost       = Number(unitCost);
@@ -350,10 +390,46 @@ exports.createTransaction = async (req, res, next) => {
 };
 
 // ── Reports ───────────────────────────────────────────────────────────────────
+// ?from=&to= turn the snapshot into a period view: stock as of `to` (today when
+// omitted) plus opening / in / out for the range. Balances come from each
+// transaction's runningStock, so an adjustment's delta is its change in stock.
+const dayStart = (s) => new Date(`${s}T00:00:00.000Z`);
+const nextDay  = (s) => new Date(dayStart(s).getTime() + 24 * 60 * 60 * 1000);
+
+async function periodBalances(itemIds, from, to) {
+  const txns = await prisma.inventoryTransaction.findMany({
+    where: {
+      itemId: { in: itemIds },
+      ...(to && { txnDate: { lt: nextDay(to) } }),
+    },
+    select: { itemId: true, txnDate: true, runningStock: true },
+    orderBy: [{ itemId: 'asc' }, { txnDate: 'asc' }, { id: 'asc' }],
+  });
+  const out = new Map(); // itemId -> { opening, closing, qtyIn, qtyOut }
+  const fromTs = from ? dayStart(from).getTime() : null;
+  const endTs  = to ? nextDay(to).getTime() : null;
+  for (const t of txns) {
+    if (endTs !== null && t.txnDate.getTime() >= endTs) continue;
+    const b = out.get(t.itemId) || { opening: 0, closing: 0, qtyIn: 0, qtyOut: 0 };
+    const after = Number(t.runningStock);
+    const delta = after - b.closing;
+    if (fromTs !== null && t.txnDate.getTime() < fromTs) {
+      b.opening = after;
+    } else if (delta >= 0) {
+      b.qtyIn += delta;
+    } else {
+      b.qtyOut += -delta;
+    }
+    b.closing = after;
+    out.set(t.itemId, b);
+  }
+  return out;
+}
+
 exports.stockOnHand = async (req, res, next) => {
-  const { categoryId, type } = req.query;
+  const { categoryId, type, from, to } = req.query;
   try {
-    const where = { isActive: true };
+    const where = { isActive: true, businessId: req.businessId };
     if (categoryId) where.categoryId = Number(categoryId);
     if (type) where.category = { type };
 
@@ -363,20 +439,32 @@ exports.stockOnHand = async (req, res, next) => {
       orderBy: { name: 'asc' },
     });
 
-    const enriched = items.map((i) => ({
-      id:        i.id,
-      sku:       i.sku,
-      name:      i.name,
-      unit:      i.unit,
-      category:  i.category,
-      costPrice: Number(i.costPrice),
-      sellingPrice: Number(i.sellingPrice),
-      currentStock: Number(i.currentStock),
-      reorderLevel: Number(i.reorderLevel),
-      stockValue:   Number(i.currentStock) * Number(i.costPrice),
-      isLowStock:   Number(i.currentStock) <= Number(i.reorderLevel),
-      isOutOfStock: Number(i.currentStock) <= 0,
-    }));
+    const ranged = Boolean(from || to);
+    const balances = ranged && items.length
+      ? await periodBalances(items.map((i) => i.id), from, to)
+      : new Map();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const enriched = items.map((i) => {
+      const b = balances.get(i.id) || { opening: 0, closing: 0, qtyIn: 0, qtyOut: 0 };
+      // Up to today the live figure is authoritative; an earlier `to` uses the ledger.
+      const stock = ranged && to && to < today ? b.closing : Number(i.currentStock);
+      return {
+        id:        i.id,
+        sku:       i.sku,
+        name:      i.name,
+        unit:      i.unit,
+        category:  i.category,
+        costPrice: Number(i.costPrice),
+        sellingPrice: Number(i.sellingPrice),
+        currentStock: stock,
+        reorderLevel: Number(i.reorderLevel),
+        stockValue:   stock * Number(i.costPrice),
+        isLowStock:   stock <= Number(i.reorderLevel),
+        isOutOfStock: stock <= 0,
+        ...(ranged && { openingStock: b.opening, qtyIn: b.qtyIn, qtyOut: b.qtyOut }),
+      };
+    });
 
     const summary = {
       totalItems:   enriched.length,
@@ -392,7 +480,7 @@ exports.stockOnHand = async (req, res, next) => {
 exports.valuationReport = async (req, res, next) => {
   const { categoryId } = req.query;
   try {
-    const where = { isActive: true };
+    const where = { isActive: true, businessId: req.businessId };
     if (categoryId) where.categoryId = Number(categoryId);
 
     const items = await prisma.inventoryItem.findMany({
@@ -430,6 +518,7 @@ exports.lowStockReport = async (req, res, next) => {
       FROM inventory_items i
       LEFT JOIN inventory_categories c ON c.id = i.categoryId
       WHERE i.isActive = 1
+        AND i.businessId = ${req.businessId}
         AND i.currentStock <= i.reorderLevel
       ORDER BY (i.reorderLevel - i.currentStock) DESC
     `;
@@ -440,7 +529,7 @@ exports.lowStockReport = async (req, res, next) => {
 exports.movementSummary = async (req, res, next) => {
   const { from, to } = req.query;
   try {
-    const where = {};
+    const where = { item: { businessId: req.businessId } };
     if (from || to) {
       where.txnDate = {};
       if (from) where.txnDate.gte = new Date(from);

@@ -302,44 +302,250 @@ exports.get = async (req, res, next) => {
       include: { items: true },
     });
     if (!row) throw createError('Daily remittance not found', 404);
-    const denominationCount = await prisma.cashDenominationCount.findFirst({
-      where: { businessId: row.businessId, sourceType: 'DAILY_REMITTANCE', sourceId: id },
-      orderBy: { id: 'desc' },
-    });
-    res.json({ ...row, denominationCount });
+    res.json(row);
   } catch (err) { next(err); }
 };
 
-// ─── Save end-of-day cash count ───────────────────────────────────
-// Not strict: the count is compared against the expected cash on hand and the
-// over/short is recorded, never rejected. One count per remittance (replaced).
-exports.saveCount = async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const { denominations, expectedAmount, accountCode } = req.body;
+// ─── Start / end-of-day cash counts ───────────────────────────────
+// Each day a fund (1010 Cash on Hand, 1011 Petty Cash) is counted twice:
+//   DAY_OPENING — when the day starts
+//   DAY_CLOSING — when the cashier remits at end of day
+// Keyed by business + date (sourceId = yyyymmdd) so a count never needs the
+// remittance record to exist yet. Expected closing cash is derived, not typed:
+//   opening count + cash put in - cash spent   (GL movement of that fund)
+// Not strict: a closing count that differs is recorded as over/short.
+const COUNT_FUNDS = { '1010': 'Cash on Hand', '1011': 'Petty Cash Fund' };
+const dateKey = (d) => Number(String(d).replace(/-/g, ''));
+const money = (n) => Number(Number(n || 0).toFixed(2));
 
-    const existing = await prisma.dailyRemittance.findFirst({ where: { id, businessId: req.businessId } });
-    if (!existing) throw createError('Daily remittance not found', 404);
-    if (existing.status === 'APPROVED') throw createError('Cannot change the count of an approved record', 400);
+async function fundMovement(businessId, date, accountCode) {
+  const agg = await prisma.journalLine.aggregate({
+    where: {
+      entry: { businessId, status: 'POSTED', entryDate: dayRange(date) },
+      account: { accountCode, businessId },
+    },
+    _sum: { debit: true, credit: true },
+  });
+  return { cashIn: money(agg._sum.debit), cashOut: money(agg._sum.credit) };
+}
+
+// Everything the UI needs to show one fund's day: the two counts, the
+// movement, and the expected closing figure with where the opening came from.
+async function fundDay(businessId, date, accountCode) {
+  const key = dateKey(date);
+  const where = { businessId, accountCode, sourceId: key };
+  const [opening, closing, prevClosing, movement] = await Promise.all([
+    prisma.cashDenominationCount.findFirst({ where: { ...where, sourceType: 'DAY_OPENING' }, orderBy: { id: 'desc' } }),
+    prisma.cashDenominationCount.findFirst({ where: { ...where, sourceType: 'DAY_CLOSING' }, orderBy: { id: 'desc' } }),
+    // Last closing before today: suggested opening, and the fallback when the
+    // day's opening was never counted (weekends/holidays just look further back)
+    prisma.cashDenominationCount.findFirst({
+      where: { businessId, accountCode, sourceType: 'DAY_CLOSING', sourceId: { lt: key } },
+      orderBy: { sourceId: 'desc' },
+    }),
+    fundMovement(businessId, date, accountCode),
+  ]);
+  const openingSource = opening ? 'COUNTED' : prevClosing ? 'PREVIOUS_CLOSING' : 'NONE';
+  const openingTotal = opening ? Number(opening.total) : prevClosing ? Number(prevClosing.total) : 0;
+  const expected = money(openingTotal + movement.cashIn - movement.cashOut);
+  const view = (row) => row && {
+    lines: row.lines, total: Number(row.total), countedBy: row.countedBy, countedAt: row.createdAt,
+  };
+  return {
+    accountCode, label: COUNT_FUNDS[accountCode],
+    opening: view(opening), closing: view(closing),
+    previousClosing: prevClosing && { ...view(prevClosing), forDate: String(prevClosing.sourceId) },
+    openingSource, openingTotal: money(openingTotal),
+    cashIn: movement.cashIn, cashOut: movement.cashOut,
+    expected,
+    variance: closing ? money(Number(closing.total) - expected) : null,
+  };
+}
+
+exports.getCounts = async (req, res, next) => {
+  try {
+    const { date } = req.query;
+    if (!isValidDateStr(date || '')) throw createError('date must be a valid YYYY-MM-DD date', 400);
+    const cfg = await getConfig(req.businessId);
+    if (!cfg.enabled) return res.json({ enabled: false, date, funds: [] });
+    const [funds, methods] = await Promise.all([
+      Promise.all(Object.keys(COUNT_FUNDS).map((c) => fundDay(req.businessId, date, c))),
+      methodsDay(req.businessId, date),
+    ]);
+    res.json({ enabled: true, date, denoms: cfg.denoms, funds, methods });
+  } catch (err) { next(err); }
+};
+
+exports.saveDayCount = async (req, res, next) => {
+  try {
+    const { date, stage, accountCode, denominations } = req.body;
+    if (!isValidDateStr(date || '')) throw createError('date must be a valid YYYY-MM-DD date', 400);
+    if (!['OPENING', 'CLOSING'].includes(stage)) throw createError('stage must be OPENING or CLOSING', 400);
+    if (!COUNT_FUNDS[accountCode]) throw createError('Only Cash on Hand (1010) and Petty Cash (1011) are counted', 400);
 
     const cfg = await getConfig(req.businessId);
     if (!cfg.enabled) throw createError('Cash denomination counting is not enabled', 400);
-    if (!(Number(expectedAmount) >= 0)) throw createError('expectedAmount is required', 400);
+
+    // An approved remittance is a signed document: its day is closed
+    const approved = await prisma.dailyRemittance.findFirst({
+      where: { businessId: req.businessId, date: new Date(date + 'T00:00:00.000Z'), status: 'APPROVED' },
+      select: { id: true },
+    });
+    if (approved) throw createError('This day is already approved, its cash count can no longer change', 400);
 
     let count;
     try { count = validateCount(denominations, cfg.denoms); } catch (e) { throw createError(e.message, 400); }
+    if (count.lines.length === 0) throw createError('Count the cash by denomination first', 400);
 
-    const saved = await prisma.$transaction(async (tx) => {
+    const sourceType = stage === 'OPENING' ? 'DAY_OPENING' : 'DAY_CLOSING';
+    const day = await fundDay(req.businessId, date, accountCode);
+
+    await prisma.$transaction(async (tx) => {
       await tx.cashDenominationCount.deleteMany({
-        where: { businessId: req.businessId, sourceType: 'DAILY_REMITTANCE', sourceId: id },
+        where: { businessId: req.businessId, accountCode, sourceType, sourceId: dateKey(date) },
       });
-      return saveCount(tx, {
-        businessId: req.businessId, sourceType: 'DAILY_REMITTANCE', sourceId: id,
-        direction: 'COUNT', accountCode: accountCode || '1010', count,
-        expectedAmount: Number(expectedAmount), countedBy: req.user?.name,
+      await saveCount(tx, {
+        businessId: req.businessId, sourceType, sourceId: dateKey(date),
+        direction: 'COUNT', accountCode, count,
+        // Opening has nothing to compare against; closing snapshots the expected
+        expectedAmount: stage === 'CLOSING' ? day.expected : null,
+        countedBy: req.user?.name,
       });
     });
-    res.json(saved);
+
+    res.json(await fundDay(req.businessId, date, accountCode));
+  } catch (err) { next(err); }
+};
+
+// ─── "Good as cash" turned in at end of day ───────────────────────
+// Besides physical cash, a cashier remits checks and digital payments. For each
+// payment type the day's recorded collections (AR payments + cash sales) are
+// compared with what was actually turned in; checks are itemised so each one
+// can be traced to a deposit. Stored as one DAY_REMIT_METHODS row per date
+// (lines = [{ method, expected, amount, checks? }]); no extra table needed.
+const GOOD_AS_CASH = ['Check', 'GCash', 'Maya', 'Bank Transfer', 'Credit Card', 'Online'];
+const METHOD_KEY = (m) => String(m || '').trim().toLowerCase();
+const canonicalMethod = (m) => {
+  const raw = String(m || '').trim();
+  if (!raw) return 'Unspecified';
+  const hit = ['Cash', ...GOOD_AS_CASH].find((c) => METHOD_KEY(c) === METHOD_KEY(raw));
+  return hit || raw;
+};
+
+// What the books say was collected today, per payment type
+async function recordedByMethod(businessId, date) {
+  const range = dayRange(date);
+  const [arPayments, cashSales] = await Promise.all([
+    prisma.paymentAR.findMany({
+      where: { invoice: { businessId }, paymentDate: range },
+      select: { amount: true, paymentMethod: true },
+    }),
+    prisma.cashSale.findMany({
+      where: { businessId, saleDate: range, status: 'ACTIVE' },
+      select: { totalAmount: true, paymentMethod: true },
+    }),
+  ]);
+  const totals = new Map();
+  const add = (method, amt) => {
+    const m = canonicalMethod(method);
+    totals.set(m, money((totals.get(m) || 0) + Number(amt)));
+  };
+  arPayments.forEach((p) => add(p.paymentMethod, p.amount));
+  cashSales.forEach((c) => add(c.paymentMethod, c.totalAmount));
+  return totals;
+}
+
+async function methodsDay(businessId, date) {
+  const [recorded, saved] = await Promise.all([
+    recordedByMethod(businessId, date),
+    prisma.cashDenominationCount.findFirst({
+      where: { businessId, sourceType: 'DAY_REMIT_METHODS', sourceId: dateKey(date) },
+      orderBy: { id: 'desc' },
+    }),
+  ]);
+  const savedBy = new Map(((saved && saved.lines) || []).map((l) => [METHOD_KEY(l.method), l]));
+  // The standard good-as-cash types always show; any other type that appears in
+  // the day's records (or was saved) is added so nothing recorded goes unseen.
+  const names = [...GOOD_AS_CASH];
+  for (const m of [...recorded.keys(), ...(saved && saved.lines || []).map((l) => l.method)]) {
+    const c = canonicalMethod(m);
+    if (c !== 'Cash' && !names.some((n) => METHOD_KEY(n) === METHOD_KEY(c))) names.push(c);
+  }
+  const rows = names.map((method) => {
+    const expected = recorded.get(method) || 0;
+    const s = savedBy.get(METHOD_KEY(method));
+    return {
+      method, expected,
+      amount: s ? Number(s.amount) : null,
+      checks: s && s.checks ? s.checks : [],
+      variance: s ? money(Number(s.amount) - expected) : null,
+    };
+  });
+  return {
+    cashRecorded: recorded.get('Cash') || 0, // physical cash is reconciled by the fund counts
+    rows,
+    savedAt: saved ? saved.createdAt : null,
+    savedBy: saved ? saved.countedBy : null,
+  };
+}
+
+exports.saveMethods = async (req, res, next) => {
+  try {
+    const { date, items } = req.body;
+    if (!isValidDateStr(date || '')) throw createError('date must be a valid YYYY-MM-DD date', 400);
+    if (!Array.isArray(items)) throw createError('items is required', 400);
+
+    const cfg = await getConfig(req.businessId);
+    if (!cfg.enabled) throw createError('Cash denomination counting is not enabled', 400);
+
+    const approved = await prisma.dailyRemittance.findFirst({
+      where: { businessId: req.businessId, date: new Date(date + 'T00:00:00.000Z'), status: 'APPROVED' },
+      select: { id: true },
+    });
+    if (approved) throw createError('This day is already approved, its count can no longer change', 400);
+
+    const recorded = await recordedByMethod(req.businessId, date);
+    const seen = new Set();
+    const lines = [];
+    for (const it of items) {
+      const method = canonicalMethod(it?.method);
+      if (method === 'Cash') throw createError('Cash is counted by denomination, not here', 400);
+      if (seen.has(METHOD_KEY(method))) throw createError(`${method} is listed twice`, 400);
+      seen.add(METHOD_KEY(method));
+
+      let checks = [];
+      let amount = Number(it.amount || 0);
+      if (METHOD_KEY(method) === 'check' && Array.isArray(it.checks) && it.checks.length) {
+        checks = it.checks.map((c, i) => {
+          const a = Number(c.amount);
+          if (!String(c.checkNo || '').trim()) throw createError(`Check #${i + 1} needs a check number`, 400);
+          if (!(a > 0)) throw createError(`Check ${c.checkNo} needs an amount greater than zero`, 400);
+          return { checkNo: String(c.checkNo).trim(), bank: String(c.bank || '').trim(), amount: money(a) };
+        });
+        amount = checks.reduce((s, c) => s + c.amount, 0);
+      }
+      if (!(amount >= 0)) throw createError(`${method} amount must be zero or more`, 400);
+      if (amount === 0 && checks.length === 0) continue; // nothing turned in for this type
+      lines.push({ method, expected: recorded.get(method) || 0, amount: money(amount), ...(checks.length ? { checks } : {}) });
+    }
+
+    const total = money(lines.reduce((s, l) => s + l.amount, 0));
+    const expected = money(lines.reduce((s, l) => s + l.expected, 0));
+    await prisma.$transaction(async (tx) => {
+      await tx.cashDenominationCount.deleteMany({
+        where: { businessId: req.businessId, sourceType: 'DAY_REMIT_METHODS', sourceId: dateKey(date) },
+      });
+      await tx.cashDenominationCount.create({
+        data: {
+          businessId: req.businessId, sourceType: 'DAY_REMIT_METHODS', sourceId: dateKey(date),
+          direction: 'COUNT', accountCode: null, lines,
+          total, expectedAmount: expected, variance: money(total - expected),
+          countedBy: req.user?.name || null,
+        },
+      });
+    });
+
+    res.json(await methodsDay(req.businessId, date));
   } catch (err) { next(err); }
 };
 

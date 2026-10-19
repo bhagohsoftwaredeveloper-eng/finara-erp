@@ -11,8 +11,7 @@ import {
   AlertCircle, FileText, RotateCcw, Send,
 } from 'lucide-react';
 import PesoReceipt from '@/components/icons/PesoReceipt';
-import NumberInput from '@/components/NumberInput';
-import DenominationCounter, { useDenominationCount } from '@/components/ui/DenominationCounter';
+import DayCashCount from '@/components/remittance/DayCashCount';
 
 const fmt = n => formatCurrency(Number(n || 0));
 const today = () => new Date().toISOString().slice(0, 10);
@@ -133,57 +132,6 @@ function Section({ category, items, defaultOpen = true }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────
-// End-of-day physical cash count. Not strict: the count is compared with the
-// expected cash on hand (per books) and the over/short is recorded, not blocked.
-function CashCountCard({ saved, readOnly, onSaved }) {
-  const prior = saved.denominationCount;
-  const [expected, setExpected] = useState(prior ? String(prior.expectedAmount ?? '') : '');
-  const [busy, setBusy] = useState(false);
-  const dn = useDenominationCount({ accountCode: '1010', amount: Number(expected) || 0, strict: false });
-  const { setCounts } = dn.counterProps;
-
-  // Prefill from the saved count so a reload shows what was counted
-  useEffect(() => {
-    if (!prior) { setCounts({}); return; }
-    setCounts(Object.fromEntries((prior.lines || []).map((l) => [l.denom, String(l.qty)])));
-  }, [prior, setCounts]);
-
-  if (!dn.required) return null;
-
-  const save = async () => {
-    if (dn.error) { toast.error(dn.error); return; }
-    if (!(Number(expected) >= 0) || expected === '') { toast.error('Enter the expected cash on hand'); return; }
-    setBusy(true);
-    try {
-      await remittanceApi.daily.saveCount(saved.id, {
-        denominations: dn.lines, expectedAmount: Number(expected), accountCode: '1010',
-      });
-      toast.success('Cash count saved');
-      onSaved();
-    } catch (e) { toast.error(e?.response?.data?.error || 'Could not save count'); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="card">
-      <div className="card-header"><h2 className="font-semibold text-gray-900">End-of-Day Cash Count</h2></div>
-      <div className="card-body pt-3 space-y-4">
-        <div className="form-group max-w-xs">
-          <label className="label">Expected Cash on Hand (per books) ₱</label>
-          <NumberInput className="input" placeholder="0.00" value={expected} onChange={setExpected}
-            disabled={readOnly} />
-        </div>
-        <DenominationCounter {...dn.counterProps} title="Count the cash in the drawer / petty cash box" />
-        {!readOnly && (
-          <button onClick={save} disabled={busy} className="btn-primary">
-            {busy ? 'Saving…' : prior ? 'Update Count' : 'Save Count'}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function DailyRemittancePage() {
   const user = typeof window !== 'undefined' ? getUser() : null;
 
@@ -364,6 +312,14 @@ export default function DailyRemittancePage() {
   const handlePrint = () => {
     if (!calcData) { toast.error('Generate or load a report first'); return; }
     const d = calcData;
+
+    // Start/end-of-day cash counts + good-as-cash turn-over. Only present when
+    // the business has counting switched on; the report prints fine without.
+    // Fetched in the background and handed to printDocument as a promise so the
+    // print window still opens inside this click (no popup block).
+    const countsPromise = remittanceApi.daily.counts(date)
+      .then((r) => r.data)
+      .catch(() => null);
     const grouped = {};
     for (const cat of Object.keys(CATEGORIES)) grouped[cat] = [];
     (d.items || []).forEach(it => { if (grouped[it.category]) grouped[it.category].push(it); });
@@ -407,10 +363,118 @@ export default function DailyRemittancePage() {
           <td style="padding:4px 12px;border:1px solid #e5e7eb;text-align:right;color:#6b7280;font-size:11px">${fmt(amt)}</td>
         </tr>`).join('');
 
+    // ── Cash count section ──────────────────────────────────────
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const TD = 'padding:5px 8px;border:1px solid #e5e7eb';
+    const peso = (n) => fmt(n);
+    const denomLabel = (n) => (n >= 1 ? `₱${Number(n).toLocaleString('en-PH')}` : `₱${Number(n).toFixed(2)}`);
+    const diffText = (v) => (v === 0 ? 'Balanced' : `${v > 0 ? 'Over' : 'Short'} by ${peso(Math.abs(v))}`);
+    const diffColor = (v) => (v === 0 ? '#15803d' : '#b91c1c');
+
+    const fundHtml = (f) => {
+      const denoms = [...new Set([...(f.opening?.lines || []), ...(f.closing?.lines || [])].map((l) => l.denom))]
+        .sort((a, b) => b - a);
+      const qty = (row, dn) => (row?.lines || []).find((l) => l.denom === dn)?.qty || 0;
+      const rows = denoms.map((dn) => {
+        const o = qty(f.opening, dn); const c = qty(f.closing, dn);
+        return `<tr>
+          <td style="${TD}">${denomLabel(dn)}</td>
+          <td style="${TD};text-align:right">${o || '—'}</td>
+          <td style="${TD};text-align:right">${o ? peso(o * dn) : '—'}</td>
+          <td style="${TD};text-align:right">${c || '—'}</td>
+          <td style="${TD};text-align:right">${c ? peso(c * dn) : '—'}</td>
+        </tr>`;
+      }).join('');
+      const openNote = f.openingSource === 'COUNTED' ? 'counted at start of day'
+        : f.openingSource === 'PREVIOUS_CLOSING' ? 'not counted — last closing count used'
+        : 'not counted — taken as ₱0';
+      return `
+        <div style="margin-bottom:16px;page-break-inside:avoid">
+          <h4 style="font-size:12px;font-weight:700;margin:0 0 6px">${esc(f.label)} (${esc(f.accountCode)})</h4>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px">
+            <tbody>
+              <tr><td style="${TD}">Opening <span style="color:#6b7280">(${openNote})</span></td><td style="${TD};text-align:right">${peso(f.openingTotal)}</td></tr>
+              <tr><td style="${TD}">+ Cash in</td><td style="${TD};text-align:right">${peso(f.cashIn)}</td></tr>
+              <tr><td style="${TD}">− Cash out</td><td style="${TD};text-align:right">${peso(f.cashOut)}</td></tr>
+              <tr style="background:#eff6ff;font-weight:700"><td style="${TD}">Expected closing</td><td style="${TD};text-align:right">${peso(f.expected)}</td></tr>
+              <tr style="font-weight:700"><td style="${TD}">Closing counted${f.closing?.countedBy ? ` <span style="font-weight:400;color:#6b7280">by ${esc(f.closing.countedBy)}</span>` : ''}</td>
+                <td style="${TD};text-align:right">${f.closing ? peso(f.closing.total) : 'Not counted'}</td></tr>
+              ${f.closing ? `<tr style="font-weight:700;color:${diffColor(f.variance)}"><td style="${TD}">Over / (Short)</td><td style="${TD};text-align:right">${diffText(f.variance)}</td></tr>` : ''}
+            </tbody>
+          </table>
+          ${denoms.length ? `
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr style="background:#f9fafb">
+              <th style="${TD};text-align:left">Denomination</th>
+              <th style="${TD};text-align:right">Opening qty</th><th style="${TD};text-align:right">Opening amount</th>
+              <th style="${TD};text-align:right">Closing qty</th><th style="${TD};text-align:right">Closing amount</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+            <tfoot><tr style="background:#f3f4f6;font-weight:700">
+              <td style="${TD}">Total</td><td style="${TD}"></td>
+              <td style="${TD};text-align:right">${f.opening ? peso(f.opening.total) : '—'}</td><td style="${TD}"></td>
+              <td style="${TD};text-align:right">${f.closing ? peso(f.closing.total) : '—'}</td>
+            </tr></tfoot>
+          </table>` : ''}
+        </div>`;
+    };
+
+    const methodsHtml = (m) => {
+      if (!m) return '';
+      const rows = m.rows.filter((r) => r.expected > 0 || (r.amount ?? 0) > 0 || (r.checks || []).length);
+      if (!rows.length) {
+        return `<p style="font-size:11px;color:#6b7280;margin:0">No good-as-cash payments recorded or turned in.</p>`;
+      }
+      const body = rows.map((r) => {
+        const amt = r.amount ?? 0;
+        const diff = Number((amt - r.expected).toFixed(2));
+        const checks = (r.checks || []).map((c) => `<tr>
+          <td style="${TD};padding-left:24px;color:#6b7280">Check ${esc(c.checkNo)}${c.bank ? ` — ${esc(c.bank)}` : ''}</td>
+          <td style="${TD}"></td><td style="${TD};text-align:right;color:#6b7280">${peso(c.amount)}</td><td style="${TD}"></td></tr>`).join('');
+        return `<tr>
+            <td style="${TD}">${esc(r.method)}</td>
+            <td style="${TD};text-align:right">${peso(r.expected)}</td>
+            <td style="${TD};text-align:right">${r.amount == null ? 'Not recorded' : peso(amt)}</td>
+            <td style="${TD};text-align:right;color:${r.amount == null ? '#6b7280' : diffColor(diff)}">${r.amount == null ? '—' : (diff === 0 ? '✓' : diffText(diff))}</td>
+          </tr>${checks}`;
+      }).join('');
+      const totExp = rows.reduce((t, r) => t + r.expected, 0);
+      const totAmt = rows.reduce((t, r) => t + (r.amount ?? 0), 0);
+      return `
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="background:#f9fafb">
+            <th style="${TD};text-align:left">Payment type</th>
+            <th style="${TD};text-align:right">Recorded today</th>
+            <th style="${TD};text-align:right">Turned in</th>
+            <th style="${TD};text-align:right">Difference</th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+          <tfoot><tr style="background:#f3f4f6;font-weight:700">
+            <td style="${TD}">Total</td><td style="${TD};text-align:right">${peso(totExp)}</td>
+            <td style="${TD};text-align:right">${peso(totAmt)}</td>
+            <td style="${TD};text-align:right">${peso(Math.abs(totAmt - totExp))}</td>
+          </tr></tfoot>
+        </table>
+        <p style="font-size:10px;color:#6b7280;margin:4px 0 0">Cash collected today per books: ${peso(m.cashRecorded)} — reconciled by the denomination count above.</p>`;
+    };
+
+    const buildCountsHtml = (counts) => counts?.enabled ? `
+      <div style="margin-bottom:24px">
+        <h3 style="font-size:13px;font-weight:700;color:#1f2937;margin:0 0 8px">Cash Count — Start &amp; End of Day</h3>
+        ${counts.funds.map(fundHtml).join('')}
+        <h3 style="font-size:13px;font-weight:700;color:#1f2937;margin:16px 0 8px">Good as Cash — Turned in by Payment Type</h3>
+        ${methodsHtml(counts.methods)}
+        <div style="display:flex;gap:48px;margin-top:28px;font-size:11px">
+          <div style="flex:1;border-top:1px solid #6b7280;padding-top:4px;text-align:center">Counted / Remitted by</div>
+          <div style="flex:1;border-top:1px solid #6b7280;padding-top:4px;text-align:center">Received / Verified by</div>
+        </div>
+      </div>` : '';
+
     printDocument(
       'Daily Remittance Report',
       `Date: ${new Date(date + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`,
-      `
+      countsPromise.then((counts) => `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="background:#f9fafb"><th colspan="2" style="padding:8px 12px;border:1px solid #e5e7eb;text-align:left">SUMMARY</th></tr></thead>
@@ -436,8 +500,9 @@ export default function DailyRemittancePage() {
           ${notes ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb"><strong>Notes:</strong> ${notes}</div>` : ''}
         </div>
       </div>
+      ${buildCountsHtml(counts)}
       ${Object.keys(CATEGORIES).map(cat => sectionHtml(cat, grouped[cat] || [])).join('')}
-      `
+      `)
     );
   };
 
@@ -561,6 +626,9 @@ export default function DailyRemittancePage() {
         </div>
       )}
 
+      {/* No report generated yet: the cash count still works on its own */}
+      {!hasData && <DayCashCount date={date} readOnly={isApproved} />}
+
       {/* ── No data state ── */}
       {!hasData && (
         <div className="card">
@@ -672,15 +740,13 @@ export default function DailyRemittancePage() {
             </div>
           </div>
 
+          {/* ── Start / end-of-day cash count + good-as-cash turn-over, under the cards ── */}
+          <DayCashCount date={date} readOnly={isApproved} />
+
           {/* ── Detail Sections ── */}
           {Object.entries(CATEGORIES).map(([cat]) => (
             <Section key={cat} category={cat} items={grouped[cat] || []} />
           ))}
-
-          {/* ── End-of-day cash count (needs a saved record) ── */}
-          {saved && (
-            <CashCountCard key={saved.id} saved={saved} readOnly={isApproved} onSaved={() => loadSaved(date)} />
-          )}
 
           {/* ── Notes ── */}
           {!isApproved && (

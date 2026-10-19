@@ -16,13 +16,20 @@ function emptyForm() {
   return {
     saleDate: new Date().toISOString().split('T')[0],
     buyerName: '', accountId: '',
-    vatCode: 'VAT', paymentMethod: 'Cash', notes: '',
+    vatCode: 'EXEMPT', paymentMethod: 'Cash', notes: '',
   };
 }
 
 // ─── New Cash Sale Modal ────────────────────────────────────────
-function NewSaleModal({ accounts, items, onClose, onSaved }) {
+function NewSaleModal({ accounts, items: loadedItems, onClose, onSaved }) {
   const [form, setForm] = useState(emptyForm());
+  // Items quick-added from this modal, merged with the inventory list so they
+  // are searchable straight away without reloading the page.
+  const [created, setCreated] = useState([]);
+  const items = [...loadedItems, ...created];
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quick, setQuick] = useState({ name: '', sellingPrice: '', costPrice: '', unit: 'pcs' });
+  const [quickSaving, setQuickSaving] = useState(false);
   const [cart, setCart] = useState([]);
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -31,11 +38,43 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
     setCart((c) => [...c, {
       key: `line-${Date.now()}-${c.length}`, itemId: null, description: '',
       quantity: 1, unitPrice: 0, stockCap: Infinity,
+      discountType: 'NONE', discountValue: 0,
     }]);
   };
 
   const updateLine = (key, patch) => setCart((c) => c.map((l) => l.key === key ? { ...l, ...patch } : l));
   const removeLine = (key) => setCart((c) => c.filter((l) => l.key !== key));
+
+  // Quick add: create the item in Inventory (stock 0) and drop it straight onto
+  // the cart as a linked line. Selling at zero stock is allowed.
+  const quickAdd = async () => {
+    const name = quick.name.trim();
+    if (!name) return toast.error('Item name is required');
+    const existing = items.find((it) => it.name.toLowerCase() === name.toLowerCase());
+    if (existing) return toast.error(`"${existing.name}" already exists in Inventory — pick it from the list`);
+    setQuickSaving(true);
+    try {
+      const { data } = await invApi.items.create({
+        name,
+        sellingPrice: Number(quick.sellingPrice) || 0,
+        costPrice: Number(quick.costPrice) || 0,
+        unit: quick.unit.trim() || 'pcs',
+      });
+      setCreated((c) => [...c, data]);
+      setCart((c) => [...c, {
+        key: `line-${Date.now()}-${c.length}`, itemId: data.id, description: data.name,
+        quantity: 1, unitPrice: Number(data.sellingPrice), stockCap: Number(data.currentStock || 0),
+        discountType: 'NONE', discountValue: 0,
+      }]);
+      setQuick({ name: '', sellingPrice: '', costPrice: '', unit: 'pcs' });
+      setQuickOpen(false);
+      toast.success(`${data.name} added to Inventory`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not add item');
+    } finally {
+      setQuickSaving(false);
+    }
+  };
 
   // Typing is free-form; if the text exactly matches an Inventory item's name,
   // link the row to it (auto-fill price, cap qty to its stock) — same
@@ -46,15 +85,22 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
     setCart((c) => c.map((l) => {
       if (l.key !== key) return l;
       if (!match) return { ...l, description: value, itemId: null, stockCap: Infinity };
-      const max = Math.max(1, Math.floor(Number(match.currentStock)) || 1);
       return {
         ...l, description: value, itemId: match.id, unitPrice: Number(match.sellingPrice),
-        stockCap: Number(match.currentStock), quantity: Math.min(l.quantity, max),
+        stockCap: Number(match.currentStock), quantity: Number(l.quantity) > 0 ? l.quantity : 1,
       };
     }));
   };
 
-  const lineTotal = (l) => Math.round(Number(l.quantity) * Number(l.unitPrice) * 100) / 100;
+  const lineGross = (l) => Math.round(Number(l.quantity) * Number(l.unitPrice) * 100) / 100;
+  const lineDiscount = (l) => {
+    const v = Number(l.discountValue) || 0;
+    if (l.discountType === 'PERCENT') return Math.round(lineGross(l) * Math.min(v, 100)) / 100;
+    if (l.discountType === 'AMOUNT') return Math.min(v, lineGross(l));
+    return 0;
+  };
+  const lineTotal = (l) => Math.round((lineGross(l) - lineDiscount(l)) * 100) / 100;
+  const discountTotal = cart.reduce((s, l) => s + lineDiscount(l), 0);
   const subtotal = cart.reduce((s, l) => s + lineTotal(l), 0);
   const vat = form.vatCode === 'VAT' ? Math.round(subtotal * 0.12 * 100) / 100 : 0;
   const total = Math.round((subtotal + vat) * 100) / 100;
@@ -76,6 +122,8 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
           description: l.description,
           quantity: Number(l.quantity),
           unitPrice: Number(l.unitPrice),
+          discountType: l.discountType,
+          discountValue: l.discountType === 'NONE' ? 0 : Number(l.discountValue) || 0,
         })),
       };
       const res = await csApi.create(payload);
@@ -94,7 +142,7 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-5xl">
+      <div className="modal max-w-7xl">
         <div className="modal-header">
           <h3 className="text-lg font-semibold">New Cash Sale</h3>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none">&times;</button>
@@ -144,10 +192,51 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
               <div className="md:col-span-3">
                 <div className="flex items-center justify-between mb-2">
                   <label className="label mb-0">Items</label>
-                  <button type="button" onClick={addLine} className="text-xs font-medium text-green-700 hover:text-green-800 flex items-center gap-1">
-                    <Plus className="w-3.5 h-3.5" /> Add Line
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <button type="button" onClick={() => setQuickOpen((v) => !v)}
+                      className="text-xs font-medium text-blue-700 hover:text-blue-800 flex items-center gap-1">
+                      <Plus className="w-3.5 h-3.5" /> Quick Add Item
+                    </button>
+                    <button type="button" onClick={addLine} className="text-xs font-medium text-green-700 hover:text-green-800 flex items-center gap-1">
+                      <Plus className="w-3.5 h-3.5" /> Add Line
+                    </button>
+                  </div>
                 </div>
+                {quickOpen && (
+                  <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                      <div className="col-span-2">
+                        <label className="label">Item name *</label>
+                        <input className="input" autoFocus value={quick.name} placeholder="e.g. 2x3ft Tarpaulin"
+                          onChange={(e) => setQuick((q) => ({ ...q, name: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="label">Selling price</label>
+                        <NumberInput className="input text-right" value={quick.sellingPrice} placeholder="0.00"
+                          onChange={(v) => setQuick((q) => ({ ...q, sellingPrice: v }))} />
+                      </div>
+                      <div>
+                        <label className="label">Cost price</label>
+                        <NumberInput className="input text-right" value={quick.costPrice} placeholder="0.00"
+                          onChange={(v) => setQuick((q) => ({ ...q, costPrice: v }))} />
+                      </div>
+                      <div>
+                        <label className="label">Unit</label>
+                        <input className="input" value={quick.unit}
+                          onChange={(e) => setQuick((q) => ({ ...q, unit: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-[11px] text-blue-700">Saved to Inventory with 0 stock. You can still sell it now.</p>
+                      <div className="flex gap-2">
+                        <button type="button" className="btn-secondary btn-sm" onClick={() => setQuickOpen(false)}>Cancel</button>
+                        <button type="button" className="btn-primary btn-sm" disabled={quickSaving} onClick={quickAdd}>
+                          {quickSaving ? 'Adding…' : 'Add to Inventory & Cart'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
@@ -155,23 +244,28 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
                         <th className="text-left px-3 py-2">Item / Description</th>
                         <th className="text-center px-3 py-2 w-28">Qty</th>
                         <th className="text-right px-3 py-2 w-24">Price</th>
-                        <th className="text-right px-3 py-2 w-24">Total</th>
+                        <th className="text-left px-3 py-2 w-36">Discount Type</th>
+                        <th className="text-right px-3 py-2 w-28">Discount</th>
+                        <th className="text-right px-3 py-2 w-28">Total</th>
                         <th className="w-10" />
                       </tr>
                     </thead>
                     <tbody>
                       {cart.length === 0 ? (
-                        <tr><td colSpan={5} className="text-center py-6 text-gray-400">No items yet — click "+ Add Line" to get started.</td></tr>
+                        <tr><td colSpan={7} className="text-center py-6 text-gray-400">No items yet — click "+ Add Line" to get started.</td></tr>
                       ) : cart.map((l) => (
                         <tr key={l.key} className="border-t border-gray-100">
                           <td className="px-3 py-2">
-                            <input className="input" list="cash-sale-items" placeholder="Type to search items, or enter free text"
-                              value={l.description} onChange={(e) => setLineDescription(l.key, e.target.value)} />
-                            {l.itemId && (
-                              <p className="text-[10px] text-gray-400 mt-0.5">
-                                {items.find((it) => it.id === l.itemId)?.sku} · {l.stockCap} in stock
-                              </p>
-                            )}
+                            <div className="flex items-center gap-2">
+                              <input className="input flex-1 min-w-0" list="cash-sale-items" placeholder="Type to search items, or enter free text"
+                                value={l.description} onChange={(e) => setLineDescription(l.key, e.target.value)} />
+                              {l.itemId && (
+                                <span className={`text-[10px] whitespace-nowrap shrink-0 ${Number(l.quantity) > l.stockCap ? 'text-amber-600' : 'text-gray-400'}`}>
+                                  {items.find((it) => it.id === l.itemId)?.sku} · {l.stockCap} in stock
+                                  {Number(l.quantity) > l.stockCap ? ' (stock will go negative)' : ''}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             <NumberInput decimals={3} className="input text-center" value={String(l.quantity)}
@@ -180,6 +274,20 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
                           <td className="px-3 py-2">
                             <NumberInput className="input text-right" value={String(l.unitPrice)}
                               onChange={(v) => updateLine(l.key, { unitPrice: Number(v) || 0 })} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <select className="input" value={l.discountType}
+                              onChange={(e) => updateLine(l.key, { discountType: e.target.value, discountValue: 0 })}>
+                              <option value="NONE">None</option>
+                              <option value="PERCENT">Percent (%)</option>
+                              <option value="AMOUNT">Amount (₱)</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <NumberInput className="input text-right" disabled={l.discountType === 'NONE'}
+                              value={l.discountType === 'NONE' ? '' : String(l.discountValue)}
+                              placeholder={l.discountType === 'PERCENT' ? '0 %' : '0.00'}
+                              onChange={(v) => updateLine(l.key, { discountValue: Number(v) || 0 })} />
                           </td>
                           <td className="px-3 py-2 text-right font-semibold">{formatCurrency(lineTotal(l))}</td>
                           <td className="px-3 py-2">
@@ -196,6 +304,9 @@ function NewSaleModal({ accounts, items, onClose, onSaved }) {
             </div>
             {cart.length > 0 && (
               <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-end gap-6 mt-4">
+                {discountTotal > 0 && (
+                  <span className="text-gray-500">Discount: −{formatCurrency(discountTotal)}</span>
+                )}
                 <span className="text-gray-500">Subtotal: {formatCurrency(subtotal)}</span>
                 <span className="text-gray-500">VAT: {formatCurrency(vat)}</span>
                 <span className="font-semibold">Total: {formatCurrency(total)}</span>
@@ -220,7 +331,7 @@ async function printCashSale(sale) {
   const rows = hasItems
     ? sale.items.map((it) => `
         <tr>
-          <td>${it.description}</td>
+          <td>${it.description}${it.discountType ? `<br><small>Less ${it.discountType === 'PERCENT' ? `${Number(it.discountValue)}%` : phpFmt(it.discountValue)} discount</small>` : ''}</td>
           <td class="right">${Number(it.quantity)}</td>
           <td class="right">${phpFmt(it.unitPrice)}</td>
           <td class="right bold">${phpFmt(it.amount)}</td>

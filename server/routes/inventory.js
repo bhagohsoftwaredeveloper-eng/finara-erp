@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { authenticate, authorize, resolveBusiness } = require('../middleware/auth');
 const c = require('../controllers/inventoryController');
+const pkg = require('../controllers/packageController');
 
 router.use(authenticate, resolveBusiness);
 
@@ -15,6 +16,13 @@ router.get('/reports/stock-on-hand',     c.stockOnHand);
 router.get('/reports/valuation',         c.valuationReport);
 router.get('/reports/low-stock',         c.lowStockReport);
 router.get('/reports/movement-summary',  c.movementSummary);
+
+// ── Packages (before /:id) ────────────────────────────────────
+router.get   ('/packages',      pkg.list);
+router.get   ('/packages/:id',  pkg.get);
+router.post  ('/packages',      authorize('ADMIN','MANAGER','ACCOUNTANT'), pkg.create);
+router.put   ('/packages/:id',  authorize('ADMIN','MANAGER','ACCOUNTANT'), pkg.update);
+router.delete('/packages/:id',  authorize('ADMIN','MANAGER'),              pkg.remove);
 
 // ── Transactions ──────────────────────────────────────────────
 router.get ('/transactions',    c.listTransactions);

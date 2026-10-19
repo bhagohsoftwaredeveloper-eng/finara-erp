@@ -132,17 +132,20 @@ describe('cash sale multi-item cart — create', () => {
     expect(cogsDebits).toBeCloseTo(120, 2); // 2*50 + 1*20
   });
 
-  test('create rejects when any line exceeds current stock, without creating anything', async () => {
+  test('create allows selling past current stock; stock goes negative', async () => {
     prisma.account.findFirst.mockResolvedValue({ id: 1, accountType: 'REVENUE', isActive: true });
     prisma.inventoryItem.findFirst.mockResolvedValue({
       id: 9, isActive: true, currentStock: 1, unit: 'pcs', name: 'Widget', sku: 'SKU-0001', costPrice: 50, sellingPrice: 100,
     });
 
-    await expect(run(ctrl.create, {
+    await run(ctrl.create, {
       body: { saleDate: '2026-08-22', accountId: 1, paymentMethod: 'Cash', items: [{ itemId: 9, description: 'Widget', quantity: 5, unitPrice: 100 }] },
-    })).rejects.toMatchObject({ statusCode: 400 });
+    });
 
-    expect(prisma.cashSale.create).not.toHaveBeenCalled();
+    expect(prisma.cashSale.create).toHaveBeenCalled();
+    expect(prisma.inventoryItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 9 }, data: { currentStock: -4 } }),
+    );
   });
 
   test('create rejects an empty items array', async () => {

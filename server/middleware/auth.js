@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/database');
+const { canAccessBusinessData, defaultBusinessId } = require('../utils/businessAccess');
 
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -44,14 +45,17 @@ const resolveBusiness = async (req, res, next) => {
   try {
     const headerBizId = Number(req.headers['x-business-id']);
 
+    // ADMIN and SUPER_ADMIN are tenants like everyone else: they open only the
+    // businesses they created or were granted. Role no longer opens a client's
+    // books (the operator manages licenses from Settings > Businesses instead).
+    const isAdminTier = req.user?.role === 'SUPER_ADMIN' || req.user?.role === 'ADMIN';
+
     if (!headerBizId) {
-      if (req.user?.role === 'SUPER_ADMIN') {
-        req.businessId = 1;
-        return next();
-      }
-      if (req.user?.role === 'ADMIN') {
-        if (!(await assertLicenseActive(req, res, 1))) return;
-        req.businessId = 1;
+      if (isAdminTier) {
+        const own = await defaultBusinessId(req.user, { activeOnly: req.user.role !== 'SUPER_ADMIN' });
+        if (!own) return res.status(403).json({ error: 'Create your company to get started', code: 'NO_BUSINESS' });
+        if (req.user.role !== 'SUPER_ADMIN' && !(await assertLicenseActive(req, res, own))) return;
+        req.businessId = own;
         return next();
       }
       const ub = await prisma.userBusiness.findFirst({
@@ -67,12 +71,12 @@ const resolveBusiness = async (req, res, next) => {
       return next();
     }
 
-    if (req.user?.role === 'SUPER_ADMIN') {
-      req.businessId = headerBizId;
-      return next();
-    }
-    if (req.user?.role === 'ADMIN') {
-      if (!(await assertLicenseActive(req, res, headerBizId))) return;
+    if (isAdminTier) {
+      if (!(await canAccessBusinessData(req.user, headerBizId))) {
+        return res.status(403).json({ error: 'Access denied to this business' });
+      }
+      // SUPER_ADMIN bypasses the license gate on their own companies
+      if (req.user.role !== 'SUPER_ADMIN' && !(await assertLicenseActive(req, res, headerBizId))) return;
       req.businessId = headerBizId;
       return next();
     }

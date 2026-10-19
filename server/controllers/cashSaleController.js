@@ -4,6 +4,7 @@ const { computeVAT, round2 } = require('../utils/phCompliance');
 const { nextDocNumber } = require('../utils/docNumber');
 const { buildCashSaleEntry } = require('../utils/cashSale');
 const glPost = require('../utils/glPost');
+const { resolveLineDiscount } = require('../utils/lineDiscount');
 
 const genSaleNo = async () => {
   const last = await prisma.cashSale.findFirst({
@@ -92,16 +93,19 @@ exports.create = async (req, res, next) => {
           where: { id: Number(line.itemId), businessId: req.businessId, isActive: true },
         });
         if (!invItem) throw createError(`Inventory item not found for line "${line.description}"`, 404);
-        if (Number(invItem.currentStock) < quantity) {
-          throw createError(`Insufficient stock — only ${invItem.currentStock} ${invItem.unit} available for ${invItem.name}`, 400);
-        }
-        resolvedLines.push({ description: line.description, quantity, unitPrice, item: invItem });
+        // Selling past zero is allowed: stock is deducted anyway and may go
+        // negative until the purchase/receiving is recorded.
+        resolvedLines.push({ description: line.description, quantity, unitPrice, item: invItem, line });
       } else {
-        resolvedLines.push({ description: line.description, quantity, unitPrice, item: null });
+        resolvedLines.push({ description: line.description, quantity, unitPrice, item: null, line });
       }
     }
 
-    const lineAmounts = resolvedLines.map((l) => round2(l.quantity * l.unitPrice));
+    // Revenue is recorded net of any line discount, so no contra account is needed.
+    for (const l of resolvedLines) {
+      Object.assign(l, resolveLineDiscount(round2(l.quantity * l.unitPrice), l.line.discountType, l.line.discountValue, `"${l.description}"`));
+    }
+    const lineAmounts = resolvedLines.map((l) => round2(l.quantity * l.unitPrice - l.discount));
     const subtotalRaw = round2(lineAmounts.reduce((s, a) => s + a, 0));
     const v = vatCode === 'VAT' ? computeVAT(subtotalRaw) : { base: subtotalRaw, vat: 0 };
     // totalAmount is derived from the two already-rounded parts (not
@@ -144,6 +148,8 @@ exports.create = async (req, res, next) => {
           description: l.description,
           quantity: l.quantity,
           unitPrice: l.unitPrice,
+          discountType: l.discountType,
+          discountValue: l.discountValue,
           amount: lineAmounts[i],
         })),
       });

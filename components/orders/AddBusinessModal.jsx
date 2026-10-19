@@ -14,9 +14,10 @@ const PERIODS = [{ key: 'MONTHLY', label: 'Monthly' }, { key: 'YEARLY', label: '
 const EMPTY = { name: '', tin: '', address: '', phone: '', companyType: '', taxType: '', booksStartDate: '', period: 'MONTHLY' };
 
 // Pass `order` to open straight on the payment step for an existing order.
-export default function AddBusinessModal({ order: initialOrder = null, onClose, onDone }) {
+// `initialValues` pre-fills the form (e.g. the company type chosen at signup).
+export default function AddBusinessModal({ order: initialOrder = null, initialValues = null, onClose, onDone }) {
   const [plans, setPlans]     = useState({ prices: [], instructions: { text: '', hasQr: false } });
-  const [form, setForm]       = useState(EMPTY);
+  const [form, setForm]       = useState({ ...EMPTY, ...(initialValues || {}) });
   const [order, setOrder]     = useState(initialOrder);
   const [busy, setBusy]       = useState(false);
   const [qrUrl, setQrUrl]     = useState(null);

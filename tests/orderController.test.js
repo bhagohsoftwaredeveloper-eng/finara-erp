@@ -2,7 +2,7 @@ jest.mock('../server/config/database', () => ({
   planPrice:          { findMany: jest.fn(), findUnique: jest.fn() },
   paymentInstruction: { findUnique: jest.fn() },
   businessOrder:      { create: jest.fn(), findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
-  business:           { findUnique: jest.fn() },
+  business:           { findUnique: jest.fn(), count: jest.fn() },
   userBusiness:       { findUnique: jest.fn() },
 }));
 jest.mock('../server/utils/audit', () => ({ recordAudit: jest.fn() }));
@@ -189,12 +189,20 @@ describe('orderController.cancel', () => {
     expect(prisma.businessOrder.updateMany).not.toHaveBeenCalled();
   });
 
-  test('ADMIN can cancel any renewal order regardless of grant', async () => {
+  test('ADMIN can cancel a renewal order for a business they own', async () => {
     prisma.businessOrder.findFirst.mockResolvedValue({ id: 5, userId: 99, businessId: 3, status: 'PROOF_SUBMITTED' });
     prisma.businessOrder.updateMany.mockResolvedValue({ count: 1 });
+    prisma.business.count.mockResolvedValue(1);
     await call(ctrl.cancel, { user: { id: 1, role: 'ADMIN' }, params: { id: '5' } });
-    expect(prisma.userBusiness.findUnique).not.toHaveBeenCalled();
     expect(prisma.businessOrder.updateMany).toHaveBeenCalled();
+  });
+
+  test('ADMIN cannot cancel another tenant\'s renewal order', async () => {
+    prisma.businessOrder.findFirst.mockResolvedValue({ id: 5, userId: 99, businessId: 3, status: 'PROOF_SUBMITTED' });
+    prisma.business.count.mockResolvedValue(0);
+    await expect(call(ctrl.cancel, { user: { id: 1, role: 'ADMIN' }, params: { id: '5' } }))
+      .rejects.toMatchObject({ statusCode: 403 });
+    expect(prisma.businessOrder.updateMany).not.toHaveBeenCalled();
   });
 
   test('409s when the order does not exist or is already closed', async () => {
@@ -246,12 +254,14 @@ describe('orderController.renewQuote', () => {
     await expect(call(ctrl.renewQuote, { params: { businessId: '3' } })).rejects.toMatchObject({ statusCode: 403 });
   });
 
-  test('ADMIN bypasses the grant check', async () => {
+  test('ADMIN is checked against businesses they own, not the user grant table', async () => {
+    prisma.business.count.mockResolvedValue(1);
     prisma.businessOrder.findFirst.mockResolvedValue({ companyType: 'SERVICES', status: 'APPROVED' });
     prisma.planPrice.findMany.mockResolvedValue([]);
     prisma.paymentInstruction.findUnique.mockResolvedValue(null);
     await call(ctrl.renewQuote, { user: { id: 1, role: 'ADMIN' }, params: { businessId: '3' } });
     expect(prisma.userBusiness.findUnique).not.toHaveBeenCalled();
+    expect(prisma.business.count).toHaveBeenCalled();
   });
 
   test('404s for an unknown business', async () => {

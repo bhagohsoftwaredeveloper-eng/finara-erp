@@ -5,9 +5,10 @@ const { buildLiquidationEntry } = require('../utils/cashAdvance');
 const { recordAudit, diff } = require('../utils/audit');
 const logger = require('../utils/logger');
 const { resolveCount, saveCount } = require('../utils/cashDenomination');
+const { normalizeVoucherItems, totalDebit } = require('../utils/voucherLines');
 
 // Compact item snapshot for audit diffs — avoids dumping full nested objects.
-const itemSnapshot = (items = []) => items.map(it => ({ description: it.description, amount: Number(it.amount) }));
+const itemSnapshot = (items = []) => items.map(it => ({ description: it.description, amount: Number(it.amount), creditAmount: Number(it.creditAmount || 0) }));
 
 // Category → GL account code mapping
 const CATEGORY_ACCOUNT = {
@@ -203,7 +204,8 @@ exports.create = async (req, res, next) => {
   try {
     const { type, date, payee, category, purpose, receiptNo, requestedBy, notes, items = [] } = req.body;
 
-    const totalAmount = items.reduce((s, it) => s + Number(it.amount || 0), 0);
+    const lines       = normalizeVoucherItems(items, { type });
+    const totalAmount = totalDebit(lines);
     const voucherNo   = await nextVoucherNo();
 
     const record = await prisma.expenseVoucher.create({
@@ -213,12 +215,7 @@ exports.create = async (req, res, next) => {
         payee, category, purpose,
         totalAmount, receiptNo, requestedBy, notes,
         items: {
-          create: items.map(it => ({
-            description: it.description,
-            accountId:   it.accountId || null,
-            amount:      Number(it.amount || 0),
-            receiptNo:   it.receiptNo  || null,
-          })),
+          create: lines,
         },
       },
       include: { items: true },
@@ -242,7 +239,8 @@ exports.update = async (req, res, next) => {
     if (!['DRAFT', 'REJECTED'].includes(existing.status)) throw createError('Only DRAFT or REJECTED vouchers can be edited', 400);
 
     const { type, date, payee, category, purpose, receiptNo, requestedBy, notes, items } = req.body;
-    const totalAmount = Array.isArray(items) ? items.reduce((s, it) => s + Number(it.amount || 0), 0) : Number(existing.totalAmount);
+    const lines = Array.isArray(items) ? normalizeVoucherItems(items, { type: type || existing.type }) : null;
+    const totalAmount = lines ? totalDebit(lines) : Number(existing.totalAmount);
 
     await prisma.expenseVoucher.update({
       where: { id },
@@ -255,15 +253,9 @@ exports.update = async (req, res, next) => {
 
     if (Array.isArray(items)) {
       await prisma.expenseVoucherItem.deleteMany({ where: { voucherId: id } });
-      if (items.length) {
+      if (lines.length) {
         await prisma.expenseVoucherItem.createMany({
-          data: items.map(it => ({
-            voucherId:   id,
-            description: it.description,
-            accountId:   it.accountId || null,
-            amount:      Number(it.amount || 0),
-            receiptNo:   it.receiptNo  || null,
-          })),
+          data: lines.map(l => ({ ...l, voucherId: id })),
         });
       }
     }
@@ -324,24 +316,20 @@ exports.approve = async (req, res, next) => {
     if (!existing) throw createError('Expense voucher not found', 404);
     if (existing.status === 'VOID') throw createError('A voided voucher cannot be reopened', 400);
 
-    if (Array.isArray(items)) {
+    // Validated before anything is written so an unbalanced edit leaves the
+    // voucher's existing lines untouched.
+    const lines = Array.isArray(items) ? normalizeVoucherItems(items, { type: existing.type }) : null;
+
+    if (lines) {
       await prisma.expenseVoucherItem.deleteMany({ where: { voucherId: id } });
-      if (items.length) {
+      if (lines.length) {
         await prisma.expenseVoucherItem.createMany({
-          data: items.map(it => ({
-            voucherId:   id,
-            description: it.description,
-            accountId:   it.accountId || null,
-            amount:      Number(it.amount || 0),
-            receiptNo:   it.receiptNo  || null,
-          })),
+          data: lines.map(l => ({ ...l, voucherId: id })),
         });
       }
     }
 
-    const totalAmount = Array.isArray(items)
-      ? items.reduce((s, it) => s + Number(it.amount || 0), 0)
-      : undefined;
+    const totalAmount = lines ? totalDebit(lines) : undefined;
 
     const updated = await prisma.expenseVoucher.update({
       where: { id },
@@ -372,7 +360,7 @@ exports.pay = async (req, res, next) => {
     // Fetch voucher with items before updating
     const voucher = await prisma.expenseVoucher.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: { include: { account: { select: { accountCode: true } } } } },
     });
     if (!voucher) throw createError('Expense voucher not found', 404);
     if (voucher.status !== 'APPROVED') throw createError('Voucher must be APPROVED before marking paid', 400);
@@ -391,7 +379,26 @@ exports.pay = async (req, res, next) => {
     // Use explicitly chosen payment account; fall back to type-based default.
     // Resolved before the update so it can be persisted — reports split
     // petty-cash vs collections on this, not on the voucher `type`.
+    //
+    // A voucher with explicit credit lines is a full journal: those lines ARE the
+    // credit side, so the payment account is taken from them (the one carrying
+    // the most credit) rather than from the Pay form.
+    const creditItems = linkedRequest ? [] : voucher.items.filter((i) => Number(i.creditAmount) > 0);
+    let creditCode = null;
+    let creditCountAmt = 0;
+    if (creditItems.length) {
+      const byAccount = new Map();
+      for (const i of creditItems) {
+        byAccount.set(i.accountId, (byAccount.get(i.accountId) || 0) + Number(i.creditAmount));
+      }
+      const [mainId, mainAmt] = [...byAccount.entries()].sort((a, b) => b[1] - a[1])[0];
+      creditCode = creditItems.find((i) => i.accountId === mainId)?.account?.accountCode || null;
+      if (!creditCode) throw createError('A credit line has no valid account', 400);
+      creditCountAmt = mainAmt;
+    }
+
     const cashCode = linkedRequest?.cashAccountCode
+                  || creditCode
                   || paymentAccountCode
                   || (voucher.type === 'PETTY_CASH' ? '1011' : '1020');
     const totalAmt = Number(voucher.totalAmount);
@@ -399,7 +406,7 @@ exports.pay = async (req, res, next) => {
     // Physical cash going out must be counted when the business enables it.
     // Liquidation vouchers settle through the cash request, not here.
     const count = linkedRequest ? null : await resolveCount({
-      businessId: voucher.businessId, accountCode: cashCode, amount: totalAmt, denominations,
+      businessId: voucher.businessId, accountCode: cashCode, amount: creditCode ? creditCountAmt : totalAmt, denominations,
     }).catch((e) => { throw createError(e.message, e.status || 400); });
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -415,7 +422,7 @@ exports.pay = async (req, res, next) => {
       if (count) {
         await saveCount(tx, {
           businessId: voucher.businessId, sourceType: 'EXPENSE_VOUCHER', sourceId: id,
-          direction: 'OUT', accountCode: cashCode, count, expectedAmount: totalAmt,
+          direction: 'OUT', accountCode: cashCode, count, expectedAmount: creditCode ? creditCountAmt : totalAmt,
           countedBy: paidBy || req.user?.name,
         });
       }
@@ -426,6 +433,7 @@ exports.pay = async (req, res, next) => {
     const drLines = [];
     if (voucher.items.length > 0) {
       for (const item of voucher.items) {
+        if (Number(item.amount) <= 0) continue; // credit-only line
         if (item.accountId) {
           drLines.push({ accountId: item.accountId, debit: Number(item.amount), description: item.description });
         } else {
@@ -467,7 +475,9 @@ exports.pay = async (req, res, next) => {
         reference:   voucher.voucherNo,
         lines: [
           ...drLines,
-          { accountCode: cashCode, credit: totalAmt, description: `Cash paid — ${voucher.voucherNo}` },
+          ...(creditItems.length
+            ? creditItems.map((i) => ({ accountId: i.accountId, credit: Number(i.creditAmount), description: i.description }))
+            : [{ accountCode: cashCode, credit: totalAmt, description: `Cash paid — ${voucher.voucherNo}` }]),
         ],
         userId:     req.user?.id || 1,
         businessId: req.businessId,

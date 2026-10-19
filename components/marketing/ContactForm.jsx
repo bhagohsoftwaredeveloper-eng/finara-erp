@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Send, CheckCircle2 } from 'lucide-react';
 import { leads } from '@/lib/api';
+import { COMPANY_TYPES } from '@/lib/companyTypes';
 
 const PLAN_LABELS = {
   starter: 'Starter plan',
@@ -13,7 +14,7 @@ const PLAN_LABELS = {
 
 function ContactFormInner() {
   const searchParams = useSearchParams();
-  const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', message: '' });
+  const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', businessType: '', message: '' });
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
@@ -77,6 +78,20 @@ function ContactFormInner() {
         <div>
           <label className="label">Phone</label>
           <input className="input" maxLength={30} value={form.phone} onChange={set('phone')} placeholder="0917 123 4567" />
+        </div>
+      </div>
+      <div>
+        <label className="label">Company type *</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {COMPANY_TYPES.map((t) => (
+            <label key={t.key}
+              className={`border rounded-lg p-3 cursor-pointer text-sm ${form.businessType === t.key ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+              <input type="radio" name="businessType" className="sr-only" required
+                checked={form.businessType === t.key} onChange={() => setForm((f) => ({ ...f, businessType: t.key }))} />
+              <span className="font-semibold text-gray-900 block">{t.label}</span>
+              <span className="text-xs text-gray-500">{t.hint}</span>
+            </label>
+          ))}
         </div>
       </div>
       <div>

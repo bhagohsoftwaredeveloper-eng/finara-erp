@@ -1,7 +1,8 @@
 'use client';
 import { usePathname } from 'next/navigation';
 import { formatDate } from '@/lib/auth';
-import { Menu } from 'lucide-react';
+import { useBusiness } from '@/lib/businessContext';
+import { Menu, LogOut, ShieldAlert } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import GlobalSearch from './GlobalSearch';
 import BusinessSwitcher from './BusinessSwitcher';
@@ -65,5 +66,36 @@ export default function Header({ onMobileMenu }) {
 
       <NotificationBell />
     </header>
+  );
+}
+
+// Amber banner shown across the top of the page while a SUPER_ADMIN is
+// switched into an external (client-owned) business's context to configure its
+// settings — so it is always obvious whose books you are working in.
+export function ManageModeBanner() {
+  const { businesses, activeBusiness, setActive } = useBusiness();
+
+  if (!activeBusiness?.managed) return null;
+
+  // Exit = switch back to the operator's first own (non-managed) business.
+  const own = businesses.find((b) => !b.managed);
+  const exit = () => { if (own && own.id !== activeBusiness.id) setActive(own.id); };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-900/50 px-4 lg:px-6 py-2.5">
+      <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+      <p className="text-sm text-amber-800 dark:text-amber-200 flex-1 min-w-0">
+        <span className="font-semibold">Manage mode</span> — you are working inside{' '}
+        <span className="font-semibold">{activeBusiness.name}</span> (external business).
+        Changes here (modules, settings, permissions) apply to <em>their</em> books, not yours.
+      </p>
+      <button
+        onClick={exit}
+        disabled={!own}
+        className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1.5 disabled:opacity-50"
+      >
+        <LogOut className="w-3.5 h-3.5" /> Exit Manage Mode
+      </button>
+    </div>
   );
 }

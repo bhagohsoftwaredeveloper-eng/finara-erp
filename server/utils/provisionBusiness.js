@@ -53,6 +53,7 @@ async function createProvisionedBusiness({
       industry: COMPANY_TYPES[companyType].label,
       taxType,
       booksStartDate: booksStartDate ? new Date(booksStartDate) : null,
+      createdByUserId: ownerUserId,
       ...(paidUntil && { paidUntil }),
     },
   });

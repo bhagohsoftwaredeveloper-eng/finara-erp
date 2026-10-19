@@ -421,6 +421,11 @@ model InvoiceLine {
   unitPrice   Decimal  @default(0) @db.Decimal(15, 2)
   amount      Decimal  @default(0) @db.Decimal(15, 2)
   vatCode     VatCode  @default(VAT)
+  // Set when the line sells a Package. `packageComponents` is a snapshot of what
+  // it contained when invoiced ([{ description, quantity, unit }]), shown without
+  // prices; the package's overall price is this line's unitPrice.
+  packageId         Int?
+  packageComponents Json?
 
   @@index([invoiceId])
   @@map("invoice_lines")
@@ -683,6 +688,7 @@ model InventoryItem {
   transactions        InventoryTransaction[]
   quotationLines      QuotationLine[]
   cashSaleItems       CashSaleItem[]
+  packageItems        PackageItem[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
@@ -845,6 +851,9 @@ model ExpenseVoucherItem {
   accountId   Int?
   account     Account?        @relation(fields: [accountId], references: [id])
   amount      Decimal         @db.Decimal(15, 2)
+  // Credit side of the line. 0 on every line = the original single-sided
+  // voucher (credit is the payment account chosen at Pay); amount is the debit.
+  creditAmount Decimal        @default(0) @db.Decimal(15, 2)
   receiptNo   String?         @db.VarChar(100)
 
   @@index([voucherId])
@@ -1310,6 +1319,10 @@ model CashSaleItem {
   description String         @db.VarChar(255)
   quantity    Decimal        @default(1) @db.Decimal(12, 3)
   unitPrice   Decimal        @default(0) @db.Decimal(15, 2)
+  // Line discount: PERCENT (value = %) or AMOUNT (value = pesos); null = none.
+  // `amount` is already net of it.
+  discountType  String?      @db.VarChar(10)
+  discountValue Decimal      @default(0) @db.Decimal(15, 2)
   amount      Decimal        @default(0) @db.Decimal(15, 2)
 
   @@index([cashSaleId])
@@ -2070,4 +2083,37 @@ model BusinessOrder {
   @@index([userId])
   @@index([status])
   @@map("business_orders")
+}
+
+// ─── Packages (bundles of inventory items sold at one price) ────────
+model Package {
+  id          Int      @id @default(autoincrement())
+  businessId  Int      @default(1)
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  price       Decimal  @default(0) @db.Decimal(15, 2)
+  // Revenue account an invoice line for this package posts to (optional).
+  accountId   Int?
+  vatCode     VatCode  @default(VAT)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items PackageItem[]
+
+  @@index([businessId])
+  @@map("packages")
+}
+
+model PackageItem {
+  id          Int            @id @default(autoincrement())
+  packageId   Int
+  package     Package        @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  itemId      Int
+  item        InventoryItem  @relation(fields: [itemId], references: [id])
+  quantity    Decimal        @default(1) @db.Decimal(12, 3)
+
+  @@index([packageId])
+  @@index([itemId])
+  @@map("package_items")
 }

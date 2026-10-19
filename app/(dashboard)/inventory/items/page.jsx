@@ -41,7 +41,9 @@ function CategoryModal({ cat, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-start overflow-y-auto">
+    // z-[60]: opens from the Categories side panel (z-50), so it must sit above
+    // it or the form renders hidden behind the panel and its backdrop.
+    <div className="fixed inset-0 bg-black/40 z-[60] flex justify-center items-start overflow-y-auto">
       <div className="bg-white w-full max-w-md shadow-2xl flex flex-col" style={{borderRadius:'0 0 1rem 1rem',maxHeight:'88vh',animation:'topDrawerIn .28s cubic-bezier(.4,0,.2,1)'}}>
         <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
           <h2 className="font-bold text-gray-900">{isEdit ? 'Edit Category' : 'New Category'}</h2>
@@ -263,6 +265,19 @@ export default function ItemsPage() {
   };
 
   const handlePrint = async () => {
+    // Inventory value per item = stock on hand x unit cost; summed per category
+    // for whatever the current filters leave in the list.
+    const valueOf = (i) => Math.round(Number(i.currentStock) * Number(i.costPrice) * 100) / 100;
+    const byCategory = new Map();
+    for (const i of filtered) {
+      const key = i.category?.name || 'Uncategorized';
+      const g = byCategory.get(key) || { count: 0, total: 0 };
+      g.count += 1;
+      g.total += valueOf(i);
+      byCategory.set(key, g);
+    }
+    const grandTotal = filtered.reduce((s, i) => s + valueOf(i), 0);
+
     const rows = filtered.map((i) => `
       <tr>
         <td class="mono">${i.sku}</td>
@@ -273,6 +288,7 @@ export default function ItemsPage() {
         <td class="right">${Number(i.reorderLevel).toLocaleString('en-PH')}</td>
         <td class="right">${phpFmt(i.costPrice)}</td>
         <td class="right">${phpFmt(i.sellingPrice)}</td>
+        <td class="right">${phpFmt(valueOf(i))}</td>
         <td>${i.inventoryAccount ? i.inventoryAccount.accountCode : '—'}</td>
         <td>${i.cogsAccount ? i.cogsAccount.accountCode : '—'}</td>
       </tr>`).join('');
@@ -283,9 +299,24 @@ export default function ItemsPage() {
           <th>SKU</th><th>Name</th><th>Category</th><th class="center">Unit</th>
           <th class="right">Stock</th><th class="right">Reorder</th>
           <th class="right">Cost</th><th class="right">Price</th>
+          <th class="right">Total Cost</th>
           <th>Inv. Acct</th><th>COGS Acct</th>
         </tr></thead>
         <tbody>${rows}</tbody>
+      </table>
+      <table style="width:auto;min-width:50%;margin-top:18px;margin-left:auto">
+        <thead><tr>
+          <th>Category</th><th class="right">Items</th><th class="right">Total Cost</th>
+        </tr></thead>
+        <tbody>
+          ${[...byCategory.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, g]) => `
+          <tr><td class="bold">${name}</td><td class="right">${g.count}</td><td class="right">${phpFmt(g.total)}</td></tr>`).join('')}
+          <tr>
+            <td class="bold">Overall Total</td>
+            <td class="right bold">${filtered.length}</td>
+            <td class="right bold">${phpFmt(grandTotal)}</td>
+          </tr>
+        </tbody>
       </table>`;
     await printDocument('Item Master List', `${filtered.length} items`, body);
   };

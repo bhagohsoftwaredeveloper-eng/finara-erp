@@ -1,7 +1,7 @@
 jest.mock('../server/config/database', () => ({
   userBusiness: { findFirst: jest.fn(), findUnique: jest.fn() },
   // License gate (assertLicenseActive) reads the business's licenseStatus
-  business: { findUnique: jest.fn() },
+  business: { findUnique: jest.fn(), findFirst: jest.fn() },
 }));
 jest.mock('../server/utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
@@ -43,8 +43,16 @@ describe('resolveBusiness with no business', () => {
     expect(r.code).toBe(403);
   });
 
-  test('ADMIN keeps the business-1 default', async () => {
+  test('ADMIN defaults to the first business they own, not business 1', async () => {
+    prisma.business.findFirst.mockResolvedValue({ id: 4 });
     const r = await run({ id: 1, role: 'ADMIN' });
-    expect(r.req.businessId).toBe(1);
+    expect(r.req.businessId).toBe(4);
+  });
+
+  test.each(['ADMIN', 'SUPER_ADMIN'])('%s with no company of their own gets NO_BUSINESS', async (role) => {
+    prisma.business.findFirst.mockResolvedValue(null);
+    const r = await run({ id: 1, role });
+    expect(r.code).toBe(403);
+    expect(r.body.code).toBe('NO_BUSINESS');
   });
 });

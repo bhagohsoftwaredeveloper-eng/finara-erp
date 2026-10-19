@@ -13,20 +13,40 @@ const LICENSE_TRANSITIONS = {
 };
 const { COMPANY_TYPES, TAX_TYPES } = require('../utils/companyTypes');
 const { provisionByType, rollbackBusiness, createProvisionedBusiness } = require('../utils/provisionBusiness');
-const { assertBusinessAccess } = require('../utils/businessAccess');
+const { assertBusinessAccess, assertBusinessDataAccess, ownedWhere } = require('../utils/businessAccess');
 
-// ─── List all businesses the current user can access ─────────────
+// ─── List businesses ─────────────────────────────────────────────
+// Default (the business switcher, My Businesses): only companies this user
+// created or was granted, for every role. A client's company is private to its
+// owners, so the operator's switcher stays short and never lands in a client's
+// books.
+// ?scope=manage (SUPER_ADMIN only, Settings > Businesses): every company, for
+// license and subscription administration. Each row carries `isOwned` so the UI
+// only offers data-level actions (edit, user access) where they are allowed.
 exports.list = async (req, res, next) => {
   try {
-    let businesses;
-    if (req.user.role === 'SUPER_ADMIN') {
-      businesses = await prisma.business.findMany({
+    if (req.query?.scope === 'manage') {
+      if (req.user.role !== 'SUPER_ADMIN') throw createError('Insufficient permissions', 403);
+      const all = await prisma.business.findMany({
         where: { isActive: true },
         orderBy: { name: 'asc' },
+        include: { userBusinesses: { where: { userId: req.user.id }, select: { id: true } } },
       });
-    } else if (req.user.role === 'ADMIN') {
+      return res.json(all.map(({ userBusinesses, ...b }) => ({
+        ...b,
+        isOwned: b.createdByUserId === req.user.id || userBusinesses.length > 0,
+      })));
+    }
+
+    let businesses;
+    if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'ADMIN') {
       businesses = await prisma.business.findMany({
-        where: { isActive: true, licenseStatus: 'ACTIVE' },
+        where: {
+          isActive: true,
+          // A SUPER_ADMIN still sees their own PENDING/SUSPENDED companies
+          ...(req.user.role !== 'SUPER_ADMIN' && { licenseStatus: 'ACTIVE' }),
+          ...ownedWhere(req.user),
+        },
         orderBy: { name: 'asc' },
       });
     } else {
@@ -86,10 +106,11 @@ exports.create = async (req, res, next) => {
       await cloneChartOfAccounts(1, biz.id);
       if (companyType) await provisionByType(biz.id, companyType);
 
-      // Grant all ADMIN users access to the new business
-      const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
+      // The creator owns it. Other admins are NOT granted automatically: a
+      // company's books are private to its owners, so access is given
+      // explicitly per user (Settings > Businesses > User Access).
       await prisma.userBusiness.createMany({
-        data: admins.map((u) => ({ userId: u.id, businessId: biz.id })),
+        data: [{ userId: req.user.id, businessId: biz.id }],
         skipDuplicates: true,
       });
     } catch (err) {
@@ -114,6 +135,15 @@ exports.create = async (req, res, next) => {
 // default COA, and grants ONLY this user access — the company is theirs alone.
 exports.onboard = async (req, res, next) => {
   try {
+    // A client's company is created from a paid order (POST /orders, proof,
+    // then approval), never directly: otherwise signup would hand out free
+    // companies. Only a SUPER_ADMIN may provision one outright.
+    if (req.user.role !== 'SUPER_ADMIN') {
+      throw Object.assign(
+        createError('Payment is required to create your company. Place an order and submit your payment.', 402),
+        { code: 'PAYMENT_REQUIRED' },
+      );
+    }
     const { name, tin, address, phone, companyType, taxType, booksStartDate } = req.body;
     if (!name || !String(name).trim()) throw createError('Company name is required', 400);
     if (!COMPANY_TYPES[companyType]) throw createError('Choose a company type', 400);
@@ -134,6 +164,7 @@ exports.onboard = async (req, res, next) => {
 exports.update = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    await assertBusinessDataAccess(req.user, id);
     const { name, tin, address, phone, email, industry, isActive, taxType, booksStartDate } = req.body;
     if (taxType && !TAX_TYPES.includes(taxType)) throw createError('Invalid tax type', 400);
     const biz = await prisma.business.update({
@@ -253,6 +284,7 @@ exports.resetDemo = async (req, res, next) => {
 exports.listUsers = async (req, res, next) => {
   try {
     const bizId = Number(req.params.id);
+    await assertBusinessDataAccess(req.user, bizId);
     const ubs = await prisma.userBusiness.findMany({
       where: { businessId: bizId },
       include: { user: { select: { id: true, firstName: true, lastName: true, email: true, role: true } } },
@@ -264,6 +296,7 @@ exports.listUsers = async (req, res, next) => {
 exports.grantUser = async (req, res, next) => {
   try {
     const bizId  = Number(req.params.id);
+    await assertBusinessDataAccess(req.user, bizId);
     const userId = Number(req.body.userId);
     await prisma.userBusiness.upsert({
       where:  { userId_businessId: { userId, businessId: bizId } },
@@ -277,6 +310,7 @@ exports.grantUser = async (req, res, next) => {
 exports.revokeUser = async (req, res, next) => {
   try {
     const bizId  = Number(req.params.id);
+    await assertBusinessDataAccess(req.user, bizId);
     const userId = Number(req.params.userId);
     await prisma.userBusiness.deleteMany({ where: { userId, businessId: bizId } });
     res.json({ message: 'Access revoked' });

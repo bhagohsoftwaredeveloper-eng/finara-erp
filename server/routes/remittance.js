@@ -14,10 +14,12 @@ router.post('/calculate',        write, ctrl.calculate);
 router.post('/',                 write, ctrl.create);
 // ── Daily Remittance (declare before `/:id` so static paths win) ──
 router.get('/daily/calculate',       dailyCtrl.calculate);
+router.get('/daily/counts',          dailyCtrl.getCounts);
+router.put('/daily/counts',          write, dailyCtrl.saveDayCount);
+router.put('/daily/counts/methods',  write, dailyCtrl.saveMethods);
 router.get('/daily',                 dailyCtrl.list);
 router.post('/daily',                write, dailyCtrl.create);
 router.put('/daily/:id',             write, dailyCtrl.update);
-router.put('/daily/:id/count',       write, dailyCtrl.saveCount);
 router.post('/daily/:id/submit',     write, dailyCtrl.submit);
 router.post('/daily/:id/approve',    write, dailyCtrl.approve);
 router.delete('/daily/:id',          write, dailyCtrl.remove);

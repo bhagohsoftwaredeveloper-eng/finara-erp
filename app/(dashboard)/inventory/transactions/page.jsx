@@ -3,148 +3,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { inventory as inventoryApi } from '@/lib/api';
 import { printDocument, phpFmt, dateFmt } from '@/lib/print';
 import toast from 'react-hot-toast';
-import {
-  ArrowUpCircle, ArrowDownCircle, SlidersHorizontal,
-  Plus, Search, RefreshCw, Printer, X, Package,
-  TrendingUp, TrendingDown, RotateCcw,
-} from 'lucide-react';
-
-const today = new Date().toISOString().split('T')[0];
-
-const TXN_TYPES = [
-  { value: 'IN',         label: 'Stock In',       icon: ArrowUpCircle,    color: 'text-green-600',  bg: 'bg-green-50',  badge: 'badge-green' },
-  { value: 'OUT',        label: 'Stock Out',       icon: ArrowDownCircle,  color: 'text-red-600',    bg: 'bg-red-50',    badge: 'badge-red'   },
-  { value: 'ADJUSTMENT', label: 'Adjustment',      icon: SlidersHorizontal,color: 'text-blue-600',   bg: 'bg-blue-50',   badge: 'badge-blue'  },
-  { value: 'RETURN_IN',  label: 'Customer Return', icon: RotateCcw,        color: 'text-purple-600', bg: 'bg-purple-50', badge: 'badge-gray'  },
-  { value: 'RETURN_OUT', label: 'Return to Supplier', icon: RotateCcw,    color: 'text-orange-600', bg: 'bg-orange-50', badge: 'badge-yellow'},
-];
-const TXN_MAP = Object.fromEntries(TXN_TYPES.map((t) => [t.value, t]));
-
-const BLANK_TXN = {
-  itemId: '', type: 'IN', quantity: '', unitCost: '',
-  reference: '', notes: '', txnDate: today,
-};
-
-// ── New Transaction Modal ─────────────────────────────────────────────────────
-function TxnModal({ items, onClose, onSaved }) {
-  const [form, setForm] = useState(BLANK_TXN);
-  const [saving, setSaving] = useState(false);
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  const selectedItem = items.find((i) => i.id === Number(form.itemId));
-  const isAdjustment = form.type === 'ADJUSTMENT';
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await inventoryApi.transactions.create({
-        ...form,
-        quantity: Number(form.quantity),
-        unitCost: Number(form.unitCost) || 0,
-      });
-      toast.success('Transaction recorded');
-      onSaved();
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-start overflow-y-auto">
-      <div className="bg-white w-full max-w-lg shadow-2xl flex flex-col" style={{borderRadius:'0 0 1rem 1rem',maxHeight:'88vh',animation:'topDrawerIn .28s cubic-bezier(.4,0,.2,1)'}}>
-        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
-          <h2 className="font-bold text-gray-900">Record Stock Movement</h2>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
-          {/* Type selector */}
-          <div>
-            <label className="label">Transaction Type <span className="text-red-500">*</span></label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
-              {TXN_TYPES.map((t) => (
-                <button
-                  key={t.value} type="button"
-                  onClick={() => setForm((f) => ({ ...f, type: t.value }))}
-                  className={`flex flex-col items-center gap-1 p-2.5 border-2 rounded-lg text-xs font-medium transition-all ${
-                    form.type === t.value
-                      ? `border-blue-500 ${t.bg} ${t.color}`
-                      : 'border-gray-100 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  <t.icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Item */}
-          <div>
-            <label className="label">Item <span className="text-red-500">*</span></label>
-            <select className="input w-full" value={form.itemId} onChange={set('itemId')} required>
-              <option value="">— Select Item —</option>
-              {items.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
-            </select>
-            {selectedItem && (
-              <p className="text-xs text-gray-500 mt-1">
-                Current stock: <strong className="text-gray-800">{Number(selectedItem.currentStock).toLocaleString('en-PH')} {selectedItem.unit}</strong>
-                {' · '}Cost: {phpFmt(selectedItem.costPrice)}
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">
-                {isAdjustment ? 'New Stock Count' : 'Quantity'} <span className="text-red-500">*</span>
-              </label>
-              <input className="input w-full" type="number" min="0" step="0.001"
-                value={form.quantity} onChange={set('quantity')} required placeholder="0" />
-              {isAdjustment && selectedItem && (
-                <p className="text-xs text-gray-500 mt-1">Enter the actual count; difference will be computed</p>
-              )}
-            </div>
-            <div>
-              <label className="label">Unit Cost</label>
-              <input className="input w-full" type="number" min="0" step="0.01"
-                value={form.unitCost} onChange={set('unitCost')} placeholder="0.00" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Date</label>
-              <input className="input w-full" type="date" value={form.txnDate} onChange={set('txnDate')} />
-            </div>
-            <div>
-              <label className="label">Reference</label>
-              <input className="input w-full" value={form.reference} onChange={set('reference')} placeholder="PO#, INV#, etc." />
-            </div>
-          </div>
-
-          <div>
-            <label className="label">Notes</label>
-            <textarea className="input w-full" rows={2} value={form.notes} onChange={set('notes')} />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-primary">
-              {saving ? 'Saving…' : 'Record Transaction'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
+import { Plus, Search, RefreshCw, Printer } from 'lucide-react';
+import TxnModal, { TXN_TYPES, TXN_MAP } from '@/components/inventory/RecordMovementModal';
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TransactionsPage() {
   const [txns,   setTxns]   = useState([]);
   const [items,  setItems]  = useState([]);
   const [total,  setTotal]  = useState(0);
-  const [modal,  setModal]  = useState(false);
+  const [modal,  setModal]  = useState(null); // null = closed; object = prefill for the form
   const [loading,setLoading]= useState(true);
   const [filter, setFilter] = useState({ search: '', type: '', itemId: '', from: '', to: '' });
 
@@ -169,6 +36,12 @@ export default function TransactionsPage() {
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Arriving from Inventory > Transactions: start filtered to that item.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('itemId');
+    if (id && /^\d+$/.test(id)) setFilter((f) => ({ ...f, itemId: id }));
+  }, []);
 
   const handlePrint = async () => {
     const rows = txns.map((t) => {
@@ -210,7 +83,7 @@ export default function TransactionsPage() {
           <button onClick={handlePrint} className="btn-secondary flex items-center gap-2">
             <Printer className="w-4 h-4" /> Print
           </button>
-          <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2">
+          <button onClick={() => setModal({})} className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> New Movement
           </button>
         </div>
@@ -286,7 +159,45 @@ export default function TransactionsPage() {
               {loading ? (
                 <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">Loading…</td></tr>
               ) : txns.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">No transactions found</td></tr>
+                <tr><td colSpan={10} className="p-0">
+                  <div className="px-4 py-3 text-sm text-gray-500 bg-gray-50 border-b border-gray-100">
+                    {items.length === 0
+                      ? 'No transactions yet, and no inventory items to add stock to. Create an item in Item Master first.'
+                      : 'No movements found. Pick an item below to add stock.'}
+                  </div>
+                  {items.length > 0 && (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">SKU</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Item</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Stock</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Cost</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {items.map((i) => (
+                          <tr key={i.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{i.sku}</td>
+                            <td className="px-4 py-2.5 font-medium text-gray-900">{i.name}</td>
+                            <td className="px-4 py-2.5 text-gray-600">{i.unit}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-700">{Number(i.currentStock).toLocaleString('en-PH')}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-600">{phpFmt(i.costPrice)}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <button
+                                onClick={() => setModal({ itemId: String(i.id), type: 'IN', unitCost: Number(i.costPrice) ? String(i.costPrice) : '' })}
+                                className="btn-primary btn-sm inline-flex items-center gap-1">
+                                <Plus className="w-3.5 h-3.5" /> Transactions
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </td></tr>
               ) : txns.map((t) => {
                 const meta = TXN_MAP[t.type];
                 return (
@@ -323,8 +234,9 @@ export default function TransactionsPage() {
       {modal && (
         <TxnModal
           items={items}
-          onClose={() => setModal(false)}
-          onSaved={() => { setModal(false); load(); }}
+          initial={modal}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); load(); }}
         />
       )}
     </div>

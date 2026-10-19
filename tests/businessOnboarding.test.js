@@ -1,5 +1,5 @@
 jest.mock('../server/config/database', () => ({
-  business:      { create: jest.fn(), update: jest.fn(), delete: jest.fn() },
+  business:      { create: jest.fn(), update: jest.fn(), delete: jest.fn(), count: jest.fn() },
   userBusiness:  { findFirst: jest.fn(), create: jest.fn(), createMany: jest.fn(), deleteMany: jest.fn() },
   user:          { findMany: jest.fn() },
   licenseEvent:  { create: jest.fn() },
@@ -24,12 +24,14 @@ const { cloneChartOfAccounts } = require('../server/utils/cloneChartOfAccounts')
 const { setupSchool } = require('../prisma/seedSchool');
 const ctrl = require('../server/controllers/businessController');
 
-const user = { id: 7, email: 'new@example.com', role: 'MANAGER' };
-const onboard = (body) => new Promise((resolve, reject) => {
-  ctrl.onboard({ user, body }, { status: () => ({ json: resolve }) }, reject);
+// Direct company creation is a SUPER_ADMIN-only provisioning path: a client's
+// company comes from a paid order instead (see the 402 test below).
+const user = { id: 7, email: 'new@example.com', role: 'SUPER_ADMIN' };
+const onboard = (body, as = user) => new Promise((resolve, reject) => {
+  ctrl.onboard({ user: as, body }, { status: () => ({ json: resolve }) }, reject);
 });
 const update = (id, body) => new Promise((resolve, reject) => {
-  ctrl.update({ params: { id: String(id) }, body }, { json: resolve }, reject);
+  ctrl.update({ user: { id: 1, role: 'ADMIN' }, params: { id: String(id) }, body }, { json: resolve }, reject);
 });
 
 beforeEach(() => {
@@ -37,6 +39,7 @@ beforeEach(() => {
   prisma.userBusiness.findFirst.mockResolvedValue(null);
   prisma.business.create.mockImplementation(async ({ data }) => ({ id: 42, ...data }));
   prisma.business.update.mockImplementation(async ({ data }) => ({ id: 1, ...data }));
+  prisma.business.count.mockResolvedValue(1); // the caller owns the business being updated
 });
 
 describe('businessController.onboard', () => {
@@ -51,6 +54,13 @@ describe('businessController.onboard', () => {
   ])('rejects invalid input %#', async (body, message) => {
     await expect(onboard(body)).rejects.toMatchObject({ statusCode: 400, message });
     expect(prisma.business.create).not.toHaveBeenCalled();
+  });
+
+  test.each(['MANAGER', 'ADMIN', 'ACCOUNTANT'])('a %s cannot create a company without paying', async (role) => {
+    await expect(onboard(ok, { id: 7, email: 'new@example.com', role }))
+      .rejects.toMatchObject({ statusCode: 402, code: 'PAYMENT_REQUIRED' });
+    expect(prisma.business.create).not.toHaveBeenCalled();
+    expect(cloneChartOfAccounts).not.toHaveBeenCalled();
   });
 
   test('refuses a user who already has a company', async () => {
@@ -125,13 +135,15 @@ describe('businessController.create (admin)', () => {
     expect(prisma.business.create).not.toHaveBeenCalled();
   });
 
-  test('school: runs school setup, grants all admins', async () => {
+  test('school: runs school setup, grants only the creator (not every admin)', async () => {
     const biz = await create({ ...base, companyType: 'SCHOOL', taxType: 'NON_VAT' });
 
     expect(biz).toMatchObject({ code: 'ZZ1', industry: 'School', taxType: 'NON_VAT' });
     expect(setupSchool).toHaveBeenCalledWith(42, { hideFromOthers: false });
+    // A company's books are private to its owners: other admins get no
+    // automatic access to a business they did not create.
     expect(prisma.userBusiness.createMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: [{ userId: 1, businessId: 42 }, { userId: 2, businessId: 42 }],
+      data: [{ userId: 1, businessId: 42 }],
     }));
   });
 

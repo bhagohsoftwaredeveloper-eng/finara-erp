@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { receivable as rApi, accounts as acctApi, notifications as notifApi } from '@/lib/api';
+import { receivable as rApi, accounts as acctApi, notifications as notifApi, inventory as invApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Plus, Search, Eye, Ban, Filter, X,
@@ -18,6 +18,10 @@ import { formatCurrency, formatDate, scopedKey } from '@/lib/auth';
 import { useBusiness, isPreCutover } from '@/lib/businessContext';
 import { useDraftGuard } from '@/lib/useDraftGuard';
 import { loadDraft, listDraftKeys, clearDraft } from '@/lib/draftStorage';
+
+// A package line shows what it contains (names and quantities) but never the
+// individual item prices; the line's own amount is the package's overall price.
+const componentLabel = (c) => `${Number(c.quantity).toLocaleString('en-PH')} ${c.unit || ''} × ${c.description}`.replace(/\s+/g, ' ');
 
 // ─── Constants ────────────────────────────────────────────────
 const VAT_CODES   = ['VAT', 'ZERO', 'EXEMPT'];
@@ -76,7 +80,11 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
         <td class="right">${Number(l.quantity).toLocaleString()}</td>
         <td class="right mono">${phpFmt(l.unitPrice)}</td>
         <td class="right mono bold">${phpFmt(l.amount)}</td>
-      </tr>`).join('');
+      </tr>${(l.packageComponents || []).map((c) => `
+      <tr>
+        <td></td>
+        <td colspan="5" style="padding-left:22px;color:#6b7280;font-size:11px">&bull; ${componentLabel(c)}</td>
+      </tr>`).join('')}`).join('');
 
     const paymentsHTML = (invoice.payments || []).length > 0 ? `
       <div class="section-title">Collection History</div>
@@ -200,7 +208,16 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
                   {invoice.lines?.map((l, i) => (
                     <tr key={i}>
                       <td className="font-mono text-xs text-blue-700">{l.account?.accountCode || '—'}</td>
-                      <td className="text-sm">{l.description}</td>
+                      <td className="text-sm">
+                        {l.description}
+                        {Array.isArray(l.packageComponents) && l.packageComponents.length > 0 && (
+                          <ul className="mt-1 space-y-0.5">
+                            {l.packageComponents.map((c, ci) => (
+                              <li key={ci} className="text-xs text-gray-500 pl-3">&bull; {componentLabel(c)}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
                       <td>
                         <span className={
                           l.vatCode === 'VAT'    ? 'badge-blue'
@@ -545,6 +562,13 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
       lines: invoice.lines.map((l) => ({
         accountId: String(l.accountId), description: l.description,
         quantity: String(l.quantity), unitPrice: String(l.unitPrice), vatCode: l.vatCode,
+        ...(l.packageId && {
+          packageId: l.packageId,
+          // per ONE package, so the list rescales when the quantity changes
+          components: (l.packageComponents || []).map((c) => ({
+            ...c, quantity: Number(c.quantity) / (Number(l.quantity) || 1),
+          })),
+        }),
       })),
     };
     const invoiceDate = new Date().toISOString().split('T')[0];
@@ -562,6 +586,12 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
     };
   });
   const [saving, setSaving] = useState(false);
+  const [packages, setPackages] = useState([]);
+  useEffect(() => {
+    invApi.packages.list({ active: 'true' })
+      .then((r) => setPackages(r.data || []))
+      .catch(() => {}); // the picker simply stays empty
+  }, []);
   const draftKey = scopedKey(invoice?.id ? `invoice:edit:${invoice.id}` : 'invoice:new');
   const { clearDraft: clearInvoiceDraft } = useDraftGuard(draftKey, form, setForm);
 
@@ -575,6 +605,29 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
     }));
   const removeLine = (i) =>
     setForm((f) => ({ ...f, lines: f.lines.filter((_, idx) => idx !== i) }));
+
+  // Adds a package as ONE line at its overall price; its contents ride along as
+  // `components` (names and quantities only) and are listed under the line.
+  const addPackage = (id) => {
+    const pkg = packages.find((p) => p.id === Number(id));
+    if (!pkg) return;
+    const line = {
+      accountId: pkg.accountId ? String(pkg.accountId) : '',
+      description: pkg.name,
+      quantity: '1',
+      unitPrice: String(pkg.price),
+      vatCode: pkg.vatCode,
+      packageId: pkg.id,
+      components: pkg.items.map((pi) => ({
+        description: pi.item.name, unit: pi.item.unit, quantity: Number(pi.quantity),
+      })),
+    };
+    setForm((f) => {
+      // Replace the starter blank row rather than leaving an empty line above
+      const onlyBlank = f.lines.length === 1 && !f.lines[0].description && !f.lines[0].unitPrice && !f.lines[0].accountId;
+      return { ...f, lines: onlyBlank ? [line] : [...f.lines, line] };
+    });
+  };
 
   // Auto due date: +30 days from invoice date
   useEffect(() => {
@@ -620,6 +673,7 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
           quantity:    Number(l.quantity),
           unitPrice:   Number(l.unitPrice),
           vatCode:     l.vatCode,
+          ...(l.packageId && { packageId: l.packageId }),
         })),
       };
       if (invoice) {
@@ -682,9 +736,20 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-semibold text-gray-700">Line Items</h4>
-                <button type="button" onClick={addLine} className="btn-secondary btn-sm">
-                  <Plus className="w-3 h-3" /> Add Line
-                </button>
+                <div className="flex items-center gap-2">
+                  {packages.length > 0 && (
+                    <select className="select text-xs w-48" value=""
+                      onChange={(e) => { addPackage(e.target.value); }}>
+                      <option value="">+ Add Package…</option>
+                      {packages.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price)}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button type="button" onClick={addLine} className="btn-secondary btn-sm">
+                    <Plus className="w-3 h-3" /> Add Line
+                  </button>
+                </div>
               </div>
 
               <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -721,6 +786,15 @@ function CreateInvoiceModal({ customers, accounts, invoice, onClose, onSaved, on
                               onChange={(v) => setLine(i, 'description', v)}
                               placeholder="Item / service description"
                             />
+                            {line.packageId && Array.isArray(line.components) && (
+                              <ul className="mt-1 space-y-0.5">
+                                {line.components.map((c, ci) => (
+                                  <li key={ci} className="text-[11px] text-gray-500 pl-2">
+                                    &bull; {componentLabel({ ...c, quantity: Number(c.quantity) * (Number(line.quantity) || 1) })}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </td>
                           <td>
                             <select
