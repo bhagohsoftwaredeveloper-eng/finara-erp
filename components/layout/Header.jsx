@@ -1,8 +1,8 @@
 'use client';
 import { usePathname } from 'next/navigation';
-import { formatDate } from '@/lib/auth';
+import { formatDate, getUser } from '@/lib/auth';
 import { useBusiness } from '@/lib/businessContext';
-import { Menu, LogOut, ShieldAlert } from 'lucide-react';
+import { Menu, LogOut, ShieldAlert, CalendarClock } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import GlobalSearch from './GlobalSearch';
 import BusinessSwitcher from './BusinessSwitcher';
@@ -72,6 +72,32 @@ export default function Header({ onMobileMenu }) {
 // Amber banner shown across the top of the page while a SUPER_ADMIN is
 // switched into an external (client-owned) business's context to configure its
 // settings — so it is always obvious whose books you are working in.
+// Shown to a client while their license has a scheduled suspension: the grace period to pay.
+// The operator (SUPER_ADMIN) sees the schedule in Settings > Businesses instead.
+export function LicenseReminderBanner() {
+  const { activeBusiness } = useBusiness();
+  if (!activeBusiness || activeBusiness.licenseStatus !== 'ACTIVE' || !activeBusiness.suspendAt) return null;
+  if (getUser()?.role === 'SUPER_ADMIN') return null;
+
+  const at = new Date(activeBusiness.suspendAt);
+  const ms = at - new Date();
+  if (ms <= 0) return null;
+  const days = Math.ceil(ms / 86400000);
+  const day = at.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' });
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-900/50 px-4 lg:px-6 py-2.5">
+      <CalendarClock className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+      <p className="text-sm text-amber-800 dark:text-amber-200 flex-1 min-w-0">
+        <span className="font-semibold">Payment reminder</span>: access to{' '}
+        <span className="font-semibold">{activeBusiness.name}</span> will be suspended on{' '}
+        <span className="font-semibold">{day}</span> ({days} day{days === 1 ? '' : 's'} left).
+        Please settle your subscription before then to keep working without interruption.
+      </p>
+    </div>
+  );
+}
+
 export function ManageModeBanner() {
   const { businesses, activeBusiness, setActive } = useBusiness();
 

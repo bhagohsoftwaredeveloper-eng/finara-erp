@@ -24,6 +24,13 @@ function Modal({ title, onClose, children }) {
 }
 
 // ── Main page ────────────────────────────────────────────────────
+// A scheduled suspension: the license is still ACTIVE, with the date it will lock.
+const fmtDay = (d) => new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' });
+const isoDay = (offsetDays) => new Date(Date.now() + 8 * 3600 * 1000 + offsetDays * 86400000).toISOString().slice(0, 10);
+const licenseBadge = (biz) => (biz.licenseStatus === 'ACTIVE'
+  ? (biz.suspendAt ? { cls: 'badge-yellow', text: `Active · suspends ${fmtDay(biz.suspendAt)}` } : { cls: 'badge-green', text: 'Active' })
+  : biz.licenseStatus === 'SUSPENDED' ? { cls: 'badge-red', text: 'Suspended' } : { cls: 'badge-yellow', text: 'Pending' });
+
 export default function BusinessesPanel() {
   const [list,    setList]    = useState([]);
   const [users,   setUsers]   = useState([]);     // all system users
@@ -41,6 +48,8 @@ export default function BusinessesPanel() {
   const [licenseBiz,    setLicenseBiz]    = useState(null);   // business object for the license panel
   const [licenseAction, setLicenseAction] = useState(null);   // 'activate' | 'suspend'
   const [licenseNote,   setLicenseNote]   = useState('');
+  const [suspendMode,   setSuspendMode]   = useState('date');   // 'now' | 'date': suspend at once, or give time to pay
+  const [suspendDate,   setSuspendDate]   = useState(isoDay(14));
   const [linkAmount,      setLinkAmount]      = useState('');
   const [linkDescription, setLinkDescription] = useState('');
   const [generatingLink,  setGeneratingLink]  = useState(false);
@@ -105,13 +114,34 @@ export default function BusinessesPanel() {
     setSavingLicense(true);
     try {
       const status = licenseAction === 'activate' ? 'ACTIVE' : 'SUSPENDED';
-      await bizApi.updateLicense(licenseBiz.id, { status, note: licenseNote || undefined });
-      toast.success(status === 'ACTIVE' ? 'License activated' : 'License suspended');
+      const scheduled = status === 'SUSPENDED' && suspendMode === 'date';
+      const { data } = await bizApi.updateLicense(licenseBiz.id, {
+        status, note: licenseNote || undefined, ...(scheduled && { effectiveDate: suspendDate }),
+      });
+      toast.success(status === 'ACTIVE' ? 'License activated'
+        : scheduled ? `Suspension scheduled for ${fmtDay(data.suspendAt)}` : 'License suspended');
+      setLicenseBiz((b) => ({ ...b, ...data }));
       setLicenseAction(null);
       setLicenseNote('');
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update license');
+    } finally {
+      setSavingLicense(false);
+    }
+  }
+
+  async function cancelScheduledSuspension() {
+    if (!confirm(`Cancel the scheduled suspension of ${licenseBiz.name}?`)) return;
+    setSavingLicense(true);
+    try {
+      const { data } = await bizApi.cancelScheduledSuspension(licenseBiz.id, licenseNote || undefined);
+      toast.success('Scheduled suspension cancelled');
+      setLicenseBiz((b) => ({ ...b, ...data }));
+      setLicenseNote('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to cancel the suspension');
     } finally {
       setSavingLicense(false);
     }
@@ -231,12 +261,7 @@ export default function BusinessesPanel() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`badge ${
-                      biz.licenseStatus === 'ACTIVE' ? 'badge-green' :
-                      biz.licenseStatus === 'SUSPENDED' ? 'badge-red' : 'badge-yellow'
-                    }`}>
-                      {biz.licenseStatus === 'ACTIVE' ? 'Active' : biz.licenseStatus === 'SUSPENDED' ? 'Suspended' : 'Pending'}
-                    </span>
+                    <span className={`badge ${licenseBadge(biz).cls}`}>{licenseBadge(biz).text}</span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -438,12 +463,7 @@ export default function BusinessesPanel() {
       {licenseBiz !== null && (
         <Modal title={`License — ${licenseBiz.name}`} onClose={() => { setLicenseBiz(null); setLicenseAction(null); setLicenseNote(''); }}>
           <div className="mb-4">
-            <span className={`badge ${
-              licenseBiz.licenseStatus === 'ACTIVE' ? 'badge-green' :
-              licenseBiz.licenseStatus === 'SUSPENDED' ? 'badge-red' : 'badge-yellow'
-            }`}>
-              {licenseBiz.licenseStatus === 'ACTIVE' ? 'Active' : licenseBiz.licenseStatus === 'SUSPENDED' ? 'Suspended' : 'Pending'}
-            </span>
+            <span className={`badge ${licenseBadge(licenseBiz).cls}`}>{licenseBadge(licenseBiz).text}</span>
           </div>
 
           {/* Both license-administration panels are SUPER_ADMIN-only — only a
@@ -498,20 +518,51 @@ export default function BusinessesPanel() {
                       </button>
                     )}
                     {licenseBiz.licenseStatus === 'ACTIVE' && (
-                      <button className="btn-danger text-xs flex items-center gap-1" onClick={() => setLicenseAction('suspend')}>
-                        <ShieldOff className="w-3 h-3" /> Suspend
+                      <button className="btn-danger text-xs flex items-center gap-1"
+                        onClick={() => {
+                          setSuspendMode('date');
+                          setSuspendDate(licenseBiz.suspendAt ? new Date(licenseBiz.suspendAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : isoDay(14));
+                          setLicenseAction('suspend');
+                        }}>
+                        <ShieldOff className="w-3 h-3" /> {licenseBiz.suspendAt ? 'Change suspension date' : 'Suspend'}
+                      </button>
+                    )}
+                    {licenseBiz.licenseStatus === 'ACTIVE' && licenseBiz.suspendAt && (
+                      <button className="btn-secondary text-xs" disabled={savingLicense} onClick={cancelScheduledSuspension}>
+                        Cancel scheduled suspension
                       </button>
                     )}
                   </div>
                 ) : (
                   <div>
+                    {licenseAction === 'suspend' && (
+                      <div className="mb-4 space-y-2">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="radio" name="suspendMode" checked={suspendMode === 'date'} onChange={() => setSuspendMode('date')} />
+                          Suspend on a date, so they have time to pay
+                        </label>
+                        {suspendMode === 'date' && (
+                          <div className="ml-6 space-y-1">
+                            <input type="date" className="input w-48" value={suspendDate} min={isoDay(1)} max={isoDay(365)}
+                              onChange={(e) => e.target.value && setSuspendDate(e.target.value)} />
+                            <p className="text-xs text-gray-500">
+                              They keep full access, and see a reminder, until midnight (Manila time) at the start of this date. A payment received before then cancels it, and you can cancel it any time.
+                            </p>
+                          </div>
+                        )}
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="radio" name="suspendMode" checked={suspendMode === 'now'} onChange={() => setSuspendMode('now')} />
+                          Suspend now
+                        </label>
+                      </div>
+                    )}
                     <label className="label">Note (optional)</label>
                     <textarea className="input" rows={2} value={licenseNote} onChange={(e) => setLicenseNote(e.target.value)}
                       placeholder="e.g. GCash ref #12345, PHP 15,000, paid 2026-09-11" />
                     <div className="flex justify-end gap-2 pt-3">
                       <button className="btn-secondary text-xs" onClick={() => { setLicenseAction(null); setLicenseNote(''); }}>Cancel</button>
                       <button className="btn-primary text-xs" disabled={savingLicense} onClick={confirmLicenseAction}>
-                        {savingLicense ? 'Saving…' : licenseAction === 'activate' ? 'Confirm Activate' : 'Confirm Suspend'}
+                        {savingLicense ? 'Saving…' : licenseAction === 'activate' ? 'Confirm Activate' : suspendMode === 'date' ? 'Schedule suspension' : 'Suspend now'}
                       </button>
                     </div>
                   </div>
