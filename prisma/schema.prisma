@@ -364,6 +364,7 @@ model Customer {
   contactName  String?   @db.VarChar(100)
   email        String?   @db.VarChar(150)
   phone        String?   @db.VarChar(30)
+  defaultTermId Int?
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
