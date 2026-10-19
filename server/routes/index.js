@@ -33,6 +33,7 @@ module.exports = {
   cashSales:     require('./cashSales'),
   salesSummary:  require('./salesSummary'),
   fleet:         require('./fleet'),
+  financialReports: require('./financialReports'),
   openingBalances: require('./openingBalances'),
   cashPosition:  require('./cashPosition'),
   webhooks:      require('./webhooks'),
