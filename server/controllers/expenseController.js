@@ -5,6 +5,25 @@ const { buildLiquidationEntry } = require('../utils/cashAdvance');
 const { recordAudit, diff } = require('../utils/audit');
 const logger = require('../utils/logger');
 const { resolveCount, saveCount } = require('../utils/cashDenomination');
+const { getFundSettings } = require('../utils/fundSettings');
+
+// The Marketing Fund account a voucher is paid from, when the fund is on and the voucher's
+// category is one of its marketing categories. null otherwise. Never throws: the fund is an
+// extra, and a problem with it must not stop a payment, so any failure (or a fund account
+// that is not in the chart yet, which would make the journal entry fail) means "pay from cash".
+async function marketingFundCode(voucher) {
+  try {
+    const { marketing } = await getFundSettings(voucher.businessId);
+    if (!marketing.enabled || !marketing.categories.includes(voucher.category)) return null;
+    const account = await prisma.account.findFirst({
+      where: { businessId: voucher.businessId, accountCode: marketing.accountCode },
+    });
+    return account ? marketing.accountCode : null;
+  } catch (err) {
+    logger.error(`[MARKETING FUND LOOKUP FAILED] voucher=${voucher.voucherNo} — ${err.message}`);
+    return null;
+  }
+}
 
 // Optional Driver / Vehicle cost tags on an item. Added only when set, so untagged
 // items are stored exactly as before.
@@ -403,6 +422,7 @@ exports.pay = async (req, res, next) => {
     // petty-cash vs collections on this, not on the voucher `type`.
     const cashCode = linkedRequest?.cashAccountCode
                   || paymentAccountCode
+                  || await marketingFundCode(voucher)
                   || (voucher.type === 'PETTY_CASH' ? '1011' : '1020');
     const totalAmt = Number(voucher.totalAmount);
 
