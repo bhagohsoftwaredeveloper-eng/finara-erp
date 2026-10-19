@@ -69,6 +69,15 @@ function buildInvoiceGLLines(inv) {
   ];
 }
 
+// Customer.defaultTermId: undefined = leave alone, null/'' = clear, id = must be this business's term.
+async function defaultTermValue(defaultTermId, businessId) {
+  if (defaultTermId === undefined) return undefined;
+  if (defaultTermId === null || defaultTermId === '') return null;
+  const term = await prisma.paymentTerm.findFirst({ where: { id: Number(defaultTermId), businessId } });
+  if (!term) throw createError('Payment term not found', 400);
+  return term.id;
+}
+
 exports.listCustomers = async (req, res, next) => {
   try {
     const { search, active } = req.query;
@@ -95,8 +104,10 @@ async function nextCustomerCode(businessId) {
 
 exports.createCustomer = async (req, res, next) => {
   try {
-    const { customerCode, name, tin, address, contactName, email, phone } = req.body;
+    const { customerCode, name, tin, address, contactName, email, phone, defaultTermId } = req.body;
     const base = { businessId: req.businessId, name, tin, address, contactName, email, phone };
+    const termValue = await defaultTermValue(defaultTermId, req.businessId);
+    if (termValue !== undefined) base.defaultTermId = termValue;
 
     // Manual code supplied → use as-is. Otherwise auto-generate, retrying on the
     // off chance a concurrent create grabbed the same sequential number.
@@ -118,8 +129,13 @@ exports.createCustomer = async (req, res, next) => {
 exports.updateCustomer = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { name, tin, address, contactName, email, phone, isActive } = req.body;
-    res.json(await prisma.customer.update({ where: { id }, data: { name, tin, address, contactName, email, phone, isActive } }));
+    const { name, tin, address, contactName, email, phone, isActive, defaultTermId } = req.body;
+    const termValue = await defaultTermValue(defaultTermId, req.businessId);
+    res.json(await prisma.customer.update({
+      where: { id },
+      data: { name, tin, address, contactName, email, phone, isActive,
+        ...(termValue !== undefined && { defaultTermId: termValue }) },
+    }));
   } catch (err) { next(err); }
 };
 
