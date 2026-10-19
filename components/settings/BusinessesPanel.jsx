@@ -417,11 +417,12 @@ export default function BusinessesPanel() {
       {/* User access modal */}
       {manageId !== null && (
         <Modal title={`User Access — ${list.find(b => b.id === manageId)?.name}`} onClose={() => setManageId(null)}>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Toggle to grant or revoke access for each user. ADMIN users always have full access.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Toggle to grant or revoke access for each user. The person who created the business always has access.</p>
           <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
             {users.map((u) => {
-              const hasAccess = ['ADMIN', 'SUPER_ADMIN'].includes(u.role) || bizUserIds.has(u.id);
-              const isForced  = ['ADMIN', 'SUPER_ADMIN'].includes(u.role);
+              // Admins are tenants like everyone else: they open only what they created or were granted.
+              const isForced  = u.id === list.find((b) => b.id === manageId)?.createdByUserId;
+              const hasAccess = isForced || bizUserIds.has(u.id);
               return (
                 <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
                   <div>
@@ -432,7 +433,7 @@ export default function BusinessesPanel() {
                     onClick={() => !isForced && toggleUser(u.id)}
                     disabled={isForced}
                     className={`w-8 h-5 rounded-full transition-colors relative ${hasAccess ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'} ${isForced ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    title={isForced ? 'Admin always has access' : (hasAccess ? 'Revoke access' : 'Grant access')}
+                    title={isForced ? 'Created this business' : (hasAccess ? 'Revoke access' : 'Grant access')}
                   >
                     <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${hasAccess ? 'translate-x-3' : ''}`} />
                   </button>
