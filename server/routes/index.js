@@ -31,6 +31,7 @@ module.exports = {
   leads:         require('./leads'),
   cashRequests:  require('./cashRequests'),
   cashSales:     require('./cashSales'),
+  salesSummary:  require('./salesSummary'),
   openingBalances: require('./openingBalances'),
   cashPosition:  require('./cashPosition'),
   webhooks:      require('./webhooks'),
