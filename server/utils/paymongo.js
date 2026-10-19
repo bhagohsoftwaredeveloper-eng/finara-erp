@@ -7,22 +7,35 @@ function isConfigured() {
   return !!process.env.PAYMONGO_SECRET_KEY;
 }
 
+// What the hosted checkout offers, GCash first. A method must also be enabled on the
+// PayMongo account, otherwise PayMongo rejects the session.
+const PAYMENT_METHODS = ['gcash', 'qrph', 'paymaya'];
+
+// A hosted Checkout Session, not a Payment Link: only a session lets us choose the
+// payment methods. The session id is stored in business.paymentLinkId and the URL in
+// paymentLinkUrl, so the rest of the flow keeps working.
 async function createPaymentLink({ amount, description, businessId }) {
   const secretKey = process.env.PAYMONGO_SECRET_KEY;
   if (!secretKey) throw new Error('PAYMONGO_SECRET_KEY not configured');
 
   const auth = Buffer.from(`${secretKey}:`).toString('base64');
-  const res = await fetch(`${API_BASE}/payment_links`, {
+  const res = await fetch(`${API_BASE}/checkout_sessions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Basic ${auth}`,
     },
     body: JSON.stringify({
-      amount: Math.round(Number(amount) * 100),
-      currency: 'PHP',
-      description,
-      metadata: { businessId: String(businessId) },
+      data: {
+        attributes: {
+          line_items: [{ amount: Math.round(Number(amount) * 100), currency: 'PHP', name: description, quantity: 1 }],
+          payment_method_types: PAYMENT_METHODS,
+          description,
+          send_email_receipt: false,
+          show_line_items: true,
+          metadata: { businessId: String(businessId) },
+        },
+      },
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
@@ -32,7 +45,7 @@ async function createPaymentLink({ amount, description, businessId }) {
     const detail = body?.errors?.[0]?.detail || `PayMongo responded ${res.status}`;
     throw new Error(detail);
   }
-  return { id: body.data.id, url: body.data.url };
+  return { id: body.data.id, url: body.data.attributes.checkout_url };
 }
 
 /** t=<epoch>,te=<test-mode sig>,li=<live-mode sig> — use whichever of te/li is non-empty. */
@@ -64,4 +77,4 @@ function verifyWebhookSignature(rawBody, signatureHeader, secret) {
   }
 }
 
-module.exports = { isConfigured, createPaymentLink, verifyWebhookSignature };
+module.exports = { PAYMENT_METHODS, isConfigured, createPaymentLink, verifyWebhookSignature };

@@ -23,23 +23,30 @@ describe('paymongo.isConfigured', () => {
 });
 
 describe('paymongo.createPaymentLink', () => {
-  test('POSTs to /v1/payment_links with Basic auth, centavos amount, and businessId metadata', async () => {
+  test('POSTs a checkout session to /v1/checkout_sessions with GCash first, Basic auth, centavos amount, and businessId metadata', async () => {
     process.env.PAYMONGO_SECRET_KEY = 'sk_test_abc';
     const paymongo = require('../server/utils/paymongo');
     global.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ data: { id: 'link_123', url: 'https://pm.link/finara/abc' } }),
+      json: async () => ({ data: { id: 'cs_123', attributes: { checkout_url: 'https://pm.link/finara/abc' } } }),
     });
 
     const result = await paymongo.createPaymentLink({ amount: 15000, description: 'License fee', businessId: 3 });
 
-    expect(result).toEqual({ id: 'link_123', url: 'https://pm.link/finara/abc' });
+    expect(result).toEqual({ id: 'cs_123', url: 'https://pm.link/finara/abc' });
     const [url, options] = global.fetch.mock.calls[0];
-    expect(url).toBe('https://api.paymongo.com/v1/payment_links');
+    expect(url).toBe('https://api.paymongo.com/v1/checkout_sessions');
     expect(options.method).toBe('POST');
     expect(options.headers.Authorization).toBe(`Basic ${Buffer.from('sk_test_abc:').toString('base64')}`);
     const body = JSON.parse(options.body);
-    expect(body).toEqual({ amount: 1500000, currency: 'PHP', description: 'License fee', metadata: { businessId: '3' } });
+    expect(body.data.attributes).toEqual({
+      line_items: [{ amount: 1500000, currency: 'PHP', name: 'License fee', quantity: 1 }],
+      payment_method_types: ['gcash', 'qrph', 'paymaya'],
+      description: 'License fee',
+      send_email_receipt: false,
+      show_line_items: true,
+      metadata: { businessId: '3' },
+    });
   });
 
   test('throws PayMongo\'s error detail on a non-2xx response', async () => {

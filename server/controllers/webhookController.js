@@ -3,6 +3,9 @@ const logger = require('../utils/logger');
 const mailer = require('../utils/mailer');
 const { verifyWebhookSignature } = require('../utils/paymongo');
 
+// A link wraps each payment as {data: payment}; a checkout session lists the payment itself.
+const firstPayment = (res) => { const p = res?.attributes?.payments?.[0]; return p?.data || p; };
+
 exports.paymongo = async (req, res) => {
   try {
     const signatureHeader = req.headers['paymongo-signature'];
@@ -22,12 +25,13 @@ exports.paymongo = async (req, res) => {
     }
 
     const paymongoEventType = event?.data?.attributes?.type;
-    if (paymongoEventType !== 'link.payment.paid') {
+    // link.payment.paid: links issued before the switch to checkout sessions.
+    if (paymongoEventType !== 'checkout_session.payment.paid' && paymongoEventType !== 'link.payment.paid') {
       logger.info(`[paymongoWebhook] ignoring unrelated event type: ${paymongoEventType}`);
       return res.sendStatus(200);
     }
 
-    // For link.payment.paid, `data` is the Link resource, not the payment —
+    // `data` is the Checkout Session (or, for link.payment.paid, the Link) resource, not the payment —
     // PayMongo does not carry our request-time metadata through to the link
     // or to its nested payment (only an auto-generated pm_reference_number
     // shows up there), so correlate back to the business via the link id we
@@ -47,7 +51,7 @@ exports.paymongo = async (req, res) => {
     if (business.licenseStatus === 'ACTIVE') {
       // Paid inside the grace period: the scheduled suspension is cancelled.
       if (business.suspendAt) {
-        const paidPayment = link?.attributes?.payments?.[0]?.data;
+        const paidPayment = firstPayment(link);
         const amount = Number(paidPayment?.attributes?.amount ?? link?.attributes?.amount ?? 0) / 100;
         await prisma.$transaction([
           prisma.business.update({ where: { id: business.id }, data: { suspendAt: null } }),
@@ -62,7 +66,7 @@ exports.paymongo = async (req, res) => {
     }
 
     const businessId = business.id;
-    const paidPayment = link?.attributes?.payments?.[0]?.data;
+    const paidPayment = firstPayment(link);
     const paymentId = paidPayment?.id || linkId;
     const amount = Number(paidPayment?.attributes?.amount ?? link?.attributes?.amount ?? 0) / 100;
 

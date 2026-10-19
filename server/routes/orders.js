@@ -26,8 +26,8 @@ router.get('/plans',            user.plans);
 router.get('/payment-qr',       user.paymentQr);
 router.get('/',                 user.list);
 router.post('/',                user.create);
-// Admins and managers pay renewals; SUPER_ADMIN passes authorize() as always.
-const payers = authorize('ADMIN', 'MANAGER');
+// Admins, managers and accountants pay renewals; SUPER_ADMIN passes authorize() as always.
+const payers = authorize('ADMIN', 'MANAGER', 'ACCOUNTANT');
 router.get('/renew/:businessId',  payers, user.renewQuote);
 router.post('/renew/:businessId', payers, user.renew);
 router.post('/:id/proof',       uploadMiddleware, user.submitProof);

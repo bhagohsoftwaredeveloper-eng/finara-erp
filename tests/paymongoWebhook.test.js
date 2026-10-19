@@ -74,6 +74,26 @@ describe('webhookController.paymongo', () => {
     expect(prisma.business.findFirst).not.toHaveBeenCalled();
   });
 
+  test('activates a PENDING business on checkout_session.payment.paid, matched by session id', async () => {
+    prisma.business.findFirst.mockResolvedValue({ id: 3, name: 'NCC', licenseStatus: 'PENDING', createdByUserId: 7, paymentLinkId: 'cs_abc' });
+    prisma.user.findUnique.mockResolvedValue({ id: 7, email: 'juan@finara.ph' });
+
+    // A checkout session lists the payment itself (a link wraps it in {data}).
+    const payload = {
+      data: { id: 'evt_2', type: 'event', attributes: { type: 'checkout_session.payment.paid', data: {
+        id: 'cs_abc', type: 'checkout_session',
+        attributes: { payments: [{ id: 'pay_9', type: 'payment', attributes: { amount: 500, status: 'paid' } }] },
+      } } },
+    };
+    const res = await run(signedRequest(payload));
+
+    expect(prisma.business.findFirst).toHaveBeenCalledWith({ where: { paymentLinkId: 'cs_abc' } });
+    expect(res.statusCode).toBe(200);
+    expect(prisma.licenseEvent.create).toHaveBeenNthCalledWith(1, {
+      data: { businessId: 3, eventType: 'PAYMENT_RECEIVED', amount: 5, note: 'PayMongo payment pay_9', actorUserId: null },
+    });
+  });
+
   test('activates a PENDING business on a valid link.payment.paid event, matched by payment link id', async () => {
     prisma.business.findFirst.mockResolvedValue({ id: 3, name: 'NCC', licenseStatus: 'PENDING', createdByUserId: 7, paymentLinkId: 'link_abc' });
     prisma.user.findUnique.mockResolvedValue({ id: 7, email: 'juan@finara.ph' });
