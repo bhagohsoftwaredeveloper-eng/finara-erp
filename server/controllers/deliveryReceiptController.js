@@ -26,6 +26,18 @@ async function findDr(id, businessId, include) {
   return dr;
 }
 
+// An invoice's "shipped" flag came from a delivery receipt only if no other delivered DR
+// is linked to it and nobody entered courier/tracking by hand. Used by cancel and unlink.
+async function unshipIfOnlyFromDr(db, { invoiceId, excludeDrId, businessId }) {
+  const others = await db.deliveryReceipt.count({
+    where: { invoiceId, status: 'DELIVERED', id: { not: excludeDrId } },
+  });
+  const invoice = await db.invoice.findFirst({ where: { id: invoiceId, businessId } });
+  if (others === 0 && invoice && !invoice.courier && !invoice.trackingNumber) {
+    await db.invoice.update({ where: { id: invoice.id }, data: { deliveryStatus: 'PENDING', shippedDate: null } });
+  }
+}
+
 // An invoice's lines as delivery lines. A package line becomes its contents.
 function linesFromInvoice(invoice) {
   const out = [];
@@ -211,16 +223,8 @@ exports.cancel = async (req, res, next) => {
         data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: req.body?.reason ? String(req.body.reason).slice(0, 255) : null },
         include: DR_INCLUDE,
       });
-      // The invoice's "shipped" flag came from this DR only if no other delivered DR
-      // is linked and nobody entered courier/tracking by hand.
       if (wasDelivered && dr.invoiceId) {
-        const others = await tx.deliveryReceipt.count({
-          where: { invoiceId: dr.invoiceId, status: 'DELIVERED', id: { not: id } },
-        });
-        const invoice = await tx.invoice.findFirst({ where: { id: dr.invoiceId, businessId: req.businessId } });
-        if (others === 0 && invoice && !invoice.courier && !invoice.trackingNumber) {
-          await tx.invoice.update({ where: { id: invoice.id }, data: { deliveryStatus: 'PENDING', shippedDate: null } });
-        }
+        await unshipIfOnlyFromDr(tx, { invoiceId: dr.invoiceId, excludeDrId: id, businessId: req.businessId });
       }
     });
 
@@ -232,6 +236,40 @@ exports.cancel = async (req, res, next) => {
       });
     }
     res.json(updated);
+  } catch (err) { next(err); }
+};
+
+// ─── Connect an existing DR and an existing invoice (e.g. after the invoice was paid) ──
+exports.link = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const dr = await findDr(id, req.businessId);
+    if (dr.status === 'CANCELLED') throw createError('That delivery receipt is cancelled', 400);
+    if (dr.invoiceId) throw createError('That delivery receipt is already linked to an invoice. Unlink it first.', 400);
+
+    const invoice = await prisma.invoice.findFirst({ where: { id: Number(req.body.invoiceId), businessId: req.businessId } });
+    if (!invoice) throw createError('Invoice not found', 404);
+    if (invoice.status === 'VOID') throw createError('Cannot link to a voided invoice', 400);
+    if (invoice.customerId !== dr.customerId) throw createError('That invoice belongs to a different customer', 400);
+
+    await exports.applyLink(dr, invoice.id);
+    res.json(await findDr(id, req.businessId, DR_INCLUDE));
+  } catch (err) { next(err); }
+};
+
+exports.unlink = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const dr = await findDr(id, req.businessId);
+    if (!dr.invoiceId) throw createError('That delivery receipt is not linked to an invoice', 400);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.deliveryReceipt.update({ where: { id }, data: { invoiceId: null } });
+      if (dr.status === 'DELIVERED') {
+        await unshipIfOnlyFromDr(tx, { invoiceId: dr.invoiceId, excludeDrId: id, businessId: req.businessId });
+      }
+    });
+    res.json(await findDr(id, req.businessId, DR_INCLUDE));
   } catch (err) { next(err); }
 };
 

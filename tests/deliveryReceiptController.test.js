@@ -216,3 +216,62 @@ describe('invoice linking helpers', () => {
     });
   });
 });
+
+describe('link / unlink an existing invoice', () => {
+  const free = (over = {}) => ({ id: 1, status: 'DRAFT', invoiceId: null, customerId: 9, drDate: new Date('2026-02-03'), ...over });
+
+  test('links a DR to an unpaid or paid invoice of the same customer', async () => {
+    prisma.deliveryReceipt.findFirst.mockResolvedValue(free());
+    prisma.invoice.findFirst.mockResolvedValue({ id: 3, customerId: 9, status: 'PAID' });
+    prisma.deliveryReceipt.update.mockResolvedValue({ id: 1 });
+
+    await run(ctrl.link, { params: { id: '1' }, body: { invoiceId: '3' } });
+
+    expect(prisma.invoice.findFirst).toHaveBeenCalledWith({ where: { id: 3, businessId: 1 } });
+    expect(prisma.deliveryReceipt.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { invoiceId: 3 } });
+  });
+
+  test('a delivered DR also marks the invoice shipped when linked', async () => {
+    prisma.deliveryReceipt.findFirst.mockResolvedValue(free({ status: 'DELIVERED', deliveredAt: new Date('2026-02-04') }));
+    prisma.invoice.findFirst.mockResolvedValue({ id: 3, customerId: 9, status: 'PAID' });
+    prisma.deliveryReceipt.update.mockResolvedValue({ id: 1 });
+
+    await run(ctrl.link, { params: { id: '1' }, body: { invoiceId: 3 } });
+
+    expect(prisma.invoice.update).toHaveBeenCalledWith({
+      where: { id: 3 }, data: { deliveryStatus: 'SHIPPED', shippedDate: new Date('2026-02-04') },
+    });
+  });
+
+  test.each([
+    [free({ status: 'CANCELLED' }), { id: 3, customerId: 9, status: 'OPEN' }, 'cancelled'],
+    [free({ invoiceId: 2 }),        { id: 3, customerId: 9, status: 'OPEN' }, 'already linked'],
+    [free(),                        null,                                     'Invoice not found'],
+    [free(),                        { id: 3, customerId: 9, status: 'VOID' }, 'voided'],
+    [free(),                        { id: 3, customerId: 10, status: 'OPEN' }, 'different customer'],
+  ])('link rejects %#', async (dr, invoice, msg) => {
+    prisma.deliveryReceipt.findFirst.mockResolvedValue(dr);
+    prisma.invoice.findFirst.mockResolvedValue(invoice);
+
+    await expect(run(ctrl.link, { params: { id: '1' }, body: { invoiceId: 3 } })).rejects.toThrow(msg);
+    expect(prisma.deliveryReceipt.update).not.toHaveBeenCalled();
+  });
+
+  test('unlink clears the invoice and un-ships a DR-only invoice', async () => {
+    prisma.deliveryReceipt.findFirst.mockResolvedValue(free({ status: 'DELIVERED', invoiceId: 3 }));
+    prisma.deliveryReceipt.update.mockResolvedValue({ id: 1 });
+    prisma.deliveryReceipt.count.mockResolvedValue(0);
+    prisma.invoice.findFirst.mockResolvedValue({ id: 3, courier: null, trackingNumber: null });
+
+    await run(ctrl.unlink, { params: { id: '1' } });
+
+    expect(prisma.deliveryReceipt.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 1 }, data: { invoiceId: null } }));
+    expect(prisma.invoice.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { deliveryStatus: 'PENDING', shippedDate: null } });
+  });
+
+  test('unlink of a DR that is not linked is rejected', async () => {
+    prisma.deliveryReceipt.findFirst.mockResolvedValue(free());
+
+    await expect(run(ctrl.unlink, { params: { id: '1' } })).rejects.toThrow('not linked');
+  });
+});
