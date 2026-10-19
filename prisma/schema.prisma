@@ -371,6 +371,7 @@ model Customer {
 
   invoices    Invoice[]
   quotations  Quotation[]
+  deliveryReceipts DeliveryReceipt[]
   student     Student?
 
   @@unique([businessId, customerCode])
@@ -405,6 +406,7 @@ model Invoice {
   lines       InvoiceLine[]
   payments    PaymentAR[]
   installment Installment?
+  deliveryReceipts DeliveryReceipt[]
 
   @@index([businessId])
   @@index([customerId])
@@ -427,6 +429,59 @@ model InvoiceLine {
 
   @@index([invoiceId])
   @@map("invoice_lines")
+}
+
+// ─── Delivery Receipts ─────────────────────────────────────
+enum DeliveryReceiptStatus {
+  DRAFT
+  DELIVERED
+  CANCELLED
+}
+
+model DeliveryReceipt {
+  id              Int                   @id @default(autoincrement())
+  businessId      Int                   @default(1)
+  drNo            String                @unique @db.VarChar(30)
+  customerId      Int
+  customer        Customer              @relation(fields: [customerId], references: [id])
+  invoiceId       Int?
+  invoice         Invoice?              @relation(fields: [invoiceId], references: [id])
+  drDate          DateTime              @db.Date
+  deliveryAddress String?               @db.Text
+  driverName      String?               @db.VarChar(100)
+  vehicleNo       String?               @db.VarChar(50)
+  notes           String?               @db.Text
+  status          DeliveryReceiptStatus @default(DRAFT)
+  // When true, marking DELIVERED takes the stocked lines out of inventory.
+  deductStock     Boolean               @default(false)
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?               @db.VarChar(255)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  lines           DeliveryReceiptLine[]
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([invoiceId])
+  @@index([status])
+  @@map("delivery_receipts")
+}
+
+model DeliveryReceiptLine {
+  id                Int             @id @default(autoincrement())
+  deliveryReceiptId Int
+  deliveryReceipt   DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id], onDelete: Cascade)
+  itemId            Int?
+  item              InventoryItem?  @relation(fields: [itemId], references: [id])
+  description       String          @db.VarChar(255)
+  quantity          Decimal         @default(1) @db.Decimal(12, 3)
+  unit              String?         @db.VarChar(20)
+
+  @@index([deliveryReceiptId])
+  @@index([itemId])
+  @@map("delivery_receipt_lines")
 }
 
 model PaymentAR {
@@ -704,6 +759,7 @@ model InventoryItem {
   transactions        InventoryTransaction[]
   quotationLines      QuotationLine[]
   cashSaleItems       CashSaleItem[]
+  deliveryReceiptLines DeliveryReceiptLine[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
