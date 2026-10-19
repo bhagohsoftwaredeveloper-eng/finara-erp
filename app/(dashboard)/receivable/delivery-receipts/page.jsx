@@ -12,9 +12,10 @@ import { todayPH } from '@/lib/arAging';
 
 const STATUS_BADGE = { DRAFT: 'badge-gray', DELIVERED: 'badge-green', CANCELLED: 'badge-red' };
 const blankLine = () => ({ itemId: '', description: '', quantity: '1', unit: '' });
+const NEW_ITEM = '__new__';
 
 // ─── Create / edit / view modal ───────────────────────────────
-function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }) {
+function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose, onChanged }) {
   const router = useRouter();
   const [dr, setDr]           = useState(null);       // loaded record (null while creating)
   const [loading, setLoading] = useState(!!drId);
@@ -74,8 +75,33 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
   const setLine = (i, patch) => setForm((f) => ({ ...f, lines: f.lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)) }));
 
   const pickItem = (i, itemId) => {
+    if (itemId === NEW_ITEM) {
+      // Quick add: start from what is already typed on the line.
+      setQuick({ line: i, name: form.lines[i].description, unit: form.lines[i].unit || 'pcs', sellingPrice: '', costPrice: '', saving: false });
+      return;
+    }
     const item = items.find((it) => String(it.id) === String(itemId));
     setLine(i, item ? { itemId: String(item.id), description: item.name, unit: item.unit || '' } : { itemId: '' });
+  };
+
+  // Quick add an item to the item master (Inventory > Items), then use it on the line.
+  const [quick, setQuick] = useState(null); // null | { line, name, unit, sellingPrice, costPrice, saving }
+  const saveQuickItem = async () => {
+    if (!quick.name.trim()) { toast.error('Enter the item name'); return; }
+    setQuick((q) => ({ ...q, saving: true }));
+    try {
+      const { data } = await invApi.items.create({
+        name: quick.name.trim(), unit: quick.unit.trim() || 'pcs',
+        sellingPrice: Number(quick.sellingPrice) || 0, costPrice: Number(quick.costPrice) || 0,
+      });
+      onItemAdded(data);
+      setLine(quick.line, { itemId: String(data.id), description: data.name, unit: data.unit || '' });
+      toast.success(`${data.name} added to Items (${data.sku})`);
+      setQuick(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to add item');
+      setQuick((q) => ({ ...q, saving: false }));
+    }
   };
 
   const pickCustomer = (id) => {
@@ -177,7 +203,8 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
               <h4 className="text-sm font-semibold text-gray-700 mb-2">Items</h4>
               <div className="space-y-2">
                 {form.lines.map((l, i) => (
-                  <div key={i} className="grid grid-cols-1 md:grid-cols-[1.3fr_3fr_6rem_6rem_2rem] gap-2 items-start">
+                  <div key={i} className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-[1.3fr_3fr_6rem_6rem_2rem] gap-2 items-start">
                     <select className="select text-sm" disabled={readOnly} value={l.itemId} onChange={(e) => pickItem(i, e.target.value)}>
                       <option value="">— Not a stocked item —</option>
                       {items.map((it) => (
@@ -185,6 +212,7 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
                           {it.sku} · {it.name}
                         </option>
                       ))}
+                      <option value={NEW_ITEM}>+ New item…</option>
                     </select>
                     <input className="input text-sm" placeholder="Description" disabled={readOnly}
                       value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} />
@@ -197,6 +225,35 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
                         onClick={() => setForm((f) => ({ ...f, lines: f.lines.length > 1 ? f.lines.filter((_, xi) => xi !== i) : [blankLine()] }))}
                         title="Remove line"><X className="w-4 h-4" /></button>
                     )}
+                  </div>
+                  {quick?.line === i && (
+                    <div className="flex flex-wrap items-end gap-2 p-3 bg-blue-50 rounded-xl">
+                      <div className="form-group mb-0 flex-1 min-w-[12rem]">
+                        <label className="label">New item name *</label>
+                        <input className="input text-sm" autoFocus maxLength={150} value={quick.name}
+                          onChange={(e) => setQuick((q) => ({ ...q, name: e.target.value }))} />
+                      </div>
+                      <div className="form-group mb-0 w-24">
+                        <label className="label">Unit</label>
+                        <input className="input text-sm" value={quick.unit} onChange={(e) => setQuick((q) => ({ ...q, unit: e.target.value }))} />
+                      </div>
+                      <div className="form-group mb-0 w-32">
+                        <label className="label">Selling price</label>
+                        <NumberInput className="input text-sm text-right" placeholder="0.00" value={quick.sellingPrice}
+                          onChange={(v) => setQuick((q) => ({ ...q, sellingPrice: v }))} />
+                      </div>
+                      <div className="form-group mb-0 w-32">
+                        <label className="label">Cost price</label>
+                        <NumberInput className="input text-sm text-right" placeholder="0.00" value={quick.costPrice}
+                          onChange={(v) => setQuick((q) => ({ ...q, costPrice: v }))} />
+                      </div>
+                      <button type="button" className="btn-primary btn-sm" disabled={quick.saving} onClick={saveQuickItem}>
+                        {quick.saving ? 'Saving…' : 'Save item'}
+                      </button>
+                      <button type="button" className="btn-secondary btn-sm" onClick={() => setQuick(null)}>Cancel</button>
+                      <p className="w-full text-xs text-gray-500">Saved to Inventory &gt; Items with an automatic SKU and 0 stock. You can set the category and accounts there later.</p>
+                    </div>
+                  )}
                   </div>
                 ))}
               </div>
@@ -388,6 +445,7 @@ export default function DeliveryReceiptsPage() {
           customers={customers}
           items={items}
           onCustomerAdded={(c) => setCustomers((prev) => [c, ...prev])}
+          onItemAdded={(it) => setItems((prev) => [...prev, it].sort((a, b) => a.name.localeCompare(b.name)))}
           onClose={() => setModal(null)}
           onChanged={load}
         />
