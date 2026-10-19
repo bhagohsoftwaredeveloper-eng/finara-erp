@@ -7,7 +7,7 @@ import { Plus, Search, Printer, Truck, X, Ban, FileText, RefreshCw } from 'lucid
 import CustomerSelect from '@/components/CustomerSelect';
 import NumberInput from '@/components/NumberInput';
 import { printDocument, dateFmt } from '@/lib/print';
-import { formatDate } from '@/lib/auth';
+import { formatDate, formatCurrency } from '@/lib/auth';
 import { todayPH } from '@/lib/arAging';
 
 const STATUS_BADGE = { DRAFT: 'badge-gray', DELIVERED: 'badge-green', CANCELLED: 'badge-red' };
@@ -82,6 +82,31 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
   }, [drId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const readOnly = !!dr && dr.status !== 'DRAFT';
+
+  // Connect to an existing invoice (e.g. one that was already paid), or disconnect.
+  const [candidates, setCandidates] = useState([]);
+  const [pick, setPick]            = useState('');
+  useEffect(() => {
+    if (!dr || dr.invoice || dr.status === 'CANCELLED') { setCandidates([]); return; }
+    rApi.invoices.list({ customerId: dr.customerId, limit: 100 })
+      .then(({ data }) => setCandidates((data.data || []).filter((i) => i.status !== 'VOID')))
+      .catch(() => {}); // picker just stays empty
+  }, [dr]);
+
+  const relink = async (fn, okMsg) => {
+    setSaving(true);
+    try {
+      const { data } = await fn();
+      fill(data);
+      setPick('');
+      toast.success(okMsg);
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Action failed');
+    } finally {
+      setSaving(false);
+    }
+  };
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setLine = (i, patch) => setForm((f) => ({ ...f, lines: f.lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)) }));
 
@@ -230,6 +255,37 @@ function DrModal({ drId, customers, items, onCustomerAdded, onClose, onChanged }
                 </span>
               </span>
             </label>
+
+            {dr && dr.status !== 'CANCELLED' && (
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-sm font-medium text-gray-700 mb-2">Invoice</p>
+                {dr.invoice ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="font-mono text-sm text-green-700">{dr.invoice.invoiceNo}</span>
+                    <span className="badge badge-gray">{dr.invoice.status}</span>
+                    <button type="button" className="text-xs text-red-500 hover:underline ml-auto" disabled={saving}
+                      onClick={() => confirm(`Unlink ${dr.drNo} from ${dr.invoice.invoiceNo}?`) && relink(() => rApi.deliveryReceipts.unlink(dr.id), 'Unlinked')}>
+                      Unlink
+                    </button>
+                  </div>
+                ) : candidates.length === 0 ? (
+                  <p className="text-xs text-gray-500">No invoices for this customer to link. Use “Convert to Invoice” to make one from this delivery.</p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select className="select flex-1 min-w-[14rem] text-sm" value={pick} onChange={(e) => setPick(e.target.value)}>
+                      <option value="">— Link to an existing invoice —</option>
+                      {candidates.map((i) => (
+                        <option key={i.id} value={i.id}>{i.invoiceNo} · {i.status} · {formatCurrency(i.totalAmount)}</option>
+                      ))}
+                    </select>
+                    <button type="button" className="btn-secondary btn-sm" disabled={!pick || saving}
+                      onClick={() => relink(() => rApi.deliveryReceipts.link(dr.id, Number(pick)), 'Linked to invoice')}>
+                      Link
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="form-group">
               <label className="label">Remarks</label>

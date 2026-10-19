@@ -48,7 +48,69 @@ const computeVAT = (amount, code) =>
     : { base: amount, vat: 0, total: amount };
 
 // ─── Invoice Detail Modal ─────────────────────────────────────
-function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShip }) {
+// Delivery receipts on an invoice: see them, make one, or connect one that already exists.
+function InvoiceDrSection({ invoice, onCreate, onRefresh }) {
+  const [free, setFree] = useState([]);
+  const [pick, setPick] = useState('');
+  const [busy, setBusy] = useState(false);
+  const active = (invoice.deliveryReceipts || []).filter((d) => d.status !== 'CANCELLED');
+
+  useEffect(() => {
+    rApi.deliveryReceipts.list({ customerId: invoice.customerId })
+      .then(({ data }) => setFree(data.filter((d) => !d.invoice && d.status !== 'CANCELLED')))
+      .catch(() => {}); // picker just stays empty
+  }, [invoice.id, invoice.deliveryReceipts]);
+
+  const link = async () => {
+    setBusy(true);
+    try {
+      await rApi.deliveryReceipts.link(Number(pick), invoice.id);
+      toast.success('Delivery receipt linked');
+      setPick('');
+      await onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to link delivery receipt');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <h4 className="text-sm font-semibold text-gray-700 mb-2">Delivery Receipts</h4>
+      <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-3">
+        {active.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {active.map((d) => (
+              <Link key={d.id} href={`/receivable/delivery-receipts?open=${d.id}`}
+                className="text-xs font-mono text-blue-600 bg-blue-50 rounded px-2 py-1 hover:bg-blue-100">
+                {d.drNo} · {d.status.toLowerCase()}
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No delivery receipt yet for this invoice.</p>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-secondary btn-sm" onClick={onCreate}>
+            <FileText className="w-3.5 h-3.5" /> Create DR
+          </button>
+          {free.length > 0 && (
+            <>
+              <select className="select text-sm min-w-[13rem]" value={pick} onChange={(e) => setPick(e.target.value)}>
+                <option value="">— Link an existing DR —</option>
+                {free.map((d) => <option key={d.id} value={d.id}>{d.drNo} · {formatDate(d.drDate)} · {d.status.toLowerCase()}</option>)}
+              </select>
+              <button type="button" className="btn-secondary btn-sm" disabled={!pick || busy} onClick={link}>Link</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShip, onCreateDr, onRefresh }) {
   const balance = Number(invoice.totalAmount) - Number(invoice.paidAmount);
   const pct = invoice.totalAmount > 0
     ? (Number(invoice.paidAmount) / Number(invoice.totalAmount)) * 100
@@ -290,6 +352,10 @@ function InvoiceDetailModal({ invoice, onClose, onCollect, onVoid, onEdit, onShi
                 ))}
               </div>
             </div>
+          )}
+
+          {invoice.status !== 'VOID' && (
+            <InvoiceDrSection invoice={invoice} onCreate={onCreateDr} onRefresh={onRefresh} />
           )}
         </div>
 
@@ -986,6 +1052,24 @@ export default function InvoicesPage() {
     }).catch(() => toast.error('Could not load that delivery receipt'));
   }, []);
 
+  // After a collection is recorded, offer to make the delivery receipt right away.
+  const offerDr = (inv) => {
+    if ((inv.deliveryReceipts || []).some((d) => d.status !== 'CANCELLED')) return;
+    toast((t) => (
+      <span className="text-sm">
+        Create a delivery receipt for {inv.invoiceNo}?
+        <button className="ml-3 btn-primary btn-sm" onClick={() => { toast.dismiss(t.id); createDr(inv); }}>Create DR</button>
+        <button className="ml-2 text-gray-400" onClick={() => toast.dismiss(t.id)}>No</button>
+      </span>
+    ), { duration: 10000 });
+  };
+
+  const refreshDetail = async () => {
+    const { data } = await rApi.invoices.get(modal.invoice.id);
+    setModal({ type: 'detail', invoice: data });
+    load();
+  };
+
   const createDr = async (inv) => {
     try {
       const { data } = await rApi.deliveryReceipts.create({ invoiceId: inv.id, drDate: todayPH() });
@@ -1407,13 +1491,15 @@ export default function InvoicesPage() {
           onVoid={() => { handleVoid(modal.invoice); setModal(null); }}
           onEdit={() => setModal({ type: 'edit', invoice: modal.invoice })}
           onShip={() => setModal({ type: 'ship', invoice: modal.invoice })}
+          onCreateDr={() => createDr(modal.invoice)}
+          onRefresh={refreshDetail}
         />
       )}
       {modal?.type === 'collect' && (
         <CollectionModal
           invoice={modal.invoice}
           onClose={() => setModal(null)}
-          onCollected={() => { setModal(null); load(); }}
+          onCollected={() => { const inv = modal.invoice; setModal(null); load(); offerDr(inv); }}
         />
       )}
       {modal?.type === 'ship' && (
