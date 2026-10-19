@@ -269,9 +269,16 @@ describe('orderController.renewQuote', () => {
     await expect(call(ctrl.renewQuote, { params: { businessId: '3' } })).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  test('409s when the business has no order on record', async () => {
+  test('a business with no order on record gets every active price and no company type', async () => {
     prisma.businessOrder.findFirst.mockResolvedValue(null);
-    await expect(call(ctrl.renewQuote, { params: { businessId: '3' } })).rejects.toMatchObject({ statusCode: 409 });
+    prisma.planPrice.findMany.mockResolvedValue([{ companyType: 'TRADING', period: 'MONTHLY', amount: 500 }]);
+    prisma.paymentInstruction.findUnique.mockResolvedValue(null);
+
+    const out = await call(ctrl.renewQuote, { params: { businessId: '3' } });
+
+    expect(prisma.planPrice.findMany).toHaveBeenCalledWith({ where: { isActive: true } });
+    expect(out.companyType).toBeNull();
+    expect(out.prices).toHaveLength(1);
   });
 
   test('resolves companyType from the latest order and returns its active prices', async () => {
@@ -317,10 +324,23 @@ describe('orderController.renew', () => {
     expect(prisma.businessOrder.create).not.toHaveBeenCalled();
   });
 
-  test('409s when the business has no order on record', async () => {
+  test('a business with no order on record needs the plan to be chosen', async () => {
     prisma.businessOrder.findFirst.mockResolvedValue(null);
     await expect(call(ctrl.renew, { params: { businessId: '3' }, body: { period: 'MONTHLY' } }))
-      .rejects.toMatchObject({ statusCode: 409 });
+      .rejects.toMatchObject({ statusCode: 400, message: 'Choose a plan' });
+    await expect(call(ctrl.renew, { params: { businessId: '3' }, body: { period: 'MONTHLY', companyType: 'NOPE' } }))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('a business with no order on record is renewed on the plan the payer chose', async () => {
+    prisma.businessOrder.findFirst.mockResolvedValue(null);
+    prisma.planPrice.findUnique.mockResolvedValue({ amount: 500, isActive: true });
+    prisma.businessOrder.create.mockImplementation(async ({ data }) => ({ id: 1, ...data }));
+
+    await call(ctrl.renew, { params: { businessId: '3' }, body: { period: 'MONTHLY', companyType: 'TRADING' } });
+
+    expect(prisma.planPrice.findUnique).toHaveBeenCalledWith({ where: { companyType_period: { companyType: 'TRADING', period: 'MONTHLY' } } });
+    expect(prisma.businessOrder.create.mock.calls[0][0].data).toMatchObject({ businessId: 3, companyType: 'TRADING', amount: 500, status: 'PENDING_PAYMENT' });
   });
 
   test('409s when a renewal is already open for this business', async () => {

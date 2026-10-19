@@ -84,7 +84,9 @@ export default function LicenseSuspendedPage() {
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-4 py-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Amount due</p>
-                  <p className="text-2xl font-bold text-red-600">{b.amountDue != null ? formatCurrency(b.amountDue) : '—'}</p>
+                  {b.amountDue != null
+                    ? <p className="text-2xl font-bold text-red-600">{formatCurrency(b.amountDue)}</p>
+                    : <p className="text-sm text-gray-600 mt-1">Choose your plan when you pay</p>}
                   {b.period && b.amountDue != null && <p className="text-xs text-gray-500">per {PERIOD[b.period] || b.period}</p>}
                 </div>
                 {open && <span className={`badge ${STATUS[open.status].cls}`}>Payment {STATUS[open.status].label.toLowerCase()}</span>}
@@ -98,7 +100,7 @@ export default function LicenseSuspendedPage() {
               )}
 
               <div className="flex flex-wrap gap-2">
-                {!waiting && canPay && b.period && (
+                {!waiting && canPay && (
                   <button className="btn-primary" onClick={() => setPay({ business: b, order: open?.mine && open.status === 'PENDING_PAYMENT' ? open : null })}>
                     Pay now
                   </button>

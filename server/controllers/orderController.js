@@ -162,13 +162,13 @@ exports.renewQuote = async (req, res, next) => {
       where: { businessId },
       orderBy: { createdAt: 'desc' },
     });
-    if (!last) throw createError('This business has no order on record; it cannot be renewed here', 409);
-
+    // No order on record (a company set up by hand): companyType is null and every active
+    // price is returned, so the payer picks the plan; renew() then takes it from the request.
     const [prices, ins] = await Promise.all([
-      prisma.planPrice.findMany({ where: { companyType: last.companyType, isActive: true } }),
+      prisma.planPrice.findMany({ where: { ...(last && { companyType: last.companyType }), isActive: true } }),
       prisma.paymentInstruction.findUnique({ where: { id: 1 } }),
     ]);
-    res.json({ companyType: last.companyType, prices, instructions: { text: ins?.text || '', hasQr: !!ins?.qrFileName } });
+    res.json({ companyType: last?.companyType || null, prices, instructions: { text: ins?.text || '', hasQr: !!ins?.qrFileName } });
   } catch (err) { next(err); }
 };
 
@@ -186,11 +186,13 @@ exports.renew = async (req, res, next) => {
       where: { businessId },
       orderBy: { createdAt: 'desc' },
     });
-    if (!last) throw createError('This business has no order on record; it cannot be renewed here', 409);
-    if (OPEN.includes(last.status)) throw createError('This business already has a renewal order in progress', 409);
+    if (last && OPEN.includes(last.status)) throw createError('This business already has a renewal order in progress', 409);
+
+    const companyType = last?.companyType || req.body.companyType;
+    if (!COMPANY_TYPES[companyType]) throw createError('Choose a plan', 400);
 
     const price = await prisma.planPrice.findUnique({
-      where: { companyType_period: { companyType: last.companyType, period } },
+      where: { companyType_period: { companyType, period } },
     });
     if (!price || !price.isActive) {
       throw createError('This plan is not available yet. Please contact the administrator.', 400);
@@ -202,7 +204,7 @@ exports.renew = async (req, res, next) => {
         userId: req.user.id,
         businessId,
         companyName: biz.name, tin: biz.tin, address: biz.address, phone: biz.phone,
-        companyType: last.companyType, taxType: biz.taxType,
+        companyType, taxType: biz.taxType || last?.taxType || 'NON_VAT',
         period, amount: price.amount,
         status: 'PENDING_PAYMENT',
       },

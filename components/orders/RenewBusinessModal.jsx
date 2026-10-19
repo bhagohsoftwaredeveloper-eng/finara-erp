@@ -4,6 +4,7 @@ import { X, Loader2, Copy, Download, Smartphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { orders as ordersApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { COMPANY_TYPES } from '@/lib/companyTypes';
 
 const PERIODS = [{ key: 'MONTHLY', label: 'Monthly' }, { key: 'YEARLY', label: 'Yearly' }];
 
@@ -17,6 +18,7 @@ export default function RenewBusinessModal({ business, resumeOrder = null, onClo
   const [quote, setQuote]     = useState(null);   // { companyType, prices, instructions }
   const [loading, setLoading] = useState(true);
   const [period, setPeriod]   = useState('MONTHLY');
+  const [planType, setPlanType] = useState('');   // only asked when the business has no order on record
   const [order, setOrder]     = useState(resumeOrder);
   const [busy, setBusy]       = useState(false);
   const [qrUrl, setQrUrl]     = useState(null);
@@ -39,7 +41,9 @@ export default function RenewBusinessModal({ business, resumeOrder = null, onClo
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [order, quote]);
 
-  const price = quote?.prices.find((p) => p.period === period);
+  const askType = !!quote && !quote.companyType;   // set up by hand: the payer picks the plan
+  const typeChoices = COMPANY_TYPES.filter((t) => quote?.prices.some((p) => p.companyType === t.key));
+  const price = quote?.prices.find((p) => p.period === period && (!askType || p.companyType === planType));
 
   const copyInstructions = () => {
     navigator.clipboard?.writeText(quote.instructions.text)
@@ -51,7 +55,7 @@ export default function RenewBusinessModal({ business, resumeOrder = null, onClo
     e.preventDefault();
     setBusy(true);
     try {
-      const { data } = await ordersApi.renew(business.id, period);
+      const { data } = await ordersApi.renew(business.id, period, askType ? planType : undefined);
       setOrder(data);
       onDone?.();
     } catch (err) {
@@ -89,6 +93,15 @@ export default function RenewBusinessModal({ business, resumeOrder = null, onClo
             <p className="text-sm text-gray-500">
               Currently paid until <strong>{business.paidUntil ? formatDate(business.paidUntil) : '—'}</strong>.
             </p>
+            {askType && (
+              <div>
+                <label className="label">Plan *</label>
+                <select className="input" value={planType} onChange={(e) => setPlanType(e.target.value)} required>
+                  <option value="">Choose your plan…</option>
+                  {typeChoices.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="label">Billing period *</label>
               <div className="grid grid-cols-2 gap-2">
@@ -104,7 +117,9 @@ export default function RenewBusinessModal({ business, resumeOrder = null, onClo
             <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm">
               {price
                 ? <>Amount to pay: <strong>{formatCurrency(price.amount)}</strong></>
-                : <span className="text-red-600">This plan is not available yet. Please contact the administrator.</span>}
+                : askType && !planType
+                  ? <span className="text-gray-500">Choose a plan to see the amount.</span>
+                  : <span className="text-red-600">This plan is not available yet. Please contact the administrator.</span>}
             </div>
 
             <button type="submit" disabled={busy || !price} className="btn-primary w-full justify-center flex items-center gap-2">
