@@ -364,3 +364,16 @@ describe('assigning a driver and a vehicle', () => {
     expect(data).not.toHaveProperty('vehicleId');
   });
 });
+
+describe('get', () => {
+  test('returns the linked invoice lines so the receipt can print prices', async () => {
+    prisma.deliveryReceipt.findFirst.mockResolvedValue({ id: 1 });
+
+    await run(ctrl.get, { params: { id: '1' } });
+
+    const include = prisma.deliveryReceipt.findFirst.mock.calls[0][0].include;
+    expect(include.invoice.select.lines).toEqual({
+      select: { description: true, quantity: true, unitPrice: true, amount: true, vatCode: true },
+    });
+  });
+});

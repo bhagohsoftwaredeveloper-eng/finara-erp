@@ -6,7 +6,9 @@ const { deductStock, restoreStock, cogsLines } = require('../utils/deliveryStock
 
 const DR_INCLUDE = {
   customer: { select: { id: true, name: true, customerCode: true, address: true, tin: true } },
-  invoice:  { select: { id: true, invoiceNo: true, status: true } },
+  // The invoice's lines let the printed receipt show prices (a DR itself stores none).
+  invoice:  { select: { id: true, invoiceNo: true, status: true,
+    lines: { select: { description: true, quantity: true, unitPrice: true, amount: true, vatCode: true } } } },
   lines: {
     include: { item: { select: { id: true, sku: true, name: true, unit: true, sellingPrice: true, revenueAccountId: true } } },
     orderBy: { id: 'asc' },

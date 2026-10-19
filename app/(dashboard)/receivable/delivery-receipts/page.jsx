@@ -19,6 +19,7 @@ const NEW_ITEM = '__new__';
 function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose, onChanged }) {
   const router = useRouter();
   const fleet = useFleetTags();
+  const [showPrices, setShowPrices] = useState(true); // print option, not saved
   const [dr, setDr]           = useState(null);       // loaded record (null while creating)
   const [loading, setLoading] = useState(!!drId);
   const [saving, setSaving]   = useState(false);
@@ -347,9 +348,14 @@ function DrModal({ drId, customers, items, onCustomerAdded, onItemAdded, onClose
               </button>
             )}
             {dr && (
-              <button type="button" onClick={() => printDr(dr)} className="btn-secondary">
-                <Printer className="w-4 h-4" /> Print
-              </button>
+              <>
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer" title="Prices come from the linked invoice, or the item's selling price">
+                  <input type="checkbox" checked={showPrices} onChange={(e) => setShowPrices(e.target.checked)} /> Show prices
+                </label>
+                <button type="button" onClick={() => printDr(dr, { showPrices })} className="btn-secondary">
+                  <Printer className="w-4 h-4" /> Print
+                </button>
+              </>
             )}
             {dr && dr.status !== 'CANCELLED' && !dr.invoice && (
               <button type="button" onClick={toInvoice} className="btn-secondary">
