@@ -72,6 +72,22 @@ function FundSummary({ fund, title, refreshKey, children }) {
 
   return (
     <div className="space-y-5">
+      {data && (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          ['Opening balance', data.opening, 'border-l-gray-400', ''],
+          ['Money in', data.totalIn, 'border-l-green-500', ''],
+          ['Money out', data.totalOut, 'border-l-red-500', ''],
+          ['Closing balance', data.closing, data.closing < 0 ? 'border-l-red-600' : 'border-l-blue-500', data.closing < 0 ? 'text-red-600' : ''],
+        ].map(([lbl, v, border, text]) => (
+          <div key={lbl} className={`card p-5 border-l-4 ${border}`}>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{lbl}</p>
+            <p className={`text-2xl font-bold text-gray-900 ${text}`}>{formatCurrency(v)}</p>
+          </div>
+        ))}
+      </div>
+      )}
+
       <div className="card">
         <div className="card-body flex flex-wrap items-end gap-3">
           <div className="form-group">
@@ -104,20 +120,6 @@ function FundSummary({ fund, title, refreshKey, children }) {
 
       {data && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              ['Opening balance', data.opening, 'border-l-gray-400', ''],
-              ['Money in', data.totalIn, 'border-l-green-500', ''],
-              ['Money out', data.totalOut, 'border-l-red-500', ''],
-              ['Closing balance', data.closing, data.closing < 0 ? 'border-l-red-600' : 'border-l-blue-500', data.closing < 0 ? 'text-red-600' : ''],
-            ].map(([lbl, v, border, text]) => (
-              <div key={lbl} className={`card p-5 border-l-4 ${border}`}>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{lbl}</p>
-                <p className={`text-2xl font-bold text-gray-900 ${text}`}>{formatCurrency(v)}</p>
-              </div>
-            ))}
-          </div>
-
           {data.accounts.length > 0 && (
             <div className="card overflow-x-auto">
               <table className="table w-full">
