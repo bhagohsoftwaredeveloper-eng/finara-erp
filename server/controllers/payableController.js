@@ -58,13 +58,20 @@ async function computeBillTotals(lines) {
 // contra-expense line, since l.amount is already negative for those,
 // matching their CREDIT normal balance) / DR Input VAT / CR Accounts
 // Payable — Trade.
+// Optional Driver / Vehicle cost tags on a bill line. Added only when set, so
+// untagged lines are stored exactly as before.
+const lineTags = (l) => ({
+  ...(l.driverId && { driverId: Number(l.driverId) }),
+  ...(l.vehicleId && { vehicleId: Number(l.vehicleId) }),
+});
+
 function buildBillGLLines(bill) {
   return [
     ...bill.lines.map((l) => {
       const amt = Number(l.amount);
       return amt < 0
-        ? { accountId: l.accountId, credit: -amt, description: l.description }
-        : { accountId: l.accountId, debit: amt, description: l.description };
+        ? { accountId: l.accountId, credit: -amt, description: l.description, ...lineTags(l) }
+        : { accountId: l.accountId, debit: amt, description: l.description, ...lineTags(l) };
     }),
     ...(Number(bill.vatAmount) > 0 ? [{
       accountCode: '1330', debit: Number(bill.vatAmount), description: 'Input VAT',
@@ -179,6 +186,7 @@ exports.createBill = async (req, res, next) => {
         lines: { create: processedLines.map((l) => ({
           accountId: Number(l.accountId), description: l.description,
           quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+          ...lineTags(l),
         })) },
       },
       include: { vendor: true, lines: true },
@@ -280,6 +288,7 @@ exports.updateBill = async (req, res, next) => {
           create: processedLines.map((l) => ({
             accountId: Number(l.accountId), description: l.description,
             quantity: l.quantity, unitPrice: l.unitPrice, amount: l.amount, vatCode: l.vatCode,
+            ...lineTags(l),
           })),
         },
       },
