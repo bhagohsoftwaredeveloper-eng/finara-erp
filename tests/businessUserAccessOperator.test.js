@@ -1,5 +1,6 @@
 jest.mock('../server/config/database', () => ({
   business:     { count: jest.fn(), findUnique: jest.fn() },
+  auditLog:     { create: jest.fn().mockResolvedValue({}) },
   userBusiness: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn().mockResolvedValue({}), findUnique: jest.fn() },
 }));
 
@@ -18,9 +19,12 @@ describe('operator staff administration', () => {
     expect(prisma.userBusiness.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { userId: 22, businessId: 9 } }));
   });
 
-  test('cannot grant themselves a client business', async () => {
-    await expect(run(ctrl.grantUser, { body: { userId: 1 } })).rejects.toMatchObject({ statusCode: 403 });
-    expect(prisma.userBusiness.upsert).not.toHaveBeenCalled();
+  test('can grant themselves one client business, and it is audited', async () => {
+    await run(ctrl.grantUser, { body: { userId: 1 } });
+    expect(prisma.userBusiness.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { userId: 1, businessId: 9 } }));
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: 'GRANT_ACCESS', entityId: '9', summary: expect.stringContaining('themselves') }),
+    }));
   });
 
   test('an ADMIN still needs data access to the business', async () => {

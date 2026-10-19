@@ -16,7 +16,7 @@ const LICENSE_TRANSITIONS = {
 };
 const { COMPANY_TYPES, TAX_TYPES } = require('../utils/companyTypes');
 const { provisionByType, rollbackBusiness, createProvisionedBusiness } = require('../utils/provisionBusiness');
-const { assertBusinessAccess, assertBusinessDataAccess, canAccessBusinessData, ownedWhere } = require('../utils/businessAccess');
+const { assertBusinessAccess, assertBusinessDataAccess, ownedWhere } = require('../utils/businessAccess');
 
 // ─── List businesses ─────────────────────────────────────────────
 // Default (the business switcher, My Businesses): only companies this user
@@ -431,8 +431,8 @@ exports.resetDemo = async (req, res, next) => {
 
 // ─── User access management ──────────────────────────────────────
 // Who may open a business is staff administration, not its books: the operator (SUPER_ADMIN)
-// manages it for every business, while ADMINs only for their own. The operator still cannot
-// grant THEMSELVES a client's business, which would open that client's books.
+// manages it for every business, while ADMINs only for their own. The operator may also grant
+// THEMSELVES a client's business to open its books; that is one business at a time and audited.
 exports.listUsers = async (req, res, next) => {
   try {
     const bizId = Number(req.params.id);
@@ -450,13 +450,16 @@ exports.grantUser = async (req, res, next) => {
     const bizId  = Number(req.params.id);
     await assertBusinessAccess(req.user, bizId);
     const userId = Number(req.body.userId);
-    if (req.user.role === 'SUPER_ADMIN' && userId === req.user.id && !(await canAccessBusinessData(req.user, bizId))) {
-      throw createError("A client's books stay private: you can add their staff, but not yourself", 403);
-    }
     await prisma.userBusiness.upsert({
       where:  { userId_businessId: { userId, businessId: bizId } },
       create: { userId, businessId: bizId },
       update: {},
+    });
+    // The operator opening a client's books is deliberate and one business at a time: always on record.
+    const self = userId === req.user.id;
+    await recordAudit({
+      req, action: 'GRANT_ACCESS', entity: 'Business', entityId: bizId, businessId: bizId,
+      summary: self ? `Operator granted themselves access to business ${bizId}` : `Granted user ${userId} access to business ${bizId}`,
     });
     res.json({ message: 'Access granted' });
   } catch (err) { next(err); }
@@ -468,6 +471,7 @@ exports.revokeUser = async (req, res, next) => {
     await assertBusinessAccess(req.user, bizId);
     const userId = Number(req.params.userId);
     await prisma.userBusiness.deleteMany({ where: { userId, businessId: bizId } });
+    await recordAudit({ req, action: 'REVOKE_ACCESS', entity: 'Business', entityId: bizId, businessId: bizId, summary: `Revoked user ${userId}'s access to business ${bizId}` });
     res.json({ message: 'Access revoked' });
   } catch (err) { next(err); }
 };
