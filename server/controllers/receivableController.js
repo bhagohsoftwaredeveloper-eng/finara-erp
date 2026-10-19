@@ -5,6 +5,7 @@ const glPost = require('../utils/glPost');
 const logger = require('../utils/logger');
 const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
+const { buildAging, todayPH } = require('../../lib/arAging');
 
 // Derive the next number from the LAST ISSUED number, never from a row count.
 // A count is wrong the moment a row is deleted: with 5 invoices created and one
@@ -393,35 +394,27 @@ exports.markShipped = async (req, res, next) => {
 
 exports.agingReport = async (req, res, next) => {
   try {
-    const today = new Date();
+    const asOf = req.query.asOf || todayPH();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number.isNaN(Date.parse(`${asOf}T00:00:00Z`))) {
+      throw createError('asOf must be a valid date in YYYY-MM-DD format', 400);
+    }
+    const basis = req.query.basis === 'invoice' ? 'invoice' : 'due';
+
     const invoices = await prisma.invoice.findMany({
-      where: { businessId: req.businessId, status: { in: ['OPEN','PARTIAL','OVERDUE'] } },
+      where: {
+        businessId: req.businessId,
+        status: { not: 'VOID' },
+        invoiceDate: { lte: new Date(`${asOf}T00:00:00Z`) },
+      },
+      include: { payments: { select: { amount: true, paymentDate: true, status: true } } },
     });
 
-    // Fetch customer names separately (not via `include`) so an invoice whose
-    // customer was deleted out from under it (orphaned FK) can't crash the
-    // whole report — Prisma throws on `include` when a required relation
-    // resolves to null.
-    const customerIds = [...new Set(invoices.map((inv) => inv.customerId))];
+    // Customer names are fetched separately (not via `include`) so an invoice whose
+    // customer was deleted (orphaned FK) cannot crash the whole report.
+    const customerIds = [...new Set(invoices.map((i) => i.customerId))];
     const customers = await prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, name: true } });
     const customerNames = Object.fromEntries(customers.map((c) => [c.id, c.name]));
 
-    const report = invoices.map((inv) => {
-      const due = new Date(inv.dueDate);
-      const daysOverdue = Math.max(0, Math.floor((today - due) / 86400000));
-      const outstanding = Number(inv.totalAmount) - Number(inv.paidAmount);
-      return {
-        invoiceNo: inv.invoiceNo, customer: customerNames[inv.customerId] || 'Unknown customer', customerId: inv.customerId,
-        dueDate: inv.dueDate, outstanding, daysOverdue, notes: inv.notes,
-        bucket: daysOverdue === 0 ? 'Current'
-          : daysOverdue <= 30 ? '1-30 days'
-          : daysOverdue <= 60 ? '31-60 days'
-          : daysOverdue <= 90 ? '61-90 days'
-          : 'Over 90 days',
-      };
-    });
-    const buckets = ['Current','1-30 days','31-60 days','61-90 days','Over 90 days'];
-    const summary = Object.fromEntries(buckets.map((b) => [b, report.filter((r) => r.bucket === b).reduce((s, r) => s + r.outstanding, 0)]));
-    res.json({ items: report, summary, total: report.reduce((s, r) => s + r.outstanding, 0) });
+    res.json({ ...buildAging(invoices, { asOf, basis, customerNames }), asOf, basis });
   } catch (err) { next(err); }
 };
