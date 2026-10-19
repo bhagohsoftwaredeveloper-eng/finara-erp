@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
 const { buildAging, todayPH } = require('../../lib/arAging');
+const drCtrl = require('./deliveryReceiptController');
 
 // Derive the next number from the LAST ISSUED number, never from a row count.
 // A count is wrong the moment a row is deleted: with 5 invoices created and one
@@ -154,6 +155,7 @@ exports.listInvoices = async (req, res, next) => {
         include: {
           customer: { select: { name: true, customerCode: true } },
           lines: true,
+          deliveryReceipts: { select: { id: true, drNo: true, status: true } },
           payments: { orderBy: { paymentDate: 'asc' } },
         },
         orderBy: { invoiceDate: 'desc' },
@@ -169,7 +171,8 @@ exports.getInvoice = async (req, res, next) => {
   try {
     const inv = await prisma.invoice.findUnique({
       where: { id: Number(req.params.id) },
-      include: { customer: true, lines: { include: { account: true } }, payments: true },
+      include: { customer: true, lines: { include: { account: true } }, payments: true,
+        deliveryReceipts: { select: { id: true, drNo: true, status: true } } },
     });
     if (!inv) throw createError('Invoice not found', 404);
     res.json(inv);
@@ -180,6 +183,11 @@ exports.createInvoice = async (req, res, next) => {
   try {
     const { customerId, invoiceDate, dueDate, paymentTerms, description, notes, lines } = req.body;
     const { subtotal, vatAmount, totalAmount, processedLines } = await computeInvoiceTotals(lines);
+
+    // Validate the delivery receipt before anything is written.
+    const drLink = req.body.deliveryReceiptId
+      ? await drCtrl.prepareLink(req.body.deliveryReceiptId, customerId, req.businessId)
+      : null;
 
     const invoiceNo = await genInvNo();
     const inv = await prisma.invoice.create({
@@ -195,6 +203,15 @@ exports.createInvoice = async (req, res, next) => {
       },
       include: { customer: true, lines: true },
     });
+
+    if (drLink) {
+      try {
+        await drCtrl.applyLink(drLink, inv.id);
+      } catch (err) {
+        // The invoice exists and is valid; do not fail the request over the link.
+        logger.error(`[INVOICE ${inv.invoiceNo} — DR LINK FAILED] dr=${drLink.id} biz=${req.businessId} — ${err.message}`);
+      }
+    }
 
     // ── Auto-post to GL ──────────────────────────────────────────────────────
     const glLines = buildInvoiceGLLines(inv);
