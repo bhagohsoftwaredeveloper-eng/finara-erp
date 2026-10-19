@@ -7,6 +7,7 @@ import Attachments from '@/components/Attachments';
 import AccountSelect from '@/components/ui/AccountSelect';
 import CategoryCombobox from '@/components/ui/CategoryCombobox';
 import NumberInput from '@/components/NumberInput';
+import CostTagSelects, { useFleetTags } from '@/components/ui/CostTags';
 import DenominationCounter, { useDenominationCount } from '@/components/ui/DenominationCounter';
 import toast from 'react-hot-toast';
 import {
@@ -87,7 +88,7 @@ function Drawer({ open, onClose, title, subtitle, children, footer, wide }) {
 }
 
 // ─── Line-item row ────────────────────────────────────────────────
-function ItemRow({ item, index, accounts, onChange, onRemove }) {
+function ItemRow({ item, index, accounts, onChange, onRemove, fleet }) {
   return (
     <div className="border border-gray-100 rounded-lg p-3 space-y-2 lg:border-0 lg:p-0 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-2 lg:items-start">
       {/* Description */}
@@ -124,12 +125,18 @@ function ItemRow({ item, index, accounts, onChange, onRemove }) {
           </button>
         </div>
       </div>
+      {/* Optional cost tags: shows up under Repairs & Maintenance etc. in the P&L by driver / vehicle */}
+      <div className="lg:col-span-12">
+        <CostTagSelects fleet={fleet} driverId={item.driverId} vehicleId={item.vehicleId}
+          onDriver={(v) => onChange(index, 'driverId', v)} onVehicle={(v) => onChange(index, 'vehicleId', v)} />
+      </div>
     </div>
   );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────
 export default function ExpensesPage() {
+  const fleet = useFleetTags();
   const user = typeof window !== 'undefined' ? getUser() : null;
   const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
 
@@ -299,7 +306,7 @@ export default function ExpensesPage() {
     setFRequestedBy(v.requestedBy || '');
     setFNotes(v.notes || '');
     const items = v.items?.length
-      ? v.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
+      ? v.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '', driverId: it.driverId || null, vehicleId: it.vehicleId || null }))
       : [{ description: '', accountId: null, amount: '', receiptNo: '' }];
     setFItems(items);
     setDrawerOpen(true);
@@ -369,7 +376,7 @@ export default function ExpensesPage() {
     dn.counterProps.setCounts({});
     setActionItems(mode === 'approve'
       ? (rec.items?.length
-          ? rec.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '' }))
+          ? rec.items.map(it => ({ description: it.description, accountId: it.accountId || null, amount: String(it.amount), receiptNo: it.receiptNo || '', driverId: it.driverId || null, vehicleId: it.vehicleId || null }))
           : [{ description: '', accountId: null, amount: '', receiptNo: '' }])
       : []);
     setActionOpen(true);
@@ -716,7 +723,7 @@ export default function ExpensesPage() {
 
           <div className="space-y-2">
             {fItems.map((it, idx) => (
-              <ItemRow key={idx} item={it} index={idx} accounts={accounts}
+              <ItemRow key={idx} item={it} index={idx} accounts={accounts} fleet={fleet}
                 onChange={updateItem} onRemove={removeItem} />
             ))}
           </div>
@@ -785,7 +792,7 @@ export default function ExpensesPage() {
 
                 <div className="space-y-2">
                   {actionItems.map((it, idx) => (
-                    <ItemRow key={idx} item={it} index={idx} accounts={accounts}
+                    <ItemRow key={idx} item={it} index={idx} accounts={accounts} fleet={fleet}
                       onChange={updateActionItem} onRemove={removeActionItem} />
                   ))}
                 </div>
