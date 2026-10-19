@@ -43,6 +43,7 @@ const NAV = [
           { label: 'Quotations', href: '/receivable/quotations' },
           { label: 'Customers',  href: '/receivable/customers' },
           { label: 'AR Aging',   href: '/receivable/aging' },
+          { label: 'Statements', href: '/receivable/statements' },
         ],
       },
       { label: 'Cash Sales', icon: Banknote, href: '/receivable/cash-sales' },

@@ -1,11 +1,12 @@
 'use client';
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { receivable as rApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   RefreshCw, AlertCircle, CheckCircle2, TrendingUp,
-  Users, ChevronDown, ChevronUp, Filter, Printer, History, FileSpreadsheet, Eye, X, Download,
+  Users, ChevronDown, ChevronUp, Filter, Printer, History, FileSpreadsheet, Eye, X, Download, FileText,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
 import { formatCurrency, formatDate } from '@/lib/auth';
@@ -323,6 +324,14 @@ function CustomerRow({ customerName, items, onView, basis }) {
             >
               <Eye className="w-4 h-4" />
             </button>
+            <Link
+              href={`/receivable/statements?customerId=${customerId}`}
+              onClick={(e) => e.stopPropagation()}
+              title={`Statement of account — ${customerName}`}
+              className="text-gray-400 hover:text-green-600 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+            </Link>
             <ExportMenu
               label={customerName}
               onPrint={() => printCustomerStatement(customerName, items)}
