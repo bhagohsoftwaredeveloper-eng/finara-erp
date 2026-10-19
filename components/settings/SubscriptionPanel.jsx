@@ -28,6 +28,7 @@ export default function SubscriptionPanel() {
   const [quote, setQuote]     = useState(null);   // null = no subscription on record
   const [orders, setOrders]   = useState([]);
   const [renewOpen, setRenewOpen] = useState(false);
+  const [resume, setResume]       = useState(null);   // an unpaid order to pay now
   const canPay = RENEW_ROLES.includes(getUser()?.role);
 
   const load = useCallback(async () => {
@@ -94,9 +95,14 @@ export default function SubscriptionPanel() {
             <div className="card p-4 flex flex-col justify-between gap-2">
               <p className="text-xs text-gray-500 uppercase tracking-wide">Renewal</p>
               {open ? (
-                <p className="text-sm"><span className={`badge ${STATUS[open.status].cls}`}>{STATUS[open.status].label}</span> <span className="text-xs text-gray-500">order {open.orderNo}</span></p>
+                <div className="space-y-1.5">
+                  <p className="text-sm"><span className={`badge ${STATUS[open.status].cls}`}>{STATUS[open.status].label}</span> <span className="text-xs text-gray-500">order {open.orderNo}</span></p>
+                  {open.status === 'PENDING_PAYMENT' && canPay && (
+                    <button className="btn-primary btn-sm" onClick={() => { setResume(open); setRenewOpen(true); }}>Pay now</button>
+                  )}
+                </div>
               ) : canPay ? (
-                <button className="btn-primary btn-sm self-start" onClick={() => setRenewOpen(true)}>Renew now</button>
+                <button className="btn-primary btn-sm self-start" onClick={() => { setResume(null); setRenewOpen(true); }}>Renew now</button>
               ) : (
                 <p className="text-xs text-gray-500">Ask the account owner to renew.</p>
               )}
@@ -139,7 +145,7 @@ export default function SubscriptionPanel() {
       )}
 
       {renewOpen && (
-        <RenewBusinessModal business={activeBusiness} onClose={() => setRenewOpen(false)}
+        <RenewBusinessModal business={activeBusiness} resumeOrder={resume} onClose={() => setRenewOpen(false)}
           onDone={() => { setRenewOpen(false); load(); }} />
       )}
     </div>

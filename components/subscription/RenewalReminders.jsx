@@ -59,7 +59,7 @@ export default function RenewalReminders() {
               {open ? (
                 <div className="flex items-center gap-2">
                   <span className={`badge ${STATUS[open.status].cls}`}>Renewal {STATUS[open.status].label.toLowerCase()}</span>
-                  <Link href="/my-businesses" className="text-xs font-medium underline">View order</Link>
+                  <Link href="/settings?tab=subscription" className="text-xs font-medium underline" onClick={() => setActive?.(biz.id)}>Pay / view order</Link>
                 </div>
               ) : (
                 <Link href="/settings?tab=subscription" className="btn-primary btn-sm" onClick={() => setActive?.(biz.id)}>Renew now</Link>

@@ -1,22 +1,23 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Copy, Download, Smartphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { orders as ordersApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
 
 const PERIODS = [{ key: 'MONTHLY', label: 'Monthly' }, { key: 'YEARLY', label: 'Yearly' }];
 
-// Pay to extend `business`'s paidUntil. Two steps: pick a period (Step 1),
+// Pay to extend `business`'s paidUntil. Pass `resumeOrder` (an open renewal order) to
+// go straight to the payment step, e.g. after "Pay later". Two steps: pick a period (Step 1),
 // then submit payment proof for the renewal order it creates (Step 2). Step 2
 // mirrors AddBusinessModal's payment step; kept as its own component rather
 // than a shared one since Step 1 has nothing in common with creating a new
 // company (no company-details form — the business already exists).
-export default function RenewBusinessModal({ business, onClose, onDone }) {
+export default function RenewBusinessModal({ business, resumeOrder = null, onClose, onDone }) {
   const [quote, setQuote]     = useState(null);   // { companyType, prices, instructions }
   const [loading, setLoading] = useState(true);
   const [period, setPeriod]   = useState('MONTHLY');
-  const [order, setOrder]     = useState(null);
+  const [order, setOrder]     = useState(resumeOrder);
   const [busy, setBusy]       = useState(false);
   const [qrUrl, setQrUrl]     = useState(null);
   const [referenceNo, setRef] = useState('');
@@ -39,6 +40,12 @@ export default function RenewBusinessModal({ business, onClose, onDone }) {
   }, [order, quote]);
 
   const price = quote?.prices.find((p) => p.period === period);
+
+  const copyInstructions = () => {
+    navigator.clipboard?.writeText(quote.instructions.text)
+      .then(() => toast.success('Payment details copied'))
+      .catch(() => toast.error('Could not copy'));
+  };
 
   const submitOrder = async (e) => {
     e.preventDefault();
@@ -106,15 +113,33 @@ export default function RenewBusinessModal({ business, onClose, onDone }) {
           </form>
         ) : (
           <form onSubmit={submitProof} className="px-6 py-5 space-y-4">
-            <p className="text-sm">
-              Pay <strong>{formatCurrency(order.amount)}</strong> to renew <strong>{order.companyName}</strong>, then submit your
-              reference number or proof.
-            </p>
-            {quote.instructions.text
-              ? <pre className="whitespace-pre-wrap text-sm rounded-lg bg-gray-50 dark:bg-gray-800 p-3 font-sans">{quote.instructions.text}</pre>
-              : <p className="text-sm text-gray-500">Payment instructions have not been set up yet. Please contact the administrator.</p>}
-            {qrUrl && <img src={qrUrl} alt="Payment QR" className="mx-auto max-h-56 rounded-lg border" />}
+            <div className="text-center">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Amount to pay</p>
+              <p className="text-3xl font-bold text-green-600">{formatCurrency(order.amount)}</p>
+              <p className="text-xs text-gray-500 mt-1">Renewal for {order.companyName} · {order.orderNo}</p>
+            </div>
 
+            <div className="rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20 p-4 space-y-3">
+              <p className="text-sm font-semibold flex items-center gap-2"><Smartphone className="w-4 h-4 text-blue-600" /> Step 1 · Pay by GCash / QR</p>
+              {qrUrl && (
+                <div className="text-center space-y-2">
+                  <img src={qrUrl} alt="Payment QR" className="mx-auto max-h-60 rounded-lg border bg-white" />
+                  <a href={qrUrl} download="payment-qr.jpg" className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
+                    <Download className="w-3 h-3" /> Download QR
+                  </a>
+                </div>
+              )}
+              {quote.instructions.text ? (
+                <div>
+                  <pre className="whitespace-pre-wrap text-sm rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-3 font-sans">{quote.instructions.text}</pre>
+                  <button type="button" onClick={copyInstructions} className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
+                    <Copy className="w-3 h-3" /> Copy payment details
+                  </button>
+                </div>
+              ) : !qrUrl && <p className="text-sm text-gray-500">Payment instructions have not been set up yet. Please contact the administrator.</p>}
+            </div>
+
+            <p className="text-sm font-semibold">Step 2 · Send us your proof</p>
             <div><label className="label">Reference number</label><input className="input" value={referenceNo} onChange={(e) => setRef(e.target.value)} placeholder="e.g. GCash ref no." /></div>
             <div>
               <label className="label">Proof of payment (JPG, PNG, WEBP or PDF, max 5 MB)</label>
