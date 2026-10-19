@@ -147,6 +147,8 @@ const NAV = [
         children: [
           { label: 'Sales Report',     href: '/reports/sales' },
           { label: 'Sales Summary',    href: '/reports/sales-summary' },
+          { label: 'Profit & Loss',    href: '/reports/profit-loss' },
+          { label: 'Expenses Summary', href: '/reports/expenses-summary' },
           { label: 'Trial Balance',    href: '/reports/trial-balance' },
           { label: 'Income Statement', href: '/reports/income-statement' },
           { label: 'Balance Sheet',    href: '/reports/balance-sheet' },
