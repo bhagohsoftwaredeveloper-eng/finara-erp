@@ -13,6 +13,7 @@ router.post('/customers', authorize('ADMIN','MANAGER'),
 router.put('/customers/:id', authorize('ADMIN','MANAGER'), ctrl.updateCustomer);
 
 router.get('/statements', statements.getStatements);
+router.use('/delivery-receipts', require('./deliveryReceipts'));
 
 router.get('/', ctrl.listInvoices);
 router.get('/aging', ctrl.agingReport);
