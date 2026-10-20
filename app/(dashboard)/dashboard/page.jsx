@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/auth';
 import toast from 'react-hot-toast';
 import {
   TrendingUp, TrendingDown, AlertCircle, Users, Building2,
-  ShoppingCart, FileText, CheckCircle, Clock, Circle, CheckCircle2,
+  ShoppingCart, FileText, CheckCircle, Clock, Circle, CheckCircle2, ChevronDown,
 } from 'lucide-react';
 import PesoSign from '@/components/icons/PesoSign';
 import RenewalReminders from '@/components/subscription/RenewalReminders';
@@ -57,6 +57,20 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [preset, setPreset] = useState('month');
   const [range, setRange] = useState(() => presetRange('month'));
+  const [setupOpen, setSetupOpen] = useState(() => {
+    try { return localStorage.getItem('dashSetupOpen') !== '0'; } catch { return true; }
+  });
+  const toggleSetup = () => setSetupOpen((o) => {
+    try { localStorage.setItem('dashSetupOpen', o ? '0' : '1'); } catch { /* storage unavailable */ }
+    return !o;
+  });
+  const [alertsOpen, setAlertsOpen] = useState(() => {
+    try { return localStorage.getItem('dashAlertsOpen') !== '0'; } catch { return true; }
+  });
+  const toggleAlerts = () => setAlertsOpen((o) => {
+    try { localStorage.setItem('dashAlertsOpen', o ? '0' : '1'); } catch { /* storage unavailable */ }
+    return !o;
+  });
 
   useEffect(() => {
     if (!range.from || !range.to) return;
@@ -84,6 +98,7 @@ export default function DashboardPage() {
 
   const d = data || {};
   const netIncome = d.gl?.netIncome || 0;
+  const alertCount = [d.receivables?.overdue, d.payables?.overdue, d.gl?.draftEntries].filter((n) => n > 0).length;
   const chartData = [
     { name: 'Revenue', amount: d.gl?.monthRevenue || 0, fill: '#22c55e' },
     { name: 'Expenses', amount: d.gl?.monthExpense || 0, fill: '#ef4444' },
@@ -110,28 +125,93 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Alerts — badge shows how many are pending */}
+      <div className="card">
+        <button
+          type="button"
+          onClick={toggleAlerts}
+          aria-expanded={alertsOpen}
+          className="card-header w-full text-left"
+        >
+          <h3 className="font-semibold text-gray-900">Alerts</h3>
+          <span className="flex items-center gap-2">
+            {alertCount > 0 && <span className="badge-red">{alertCount}</span>}
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${alertsOpen ? '' : '-rotate-90'}`} />
+          </span>
+        </button>
+        {alertsOpen && (
+          <div className="divide-y divide-gray-100">
+            {d.receivables?.overdue > 0 && (
+              <div className="flex items-start gap-3 p-4">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Overdue Receivables</p>
+                  <p className="text-xs text-red-500">{formatCurrency(d.receivables.overdue)} past due</p>
+                </div>
+              </div>
+            )}
+            {d.payables?.overdue > 0 && (
+              <div className="flex items-start gap-3 p-4">
+                <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Overdue Payables</p>
+                  <p className="text-xs text-orange-500">{formatCurrency(d.payables.overdue)} past due</p>
+                </div>
+              </div>
+            )}
+            {d.gl?.draftEntries > 0 && (
+              <div className="flex items-start gap-3 p-4">
+                <Clock className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Draft Journal Entries</p>
+                  <p className="text-xs text-yellow-600">{d.gl.draftEntries} entries pending review</p>
+                </div>
+              </div>
+            )}
+            {alertCount === 0 && (
+              <div className="flex items-center gap-3 p-4">
+                <CheckCircle className="w-5 h-5 text-green-500" />
+                <p className="text-sm text-gray-600">All clear! No pending alerts.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Getting started — hidden once every step is done */}
       {d.setup && d.setup.completed < d.setup.total && (
         <div className="card">
-          <div className="card-header">
+          <button
+            type="button"
+            onClick={toggleSetup}
+            aria-expanded={setupOpen}
+            className="card-header w-full text-left"
+          >
             <h3 className="font-semibold text-gray-900">Getting Started</h3>
-            <span className="badge-blue">{d.setup.completed} of {d.setup.total} done</span>
-          </div>
-          <div className="px-5 pt-4">
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-600 transition-all" style={{ width: `${(d.setup.completed / d.setup.total) * 100}%` }} />
-            </div>
-          </div>
-          <div className="divide-y divide-gray-100 mt-2">
-            {d.setup.steps.map((s) => (
-              <Link key={s.key} href={s.href} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
-                {s.done
-                  ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  : <Circle className="w-5 h-5 text-gray-300 flex-shrink-0" />}
-                <span className={`text-sm ${s.done ? 'text-gray-400 line-through' : 'text-gray-900 font-medium'}`}>{s.label}</span>
-              </Link>
-            ))}
-          </div>
+            <span className="flex items-center gap-2">
+              <span className="badge-blue">{d.setup.completed} of {d.setup.total} done</span>
+              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${setupOpen ? '' : '-rotate-90'}`} />
+            </span>
+          </button>
+          {setupOpen && (
+            <>
+              <div className="px-5 pt-4">
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-600 transition-all" style={{ width: `${(d.setup.completed / d.setup.total) * 100}%` }} />
+                </div>
+              </div>
+              <div className="divide-y divide-gray-100 mt-2">
+                {d.setup.steps.map((s) => (
+                  <Link key={s.key} href={s.href} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
+                    {s.done
+                      ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                      : <Circle className="w-5 h-5 text-gray-300 flex-shrink-0" />}
+                    <span className={`text-sm ${s.done ? 'text-gray-400 line-through' : 'text-gray-900 font-medium'}`}>{s.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -170,9 +250,9 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-1 sm:grid-cols-3 gap-6">
+      <div>
         {/* Chart */}
-        <div className="card xl:col-span-2">
+        <div className="card">
           <div className="card-header">
             <h3 className="font-semibold text-gray-900">Profit &amp; Loss</h3>
             <span className="badge-blue">{periodLabel}</span>
@@ -215,48 +295,6 @@ export default function DashboardPage() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Alerts */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="font-semibold text-gray-900">Alerts</h3>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {d.receivables?.overdue > 0 && (
-              <div className="flex items-start gap-3 p-4">
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Overdue Receivables</p>
-                  <p className="text-xs text-red-500">{formatCurrency(d.receivables.overdue)} past due</p>
-                </div>
-              </div>
-            )}
-            {d.payables?.overdue > 0 && (
-              <div className="flex items-start gap-3 p-4">
-                <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Overdue Payables</p>
-                  <p className="text-xs text-orange-500">{formatCurrency(d.payables.overdue)} past due</p>
-                </div>
-              </div>
-            )}
-            {d.gl?.draftEntries > 0 && (
-              <div className="flex items-start gap-3 p-4">
-                <Clock className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">Draft Journal Entries</p>
-                  <p className="text-xs text-yellow-600">{d.gl.draftEntries} entries pending review</p>
-                </div>
-              </div>
-            )}
-            {(!d.receivables?.overdue && !d.payables?.overdue && !d.gl?.draftEntries) && (
-              <div className="flex items-center gap-3 p-4">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <p className="text-sm text-gray-600">All clear! No pending alerts.</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
