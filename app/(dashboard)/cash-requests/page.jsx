@@ -85,15 +85,7 @@ function RequestModal({ request, names, onClose, onSaved }) {
       ...f,
       items: f.items.map((it, idx) => {
         if (idx !== i) return it;
-        const next = { ...it, [k]: v };
-        // A manual account choice is sticky.
-        if (k === 'accountId') next.accountTouched = true;
-        // Typing a description re-runs the match until the user overrides it.
-        if (k === 'description' && !next.accountTouched) {
-          const { accountCode } = matchCodeFor(v, accountMap.rules, accountMap.fallback);
-          next.accountId = accountIdForCode(accounts, accountCode, accountMap.fallback);
-        }
-        return next;
+        return { ...it, [k]: v };
       }),
     }));
   const addItem = () => setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
