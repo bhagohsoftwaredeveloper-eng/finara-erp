@@ -1562,6 +1562,8 @@ model Student {
   customerId   Int           @unique
   customer     Customer      @relation(fields: [customerId], references: [id])
   status       StudentStatus @default(APPLICANT)
+  // Remembered when a student is suspended so reinstating restores it.
+  statusBeforeSuspension StudentStatus?
   // Set at registration. Enrollment pre-fills a tuition discount from these;
   // PARTIAL uses scholarshipPct (percent of tuition), FULL is 100%.
   scholarshipType ScholarshipType @default(NONE)
@@ -1599,6 +1601,7 @@ enum StudentStatus {
   TRANSFERRED
   WITHDRAWN
   INACTIVE
+  SUSPENDED
 }
 
 model Guardian {
@@ -1637,6 +1640,11 @@ model FeeType {
   // code, never the invoice, so a mixed assessment bills both correctly.
   vatCode      VatCode  @default(EXEMPT)
   isRefundable Boolean  @default(false)
+  // Tuition only: the school year runs monthFrom..monthTo (1-12, may wrap the
+  // calendar year, e.g. 6..3). A fee structure then quotes this fee per month
+  // and multiplies by the months in the range.
+  monthFrom    Int?
+  monthTo      Int?
   sortOrder    Int      @default(0)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -1684,7 +1692,10 @@ model FeeStructureLine {
   feeStructure   FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
   feeTypeId      Int
   feeType        FeeType      @relation(fields: [feeTypeId], references: [id])
+  // amount is always the line total. For a per-month fee, monthlyAmount x months = amount.
   amount         Decimal      @default(0) @db.Decimal(15, 2)
+  monthlyAmount  Decimal?     @db.Decimal(15, 2)
+  months         Int?
   billingBasis   BillingBasis @default(ANNUAL)
   sortOrder      Int          @default(0)
 

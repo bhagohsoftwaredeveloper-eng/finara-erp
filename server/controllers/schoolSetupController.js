@@ -9,6 +9,7 @@
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { recordAudit } = require('../utils/audit');
+const { monthsInRange } = require('../utils/feeMonths');
 
 // ── School years ───────────────────────────────────────────────────────────
 
@@ -199,9 +200,23 @@ exports.listFeeTypes = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Only tuition is quoted per month. Both ends or neither; anything else is a
+// half-set range that would silently bill the wrong number of months.
+const readMonthRange = (category, monthFrom, monthTo) => {
+  if (category !== 'TUITION' || monthFrom == null || monthFrom === '' || monthTo == null || monthTo === '') {
+    if ((monthFrom || monthTo) && category === 'TUITION') {
+      throw createError('Set both the From and To month, or leave both blank', 400);
+    }
+    return { monthFrom: null, monthTo: null };
+  }
+  if (!monthsInRange(monthFrom, monthTo)) throw createError('Months must be between 1 and 12', 400);
+  return { monthFrom: Number(monthFrom), monthTo: Number(monthTo) };
+};
+
 exports.createFeeType = async (req, res, next) => {
   try {
-    const { code, name, category, accountId, vatCode, isRefundable, sortOrder } = req.body;
+    const { code, name, category, accountId, vatCode, isRefundable, sortOrder, monthFrom, monthTo } = req.body;
+    const range = readMonthRange(category, monthFrom, monthTo);
 
     // The account must belong to this business, or a fee would post revenue
     // into another school's books.
@@ -217,6 +232,7 @@ exports.createFeeType = async (req, res, next) => {
       data: {
         businessId: req.businessId,
         code, name, category,
+        ...range,
         accountId: account.id,
         vatCode: vatCode || 'EXEMPT',
         isRefundable: !!isRefundable,
@@ -232,7 +248,13 @@ exports.updateFeeType = async (req, res, next) => {
     const existing = await prisma.feeType.findFirst({ where: { id, businessId: req.businessId } });
     if (!existing) throw createError('Fee type not found', 404);
 
-    const { code, name, category, accountId, vatCode, isRefundable, sortOrder, isActive } = req.body;
+    const { code, name, category, accountId, vatCode, isRefundable, sortOrder, isActive, monthFrom, monthTo } = req.body;
+    const touchesRange = monthFrom !== undefined || monthTo !== undefined || category !== undefined;
+    const range = touchesRange
+      ? readMonthRange(category ?? existing.category,
+          monthFrom !== undefined ? monthFrom : existing.monthFrom,
+          monthTo   !== undefined ? monthTo   : existing.monthTo)
+      : null;
     if (accountId) {
       const account = await prisma.account.findFirst({
         where: { id: Number(accountId), businessId: req.businessId },
@@ -246,6 +268,7 @@ exports.updateFeeType = async (req, res, next) => {
         ...(code !== undefined && { code }),
         ...(name !== undefined && { name }),
         ...(category !== undefined && { category }),
+        ...(range && range),
         ...(accountId !== undefined && { accountId: Number(accountId) }),
         ...(vatCode !== undefined && { vatCode }),
         ...(isRefundable !== undefined && { isRefundable: !!isRefundable }),
@@ -333,12 +356,23 @@ exports.saveFeeStructure = async (req, res, next) => {
       where: { businessId: req.businessId, schoolYearId: Number(schoolYearId), gradeLevelId: Number(gradeLevelId) },
     });
 
-    const lineData = lines.map((l, i) => ({
-      feeTypeId:    Number(l.feeTypeId),
-      amount:       Number(l.amount) || 0,
-      billingBasis: l.billingBasis || 'ANNUAL',
-      sortOrder:    i,
-    }));
+    // A fee type with a month range is quoted per month: the line total is the
+    // monthly amount x the months in that range, computed here so the browser
+    // can never save a total that disagrees with the range.
+    const typeById = new Map(feeTypes.map((f) => [f.id, f]));
+    const lineData = lines.map((l, i) => {
+      const ft = typeById.get(Number(l.feeTypeId));
+      const months = monthsInRange(ft.monthFrom, ft.monthTo);
+      const monthly = Number(l.monthlyAmount ?? l.amount) || 0;
+      return {
+        feeTypeId:    ft.id,
+        amount:       months ? Math.round(monthly * months * 100) / 100 : (Number(l.amount) || 0),
+        monthlyAmount: months ? monthly : null,
+        months:       months || null,
+        billingBasis: l.billingBasis || 'ANNUAL',
+        sortOrder:    i,
+      };
+    });
 
     const saved = existing
       ? await prisma.$transaction(async (tx) => {
@@ -414,12 +448,20 @@ exports.cloneFeeStructures = async (req, res, next) => {
           gradeLevelId: s.gradeLevelId,
           name:         s.name.replace(from.code, to.code),
           lines: {
-            create: s.lines.map((l) => ({
+            create: s.lines.map((l) => {
+              const monthly = l.monthlyAmount != null
+                ? Math.round(Number(l.monthlyAmount) * factor * 100) / 100 : null;
+              return {
               feeTypeId:    l.feeTypeId,
-              amount:       Math.round(Number(l.amount) * factor * 100) / 100,
+              monthlyAmount: monthly,
+              months:       l.months,
+              amount:       monthly != null
+                ? Math.round(monthly * l.months * 100) / 100
+                : Math.round(Number(l.amount) * factor * 100) / 100,
               billingBasis: l.billingBasis,
               sortOrder:    l.sortOrder,
-            })),
+              };
+            }),
           },
         },
       });

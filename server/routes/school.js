@@ -94,6 +94,9 @@ router.post('/students', canEdit,
   [body('lastName').notEmpty().trim(), body('firstName').notEmpty().trim()],
   validate, students.createStudent);
 router.put('/students/:id', canEdit, param('id').isInt(), validate, students.updateStudent);
+router.post('/students/:id/suspend', canEdit, param('id').isInt(), validate, students.suspendStudent);
+router.post('/students/:id/reinstate', canEdit, param('id').isInt(), validate, students.reinstateStudent);
+router.delete('/students/:id', canSetup, param('id').isInt(), validate, students.deleteStudent);
 router.put('/students/:id/guardians', canEdit,
   [param('id').isInt(), body('guardians').isArray()],
   validate, students.saveGuardians);

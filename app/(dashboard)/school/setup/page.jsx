@@ -182,7 +182,7 @@ function parseCsv(text) {
 
 const IMPORT_COLUMNS = [
   'lastName', 'firstName', 'middleName', 'suffix', 'lrn', 'birthDate', 'gender',
-  'address', 'contactPhone', 'email', 'guardianName', 'guardianRelationship', 'guardianPhone',
+  'address', 'contactPhone', 'email', 'guardianName', 'guardianRelationship', 'guardianPhone', 'guardianEmail',
 ];
 
 function ImportStudents() {
@@ -254,7 +254,7 @@ function ImportStudents() {
 
   const template = () => {
     const csv = IMPORT_COLUMNS.join(',') + '\n' +
-      'Dela Cruz,Juan,Santos,,123456789012,2013-05-14,Male,"123 Rizal St., Tagum City",09171234567,,Maria Dela Cruz,Mother,09181234567\n';
+      'Dela Cruz,Juan,Santos,,123456789012,2013-05-14,Male,"123 Rizal St., Tagum City",09171234567,,Maria Dela Cruz,Mother,09181234567,maria@email.com\n';
     // A blob URL download is blocked in some embedded viewers, so open the CSV
     // in a new tab as a fallback the browser will always honour.
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -339,9 +339,14 @@ function ImportStudents() {
               </p>
               <p className="text-gray-500">
                 {check.skipped > 0
-                  ? `${check.skipped} already on file (matched by LRN) and will be skipped.`
+                  ? `${check.skipped} duplicate${check.skipped === 1 ? '' : 's'} (matched by LRN or name) will be skipped.`
                   : 'No duplicates found.'}
               </p>
+              {check.duplicates?.length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-gray-500">
+                  {check.duplicates.map((d, i) => <li key={i}>Row {d.line}: {d.name} — {d.reason}</li>)}
+                </ul>
+              )}
             </div>
             <button onClick={commit} disabled={importing || check.wouldCreate === 0}
                     className="btn-primary flex items-center gap-2">
@@ -539,6 +544,30 @@ function GradeLevels() {
                    onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} />
           </div>
           <button className="btn-primary flex items-center justify-center gap-2"><Plus className="h-4 w-4" /> Add</button>
+          {form.category === 'TUITION' && (
+            <div className="md:col-span-6 grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+              <div className="form-group mb-0">
+                <label className="label">Billed from</label>
+                <select className="input" value={form.monthFrom}
+                        onChange={(e) => setForm({ ...form, monthFrom: e.target.value })}>
+                  <option value="">— month —</option>{monthOptions}
+                </select>
+              </div>
+              <div className="form-group mb-0">
+                <label className="label">Billed to</label>
+                <select className="input" value={form.monthTo}
+                        onChange={(e) => setForm({ ...form, monthTo: e.target.value })}>
+                  <option value="">— month —</option>{monthOptions}
+                </select>
+              </div>
+              <p className="md:col-span-4 text-xs text-gray-500">
+                {monthsInRange(form.monthFrom, form.monthTo)
+                  ? <>Fee structures quote this fee <strong>per month</strong> and multiply by{' '}
+                      <strong>{monthsInRange(form.monthFrom, form.monthTo)} months</strong>.</>
+                  : 'Optional. Pick both months to quote this fee per month in fee structures; leave blank for a flat amount.'}
+              </p>
+            </div>
+          )}
         </form>
       </div></div>
 
@@ -655,12 +684,24 @@ function Sections() {
   );
 }
 
+// ── Month ranges (tuition is quoted per month) ─────────────────────────────
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December'];
+// Mirrors server/utils/feeMonths.js: inclusive, wraps the calendar year (Jun-Mar = 10).
+const monthsInRange = (from, to) => {
+  const f = Number(from), t = Number(to);
+  if (!(f >= 1 && f <= 12 && t >= 1 && t <= 12)) return null;
+  return ((t - f + 12) % 12) + 1;
+};
+const rangeLabel = (from, to) =>
+  `${MONTH_NAMES[from - 1].slice(0, 3)} – ${MONTH_NAMES[to - 1].slice(0, 3)} (${monthsInRange(from, to)} months)`;
+
 // ── Fee types ──────────────────────────────────────────────────────────────
 function FeeTypes() {
   const [items, setItems] = useState([]);
   const [revenueAccounts, setRevenueAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ code: '', name: '', category: 'MISCELLANEOUS', accountId: '', vatCode: 'EXEMPT' });
+  const [form, setForm] = useState({ code: '', name: '', category: 'MISCELLANEOUS', accountId: '', vatCode: 'EXEMPT', monthFrom: '', monthTo: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -677,12 +718,34 @@ function FeeTypes() {
   const add = async (e) => {
     e.preventDefault();
     try {
+      if (form.category === 'TUITION' && !!form.monthFrom !== !!form.monthTo) {
+        return toast.error('Set both the From and To month, or leave both blank');
+      }
       await sApi.feeTypes.create(form);
       toast.success('Fee type added');
-      setForm({ code: '', name: '', category: 'MISCELLANEOUS', accountId: '', vatCode: 'EXEMPT' });
+      setForm({ code: '', name: '', category: 'MISCELLANEOUS', accountId: '', vatCode: 'EXEMPT', monthFrom: '', monthTo: '' });
       load();
     } catch (err) { toast.error(err.response?.data?.error || 'Could not save'); }
   };
+
+  const saveRange = async (f, patch) => {
+    const next = { monthFrom: f.monthFrom ?? '', monthTo: f.monthTo ?? '', ...patch };
+    // Half a range is not saved; it is applied once the other end is picked.
+    if (!!next.monthFrom !== !!next.monthTo) {
+      setItems((p) => p.map((x) => (x.id === f.id ? { ...x, ...patch } : x)));
+      return;
+    }
+    try {
+      await sApi.feeTypes.update(f.id, {
+        monthFrom: next.monthFrom ? Number(next.monthFrom) : null,
+        monthTo:   next.monthTo   ? Number(next.monthTo)   : null,
+      });
+      toast.success('Month range saved');
+      load();
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not save'); }
+  };
+
+  const monthOptions = MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>);
 
   return (
     <>
@@ -734,12 +797,29 @@ function FeeTypes() {
 
       <div className="card"><div className="card-body p-0">
         {loading ? <Spinner /> : (
-          <Table headers={['Code', 'Name', 'Category', 'Account', 'VAT']}>
+          <Table headers={['Code', 'Name', 'Category', 'Months', 'Account', 'VAT']}>
             {items.map((f) => (
               <tr key={f.id}>
                 <td className="px-4 py-2.5 font-mono text-xs">{f.code}</td>
                 <td className="px-4 py-2.5">{f.name}</td>
                 <td className="px-4 py-2.5 text-xs text-gray-500">{f.category}</td>
+                <td className="px-4 py-2.5 text-xs">
+                  {f.category === 'TUITION' ? (
+                    <div className="flex items-center gap-1">
+                      <select className="input py-1 text-xs w-28" value={f.monthFrom ?? ''}
+                              onChange={(e) => saveRange(f, { monthFrom: e.target.value })}>
+                        <option value="">From…</option>{monthOptions}
+                      </select>
+                      <select className="input py-1 text-xs w-28" value={f.monthTo ?? ''}
+                              onChange={(e) => saveRange(f, { monthTo: e.target.value })}>
+                        <option value="">To…</option>{monthOptions}
+                      </select>
+                      {monthsInRange(f.monthFrom, f.monthTo) && (
+                        <span className="text-gray-500">× {monthsInRange(f.monthFrom, f.monthTo)}</span>
+                      )}
+                    </div>
+                  ) : '—'}
+                </td>
                 <td className="px-4 py-2.5 font-mono text-xs">
                   {f.account.accountCode} — {f.account.accountName}
                 </td>
@@ -774,7 +854,10 @@ function FeeStructures() {
     try {
       const [y, l, f] = await Promise.all([sApi.schoolYears.list(), sApi.gradeLevels.list(), sApi.feeTypes.list()]);
       setYears(y.data); setLevels(l.data.filter((x) => x.isActive)); setFeeTypes(f.data.filter((x) => x.isActive));
-      const current = y.data.find((x) => x.isCurrent);
+      // The dropdown shows its first option even when nothing is selected, so
+      // fall back to the newest year when none is marked current — otherwise it
+      // looks picked while the state is still empty.
+      const current = y.data.find((x) => x.isCurrent) || y.data[0];
       const yId = schoolYearId || (current ? String(current.id) : '');
       setSchoolYearId(yId);
       const { data } = await sApi.feeStructures.list(yId ? { schoolYearId: yId } : {});
@@ -788,9 +871,16 @@ function FeeStructures() {
     setEditing({
       gradeLevelId: String(gradeLevelId),
       name: existing?.name || `${levels.find((l) => l.id === gradeLevelId)?.name} — ${years.find((y) => String(y.id) === schoolYearId)?.code}`,
-      lines: existing?.lines.map((l) => ({
-        feeTypeId: String(l.feeTypeId), amount: String(l.amount), billingBasis: l.billingBasis,
-      })) || feeTypes.map((f) => ({
+      lines: existing?.lines.map((l) => {
+        // A per-month fee shows the monthly figure; an older flat line is
+        // divided back down so the editor never shows a total as a monthly rate.
+        const ft = feeTypes.find((f) => f.id === l.feeTypeId);
+        const mult = monthsInRange(ft?.monthFrom, ft?.monthTo);
+        const shown = mult
+          ? (l.monthlyAmount != null ? Number(l.monthlyAmount) : Math.round((Number(l.amount) / mult) * 100) / 100)
+          : Number(l.amount);
+        return { feeTypeId: String(l.feeTypeId), amount: String(shown), billingBasis: l.billingBasis };
+      }) || feeTypes.map((f) => ({
         feeTypeId: String(f.id), amount: '',
         billingBasis: ['TUITION', 'MISCELLANEOUS'].includes(f.category) ? 'ANNUAL' : 'ONE_TIME',
       })),
@@ -810,7 +900,9 @@ function FeeStructures() {
         name: editing.name,
         lines: editing.lines
           .filter((l) => Number(l.amount) > 0)
-          .map((l) => ({ feeTypeId: Number(l.feeTypeId), amount: Number(l.amount), billingBasis: l.billingBasis })),
+          // The server multiplies a per-month fee by its month range, so a
+          // ranged line is sent as the monthly rate, never as a total.
+          .map((l) => ({ feeTypeId: Number(l.feeTypeId), amount: Number(l.amount), monthlyAmount: Number(l.amount), billingBasis: l.billingBasis })),
       });
       toast.success('Fee structure saved');
       setEditing(null);
@@ -831,8 +923,12 @@ function FeeStructures() {
     } catch (err) { toast.error(err.response?.data?.error || 'Could not copy'); }
   };
 
+  const multiplierFor = (feeTypeId) => {
+    const ft = feeTypes.find((f) => String(f.id) === feeTypeId);
+    return monthsInRange(ft?.monthFrom, ft?.monthTo);
+  };
   const editingTotal = editing
-    ? editing.lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+    ? editing.lines.reduce((s, l) => s + (Number(l.amount) || 0) * (multiplierFor(l.feeTypeId) || 1), 0)
     : 0;
 
   return (
@@ -891,10 +987,12 @@ function FeeStructures() {
               <tbody className="divide-y dark:divide-gray-700">
                 {editing.lines.map((l, i) => {
                   const ft = feeTypes.find((f) => String(f.id) === l.feeTypeId);
+                  const mult = multiplierFor(l.feeTypeId);
                   return (
                     <tr key={l.feeTypeId}>
                       <td className="py-2">
                         {ft?.name}
+                        {mult && <span className="block text-[10px] text-gray-400">per month · {rangeLabel(ft.monthFrom, ft.monthTo)}</span>}
                         {ft?.vatCode === 'VAT' && <span className="badge badge-yellow ml-2 text-[10px]">VAT</span>}
                       </td>
                       <td className="py-2">
@@ -912,6 +1010,11 @@ function FeeStructures() {
                                onChange={(e) => setEditing((x) => ({
                                  ...x, lines: x.lines.map((y, j) => j === i ? { ...y, amount: e.target.value } : y),
                                }))} />
+                        {mult && Number(l.amount) > 0 && (
+                          <span className="block text-[10px] text-gray-500 tabular-nums">
+                            × {mult} = {formatCurrency(Number(l.amount) * mult)}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

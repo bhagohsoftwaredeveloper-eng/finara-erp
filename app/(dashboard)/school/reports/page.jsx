@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { school as sApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
@@ -20,7 +20,12 @@ export default function SchoolReportsPage() {
   const [years, setYears] = useState([]);
   const [levels, setLevels] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState(null);
+  // A report's shape belongs to the tab that asked for it. Keeping the tab with
+  // the data means switching tabs can never render another tab's report, even
+  // for the one render before any effect runs.
+  const [reportState, setReportState] = useState(null);
+  const report = reportState && reportState.tab === tab ? reportState.data : null;
+  const setReport = (data, forTab = tab) => setReportState(data ? { tab: forTab, data } : null);
 
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
@@ -40,7 +45,13 @@ export default function SchoolReportsPage() {
       .catch(() => {});
   }, []);
 
+  // A report can finish after the user has switched tabs; its shape belongs to
+  // the tab that asked for it, so a late answer is dropped, not shown.
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+
   const run = async () => {
+    const askedFor = tab;
     setLoading(true); setReport(null);
     try {
       let data;
@@ -54,15 +65,15 @@ export default function SchoolReportsPage() {
       } else {
         ({ data } = await sApi.reports.enrollmentSummary({ schoolYearId: schoolYearId || undefined }));
       }
-      setReport(data);
+      setReport(data, askedFor);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not build this report');
+      if (tabRef.current === askedFor) toast.error(err.response?.data?.error || 'Could not build this report');
     } finally {
-      setLoading(false);
+      if (tabRef.current === askedFor) setLoading(false);
     }
   };
 
-  useEffect(() => { setReport(null); }, [tab]);
+  useEffect(() => { setReport(null); setLoading(false); }, [tab]);
 
   const print = () => {
     if (!report) return;
@@ -110,10 +121,10 @@ export default function SchoolReportsPage() {
             <th style="text-align:right">Collected</th></tr></thead>
           <tbody>${rows}
             <tr class="total"><td><strong>Total</strong></td>
-                <td style="text-align:right"><strong>${report.totals.students}</strong></td>
-                <td style="text-align:right"><strong>${phpFmt(report.totals.assessed)}</strong></td>
-                <td style="text-align:right"><strong>${phpFmt(report.totals.billed)}</strong></td>
-                <td style="text-align:right"><strong>${phpFmt(report.totals.collected)}</strong></td></tr></tbody>
+                <td style="text-align:right"><strong>${report.totals?.students ?? 0}</strong></td>
+                <td style="text-align:right"><strong>${phpFmt((report.totals?.assessed ?? 0))}</strong></td>
+                <td style="text-align:right"><strong>${phpFmt((report.totals?.billed ?? 0))}</strong></td>
+                <td style="text-align:right"><strong>${phpFmt((report.totals?.collected ?? 0))}</strong></td></tr></tbody>
         </table>
       `);
     }
@@ -245,7 +256,7 @@ export default function SchoolReportsPage() {
           <div className="card mb-4"><div className="card-body">
             <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Aging</p>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {Object.entries(report.summary).map(([bucket, amount]) => (
+              {Object.entries(report.summary || {}).map(([bucket, amount]) => (
                 <div key={bucket}>
                   <p className="text-xs text-gray-500">{bucket}</p>
                   <p className="font-semibold tabular-nums">{formatCurrency(amount)}</p>
@@ -297,10 +308,10 @@ export default function SchoolReportsPage() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             {[
-              ['Students', report.totals.students, false],
-              ['Assessed', report.totals.assessed, true],
-              ['Billed', report.totals.billed, true],
-              ['Collected', report.totals.collected, true],
+              ['Students', report.totals?.students ?? 0, false],
+              ['Assessed', (report.totals?.assessed ?? 0), true],
+              ['Billed', (report.totals?.billed ?? 0), true],
+              ['Collected', (report.totals?.collected ?? 0), true],
             ].map(([label, value, money]) => (
               <div key={label} className="card"><div className="card-body">
                 <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">{label}</p>

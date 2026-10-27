@@ -304,6 +304,102 @@ exports.updateStudent = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── Suspend / reinstate / delete ───────────────────────────────────────────
+
+exports.suspendStudent = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = await prisma.student.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Student not found', 404);
+    if (existing.status === 'SUSPENDED') throw createError('This student is already suspended', 400);
+
+    const updated = await prisma.student.update({
+      where: { id },
+      data: { status: 'SUSPENDED', statusBeforeSuspension: existing.status },
+    });
+    const reason = String(req.body?.reason || '').trim();
+    await recordAudit({
+      action: 'UPDATE', entity: 'Student', entityId: String(id),
+      summary: `Suspended ${existing.studentNo} — ${fullName(existing)}${reason ? ` (${reason})` : ''}`,
+      user: req.user, businessId: req.businessId,
+    });
+    res.json({ ...updated, fullName: fullName(updated) });
+  } catch (err) { next(err); }
+};
+
+exports.reinstateStudent = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = await prisma.student.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Student not found', 404);
+    if (existing.status !== 'SUSPENDED') throw createError('This student is not suspended', 400);
+
+    const restored = existing.statusBeforeSuspension && existing.statusBeforeSuspension !== 'SUSPENDED'
+      ? existing.statusBeforeSuspension : 'ACTIVE';
+    const updated = await prisma.student.update({
+      where: { id },
+      data: { status: restored, statusBeforeSuspension: null },
+    });
+    await recordAudit({
+      action: 'UPDATE', entity: 'Student', entityId: String(id),
+      summary: `Reinstated ${existing.studentNo} — ${fullName(existing)} as ${restored}`,
+      user: req.user, businessId: req.businessId,
+    });
+    res.json({ ...updated, fullName: fullName(updated) });
+  } catch (err) { next(err); }
+};
+
+/**
+ * Delete a student record that has no financial history.
+ *
+ * Anyone who has been enrolled, assessed, billed or refunded stays on the books
+ * — deleting them would orphan ledger rows and invoices — so the answer for
+ * them is Suspend or a leaving status. Delete is for mistakes and duplicates
+ * (an import loaded twice, a mistyped registration).
+ */
+exports.deleteStudent = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = await prisma.student.findFirst({ where: { id, businessId: req.businessId } });
+    if (!existing) throw createError('Student not found', 404);
+
+    const [enrollments, assessments, advances, ledger, adjustments, refunds] = await Promise.all([
+      prisma.enrollment.count({ where: { studentId: id } }),
+      prisma.assessment.count({ where: { studentId: id } }),
+      prisma.studentAdvance.count({ where: { studentId: id } }),
+      prisma.studentLedger.count({ where: { studentId: id } }),
+      prisma.billingAdjustment.count({ where: { studentId: id } }),
+      prisma.refund.count({ where: { studentId: id } }),
+    ]);
+    if (enrollments + assessments + advances + ledger + adjustments + refunds > 0) {
+      throw createError(
+        'This student has enrollment or billing history and cannot be deleted. Suspend them instead, or set a leaving status.',
+        409,
+      );
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.student.delete({ where: { id } });       // guardians cascade
+        await tx.customer.delete({ where: { id: existing.customerId } });
+      });
+    } catch (err) {
+      // The paired customer is referenced by an invoice or payment.
+      if (err.code === 'P2003' || err.code === 'P2014') {
+        throw createError('This student has invoices or payments on file and cannot be deleted. Suspend them instead.', 409);
+      }
+      throw err;
+    }
+
+    await recordAudit({
+      action: 'DELETE', entity: 'Student', entityId: String(id),
+      summary: `Deleted ${existing.studentNo} — ${fullName(existing)}`,
+      user: req.user, businessId: req.businessId,
+    });
+    res.json({ message: `Deleted ${fullName(existing)}` });
+  } catch (err) { next(err); }
+};
+
 // ── Guardians ──────────────────────────────────────────────────────────────
 
 exports.saveGuardians = async (req, res, next) => {
@@ -488,8 +584,49 @@ exports.importStudents = async (req, res, next) => {
       : [];
     const existingByLrn = new Map(existingLrn.map((s) => [s.lrn, s]));
 
-    const toCreate = rows.filter((r) => !r.lrn || !existingByLrn.has(String(r.lrn).trim()));
-    const skipped  = rows.length - toCreate.length;
+    // Duplicates: same LRN, or — when there is no LRN to go by — the same name
+    // (last + first + middle, case/spacing-insensitive). Two people with the same
+    // name are told apart by birth date when both rows have one.
+    const nameKey = (r) => [r.lastName, r.firstName, r.middleName]
+      .map((v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ')).join('|');
+    const dayOf = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+
+    const existingStudents = await prisma.student.findMany({
+      where: { businessId: req.businessId },
+      select: { lastName: true, firstName: true, middleName: true, birthDate: true, studentNo: true },
+    });
+    const byName = new Map();
+    for (const s of existingStudents) {
+      const k = nameKey(s);
+      if (!byName.has(k)) byName.set(k, []);
+      byName.get(k).push(s);
+    }
+    const sameName = (r, list) => (list || []).find((s) => {
+      const a = dayOf(r.birthDate), b = dayOf(s.birthDate);
+      return !(a && b && a !== b);
+    });
+
+    const duplicates = [];
+    const seenInFile = new Map();
+    const toCreate = [];
+    rows.forEach((r, i) => {
+      const label = `${r.lastName}, ${r.firstName}${r.middleName ? ' ' + r.middleName : ''}`;
+      if (r.lrn && existingByLrn.has(String(r.lrn).trim())) {
+        duplicates.push({ line: i + 1, name: label, reason: 'LRN already on file' });
+        return;
+      }
+      if (!r.lrn) {
+        const hit = sameName(r, byName.get(nameKey(r)));
+        if (hit) { duplicates.push({ line: i + 1, name: label, reason: `already on file as ${hit.studentNo}` }); return; }
+        const k = nameKey(r);
+        const earlier = sameName(r, seenInFile.get(k));
+        if (earlier) { duplicates.push({ line: i + 1, name: label, reason: 'appears twice in this file' }); return; }
+        if (!seenInFile.has(k)) seenInFile.set(k, []);
+        seenInFile.get(k).push(r);
+      }
+      toCreate.push(r);
+    });
+    const skipped = duplicates.length;
 
     if (errors.length) {
       return res.status(422).json({
@@ -499,7 +636,7 @@ exports.importStudents = async (req, res, next) => {
       });
     }
     if (dryRun) {
-      return res.json({ dryRun: true, wouldCreate: toCreate.length, skipped, errors: [] });
+      return res.json({ dryRun: true, wouldCreate: toCreate.length, skipped, duplicates: duplicates.slice(0, 50), errors: [] });
     }
 
     const year = new Date().getFullYear();
@@ -534,7 +671,7 @@ exports.importStudents = async (req, res, next) => {
             customerId: customer.id,
             guardians: r.guardianName
               ? { create: [{ name: r.guardianName, relationship: r.guardianRelationship || null,
-                             phone: r.guardianPhone || null, isPrimaryPayer: true }] }
+                             phone: r.guardianPhone || null, email: r.guardianEmail || null, isPrimaryPayer: true }] }
               : undefined,
           },
         });
@@ -551,7 +688,7 @@ exports.importStudents = async (req, res, next) => {
     res.json({
       created, skipped, errors: [],
       message: `Imported ${created} student${created === 1 ? '' : 's'}` +
-               (skipped ? `. ${skipped} already on file (matched by LRN).` : '.'),
+               (skipped ? `. ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped (matched by LRN or name).` : '.'),
     });
   } catch (err) { next(err); }
 };
