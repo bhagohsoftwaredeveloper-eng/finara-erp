@@ -12,6 +12,14 @@ describe('buildReleaseEntry', () => {
     expect(sum(lines, 'debit')).toBeCloseTo(sum(lines, 'credit'), 2);
   });
 
+  test('owner funded: DR 1104 / CR owner account, company cash untouched', () => {
+    const { lines } = buildReleaseEntry({ requestNo: 'CR-000003', amount: 15000, ownerAccountId: 77 });
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ accountCode: '1104', debit: 15000 });
+    expect(lines[1]).toMatchObject({ accountId: 77, credit: 15000 });
+    expect(sum(lines, 'debit')).toBeCloseTo(sum(lines, 'credit'), 2);
+  });
+
   test('rejects a non-positive amount', () => {
     expect(() => buildReleaseEntry({ requestNo: 'CR-1', amount: 0, cashAccountCode: '1010' }))
       .toThrow(/greater than zero/i);

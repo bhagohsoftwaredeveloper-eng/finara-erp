@@ -205,7 +205,7 @@ exports.cancel = transition(
 exports.release = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { releasedAmount, cashAccountCode, releasedBy, releasedDate, items, denominations } = req.body;
+    const { releasedAmount, cashAccountCode, releasedBy, releasedDate, items, denominations, fundedByOwnerAccountId } = req.body;
 
     const cr = await prisma.cashRequest.findFirst({
       where: { id, businessId: req.businessId },
@@ -225,10 +225,20 @@ exports.release = async (req, res, next) => {
     if (!cashAccount) throw createError(`Cash account ${cashAccountCode} does not exist`, 400);
 
     // Throws on bad input before anything is written
-    const { lines } = buildReleaseEntry({ requestNo: cr.requestNo, amount, cashAccountCode });
+    let ownerAccountId = null;
+    if (fundedByOwnerAccountId) {
+      const owner = await prisma.account.findFirst({
+        where: { id: Number(fundedByOwnerAccountId), businessId: req.businessId, isActive: true },
+        select: { id: true },
+      });
+      if (!owner) throw createError('Owner account not found', 400);
+      ownerAccountId = owner.id;
+    }
+    const { lines } = buildReleaseEntry({ requestNo: cr.requestNo, amount, cashAccountCode, ownerAccountId });
 
     // Cash handed over must be counted by denomination when the business enables it
-    const count = await resolveCount({
+    // Owner-funded cash never passes through company cash, so nothing to count.
+    const count = ownerAccountId ? null : await resolveCount({
       businessId: req.businessId, accountCode: cashAccountCode, amount, denominations,
     }).catch((e) => { throw createError(e.message, e.status || 400); });
 

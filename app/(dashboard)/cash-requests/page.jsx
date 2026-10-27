@@ -234,6 +234,12 @@ function ReleaseModal({ request, accounts, accountMap, onClose, onDone }) {
     releasedDate:    todayStr(),
     releasedBy:      '',
   });
+  // Optional: the owner supplied the cash (DR cash / CR owner account).
+  const [ownerFunded, setOwnerFunded] = useState(false);
+  const [ownerAccountId, setOwnerAccountId] = useState(() => {
+    const a = accounts.find((x) => x.accountCode === '2540');
+    return a ? String(a.id) : '';
+  });
   // The requester doesn't pick the GL account — the person releasing the
   // cash does, once, right before it's handed over.
   const [items, setItems] = useState(() => (request.items || []).map((i) => {
@@ -256,11 +262,13 @@ function ReleaseModal({ request, accounts, accountMap, onClose, onDone }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!(Number(form.releasedAmount) > 0)) { toast.error('Enter an amount greater than zero'); return; }
-    if (dn.error) { toast.error(dn.error); return; }
+    if (dn.error && !ownerFunded) { toast.error(dn.error); return; }
+    if (ownerFunded && !ownerAccountId) { toast.error('Select the owner account'); return; }
     setSaving(true);
     try {
       const payload = {
         ...form,
+        fundedByOwnerAccountId: ownerFunded ? Number(ownerAccountId) : null,
         denominations: dn.lines,
         items: items.map(({ id, accountId }) => ({ id, accountId: accountId || null })),
       };
@@ -351,7 +359,7 @@ function ReleaseModal({ request, accounts, accountMap, onClose, onDone }) {
               </select>
             </div>
 
-            {dn.required && (
+            {dn.required && !ownerFunded && (
               <DenominationCounter {...dn.counterProps} title="Count the cash being released" />
             )}
 
@@ -368,9 +376,25 @@ function ReleaseModal({ request, accounts, accountMap, onClose, onDone }) {
                 onChange={(e) => setForm((f) => ({ ...f, releasedBy: e.target.value }))} />
             </div>
 
+            <div className="form-group">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={ownerFunded}
+                  onChange={(e) => setOwnerFunded(e.target.checked)} />
+                Funded by owner (owner supplied this cash)
+              </label>
+              {ownerFunded && (
+                <div className="mt-2">
+                  <label className="label">Owner Account *</label>
+                  <AccountSelect value={ownerAccountId} onChange={setOwnerAccountId}
+                    accounts={accounts} placeholder="— e.g. Due To Owner —" />
+                </div>
+              )}
+            </div>
+
             <p className="text-xs text-gray-500">
-              Posts <strong>DR 1104 Advances</strong> / <strong>CR {form.cashAccountCode}</strong>.
+              Posts <strong>DR 1104 Advances</strong> / <strong>CR {ownerFunded ? 'Owner account' : form.cashAccountCode}</strong>.
               The amount stays outstanding until liquidated.
+              {ownerFunded && ' Company cash is not touched; Cash Source is only used for any change or reimbursement at liquidation.'}
             </p>
           </div>
           <div className="modal-footer">

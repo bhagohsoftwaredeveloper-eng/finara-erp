@@ -11,11 +11,22 @@
 
 const ADVANCES_ACCOUNT = '1104'; // Advances to Officers & Employees
 
-function buildReleaseEntry({ requestNo, amount, cashAccountCode }) {
+// ownerAccountId: the owner hands the cash straight to the holder, so company
+// cash is never touched — DR 1104 / CR owner account (e.g. Due To Owner).
+function buildReleaseEntry({ requestNo, amount, cashAccountCode, ownerAccountId }) {
   const amt = Number(amount);
   if (!(amt > 0)) throw new Error('Released amount must be greater than zero');
-  if (!cashAccountCode) throw new Error('A cash account is required to release cash');
 
+  if (ownerAccountId) {
+    return {
+      lines: [
+        { accountCode: ADVANCES_ACCOUNT,     debit: amt,  description: `Cash advance — ${requestNo}` },
+        { accountId: Number(ownerAccountId), credit: amt, description: `Owner funded cash — ${requestNo}` },
+      ],
+    };
+  }
+
+  if (!cashAccountCode) throw new Error('A cash account is required to release cash');
   return {
     lines: [
       { accountCode: ADVANCES_ACCOUNT, debit: amt,  description: `Cash advance — ${requestNo}` },
