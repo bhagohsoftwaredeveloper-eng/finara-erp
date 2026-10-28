@@ -4,8 +4,10 @@ Some advances are paid out of the bosses' personal accounts, not company cash. F
 
 | Step | Entry |
 |---|---|
-| Release | DR 1104 / CR Due To Owner |
-| Liquidation | DR expense (e.g. 6110 Salaries) / CR 1104 |
+| Release | DR 1104 Advances to Officers & Employees / CR Due To Owner |
+| Liquidation | DR expense (e.g. 6110 Salaries and Wages) / CR 1104 Advances to Officers & Employees |
+
+Account names follow the current COA. The client's note calls 1104 "Cash on Hand" and puts Due To Owner at 1010. In the COA, 1104 is Advances to Officers & Employees and 1010 is Cash on Hand, and neither changes. Due To Owner is a new Liability account the client adds (e.g. 2540).
 
 The Release form can already post this through a "Funded by owner" checkbox (commit 1bb2a9f). The client looked under **Cash Source** instead. That field is a hardcoded list (1010, 1011, 1012, 1020), so accounts added to the COA never appear in it.
 
@@ -41,7 +43,7 @@ Removed: `fundedByOwnerAccountId`, the `ownerAccountId` branch of `buildReleaseE
 Release modal:
 - **Cash Source:** a select with two optgroups, "Company cash" and "Owner's personal funds". The page loads it once from `cash-sources`. It defaults to 1010 when present, otherwise to the first account in the list.
 - **Empty owner group:** a hint appears under the field: "To release the owner's own money, add a "Due To Owner" account (type: Liability) in Chart of Accounts."
-- **Posting line:** "Posts DR 1104 Advances / CR <code> <name>." For an owner source it adds: "Company cash is not touched. Any sukli or extra spending at liquidation goes back to <code>."
+- **Posting line:** "Posts DR 1104 Advances to Officers & Employees / CR <code> <name>." Both names are read from the business's COA, not hardcoded. For an owner source it adds: "Company cash is not touched. Any sukli or extra spending at liquidation goes back to <code>."
 
 Liquidate modal: the variance label names the account the difference posts to, e.g. "Sukli to return → 2540 Due To Owner".
 
