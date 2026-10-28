@@ -31,6 +31,8 @@ router.post('/transactions',    authorize('ADMIN','MANAGER','ACCOUNTANT'), c.cre
 // ── Items ─────────────────────────────────────────────────────
 router.get   ('/',      c.listItems);
 router.post  ('/',      authorize('ADMIN','MANAGER','ACCOUNTANT'), c.createItem);
+router.get   ('/export', c.exportItems);
+router.post  ('/import', authorize('ADMIN','MANAGER','ACCOUNTANT'), c.importItems);
 router.get   ('/:id',   c.getItem);
 router.put   ('/:id',   authorize('ADMIN','MANAGER','ACCOUNTANT'), c.updateItem);
 router.delete('/:id',   authorize('ADMIN','MANAGER'),              c.deleteItem);

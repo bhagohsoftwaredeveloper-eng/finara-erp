@@ -1,6 +1,10 @@
 const prisma = require('../config/database');
 const glPost = require('../utils/glPost');
-const { packagingFromBody } = require('../utils/inventoryImport');
+const { recordAudit } = require('../utils/audit');
+const {
+  packagingFromBody, COLUMNS, MAX_ROWS, TEMPLATE_ROW, findHeaderRow, guessMapping, validateMapping,
+  readRows, planImport, toPlanItem, exportRow, nextSkuNumber, formatSku,
+} = require('../utils/inventoryImport');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function pad(n, len = 6) { return String(n).padStart(len, '0'); }
@@ -11,12 +15,7 @@ async function nextSku(businessId) {
     where: { businessId, sku: { startsWith: 'SKU-' } },
     select: { sku: true },
   });
-  let max = 0;
-  for (const { sku } of rows) {
-    const m = /^SKU-(\d+)$/.exec(sku);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return 'SKU-' + pad(max + 1, 4);
+  return formatSku(nextSkuNumber(rows.map((r) => r.sku)));
 }
 
 async function nextTxnNo() {
@@ -255,6 +254,111 @@ exports.deleteItem = async (req, res, next) => {
       data: { isActive: false },
     });
     res.json({ message: 'Item deactivated' });
+  } catch (e) { next(e); }
+};
+
+// ── Bulk upload / download ────────────────────────────────────────────────────
+// Every rule lives in utils/inventoryImport.js; these handlers only load the
+// business's items and categories and write the plan.
+const ITEM_COLUMNS = {
+  id: true, sku: true, name: true, isActive: true, unit: true, description: true,
+  costPrice: true, sellingPrice: true, reorderLevel: true, warehouseLocation: true,
+  weightPerPackKg: true, packsPerCase: true, pcsPerPack: true,
+  category: { select: { name: true } },
+};
+
+exports.importItems = async (req, res, next) => {
+  try {
+    const { grid, mapping: chosen, dryRun = false } = req.body || {};
+    if (!Array.isArray(grid) || grid.length === 0) return res.status(400).json({ error: 'The file is empty.' });
+
+    const headerIndex = findHeaderRow(grid);
+    if (headerIndex < 0) {
+      return res.status(400).json({ error: "Couldn't find the header row. The file needs column names such as Product Code and Item Name." });
+    }
+    const header = (grid[headerIndex] || []).map((c) => String(c ?? '').trim());
+    const mapping = chosen ?? guessMapping(header);
+    const mappingError = validateMapping(mapping, header);
+    if (mappingError) return res.status(400).json({ error: mappingError });
+
+    const rows = readRows(grid, headerIndex, mapping);
+    if (!rows.length) return res.status(400).json({ error: 'There are no items below the header row.' });
+    if (rows.length > MAX_ROWS) return res.status(400).json({ error: `Upload at most ${MAX_ROWS} items at a time.` });
+
+    const [items, categories] = await Promise.all([
+      prisma.inventoryItem.findMany({ where: { businessId: req.businessId }, select: ITEM_COLUMNS }),
+      prisma.inventoryCategory.findMany({
+        where: { businessId: req.businessId, isActive: true },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const plan = planImport(rows, items.map(toPlanItem), categories, nextSkuNumber(items.map((i) => i.sku)));
+    const result = {
+      header,
+      mapping,
+      fields: COLUMNS,
+      ignoredHeaders: header.filter((h, i) => h && !mapping[i]),
+      summary: plan.summary,
+      newCategories: plan.newCategories,
+      rows: plan.rows,
+    };
+
+    if (dryRun) return res.json(result);
+    if (plan.summary.errors) {
+      const n = plan.summary.errors;
+      return res.status(422).json({ error: `${n} row${n === 1 ? ' has' : 's have'} errors. Nothing was imported.`, ...result });
+    }
+
+    const catIds = new Map(categories.map((c) => [c.name.trim().toLowerCase(), c.id]));
+    await prisma.$transaction(async (tx) => {
+      for (const name of plan.newCategories) {
+        const cat = await tx.inventoryCategory.create({ data: { businessId: req.businessId, name, type: 'PRODUCT' } });
+        catIds.set(name.trim().toLowerCase(), cat.id);
+      }
+      const categoryId = (name) => (name ? catIds.get(name.trim().toLowerCase()) ?? null : null);
+      if (plan.creates.length) {
+        await tx.inventoryItem.createMany({
+          data: plan.creates.map(({ category, ...fields }) => ({
+            ...fields, businessId: req.businessId, categoryId: categoryId(category),
+          })),
+        });
+      }
+      for (const { id, data } of plan.updates) {
+        const { category, ...fields } = data;
+        await tx.inventoryItem.updateMany({
+          where: { id, businessId: req.businessId },
+          data: { ...fields, ...(category !== undefined && { categoryId: categoryId(category) }) },
+        });
+      }
+    }, { timeout: 60000 });
+
+    const done = {
+      created: plan.creates.length,
+      updated: plan.updates.length,
+      unchanged: plan.summary.unchanged,
+      categoriesCreated: plan.newCategories.length,
+    };
+    await recordAudit({
+      req, action: 'IMPORT', entity: 'InventoryItem',
+      summary: `Imported inventory items: ${done.created} created, ${done.updated} updated, `
+        + `${done.categoriesCreated} categor${done.categoriesCreated === 1 ? 'y' : 'ies'} added`,
+    });
+    res.json(done);
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Items changed while importing. Check the file again.' });
+    next(e);
+  }
+};
+
+exports.exportItems = async (req, res, next) => {
+  try {
+    if (req.query.template === '1') return res.json({ columns: COLUMNS, rows: [TEMPLATE_ROW] });
+    const items = await prisma.inventoryItem.findMany({
+      where: { businessId: req.businessId, isActive: true },
+      select: ITEM_COLUMNS,
+      orderBy: { name: 'asc' },
+    });
+    res.json({ columns: COLUMNS, rows: items.map(exportRow) });
   } catch (e) { next(e); }
 };
 
