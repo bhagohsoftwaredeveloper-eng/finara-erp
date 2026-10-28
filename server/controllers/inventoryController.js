@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const glPost = require('../utils/glPost');
+const { packagingFromBody } = require('../utils/inventoryImport');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function pad(n, len = 6) { return String(n).padStart(len, '0'); }
@@ -156,6 +157,9 @@ exports.createItem = async (req, res, next) => {
     inventoryAccountId, cogsAccountId, revenueAccountId,
   } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
+  let packaging;
+  try { packaging = packagingFromBody(req.body); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
   try {
     const finalSku = (sku && sku.trim()) ? sku.trim() : await nextSku(req.businessId);
     const item = await prisma.inventoryItem.create({
@@ -170,6 +174,7 @@ exports.createItem = async (req, res, next) => {
         inventoryAccountId: inventoryAccountId ? Number(inventoryAccountId) : null,
         cogsAccountId:      cogsAccountId      ? Number(cogsAccountId)      : null,
         revenueAccountId:   revenueAccountId   ? Number(revenueAccountId)   : null,
+        ...packaging,
       },
       include: {
         category:         true,
@@ -192,6 +197,9 @@ exports.updateItem = async (req, res, next) => {
     unit, costPrice, sellingPrice, reorderLevel, warehouseLocation,
     inventoryAccountId, cogsAccountId, revenueAccountId, isActive,
   } = req.body;
+  let packaging;
+  try { packaging = packagingFromBody(req.body, { partial: true }); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
   try {
     // Tenant guard: the item must belong to the caller's business.
     const owned = await prisma.inventoryItem.findFirst({
@@ -216,6 +224,7 @@ exports.updateItem = async (req, res, next) => {
         inventoryAccountId: inventoryAccountId !== undefined ? (inventoryAccountId ? Number(inventoryAccountId) : null) : undefined,
         cogsAccountId:      cogsAccountId      !== undefined ? (cogsAccountId      ? Number(cogsAccountId)      : null) : undefined,
         revenueAccountId:   revenueAccountId   !== undefined ? (revenueAccountId   ? Number(revenueAccountId)   : null) : undefined,
+        ...packaging,
       },
       include: {
         category:         true,
