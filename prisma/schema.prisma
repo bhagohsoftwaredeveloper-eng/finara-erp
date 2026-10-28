@@ -804,6 +804,9 @@ model InventoryItem {
   currentStock        Decimal                @default(0) @db.Decimal(12, 3)
   reorderLevel        Decimal                @default(0) @db.Decimal(12, 3)
   warehouseLocation   String?                @db.VarChar(100)
+  weightPerPackKg     Decimal?               @db.Decimal(10, 3)
+  packsPerCase        Int?
+  pcsPerPack          Int?
   inventoryAccountId  Int?
   inventoryAccount    Account?               @relation("InvAssetAccount",   fields: [inventoryAccountId], references: [id])
   cogsAccountId       Int?
