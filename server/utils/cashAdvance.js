@@ -1,9 +1,10 @@
 /**
  * Cash advance accounting rules.
  *
- * Release makes the holder accountable:  DR 1104 / CR cash.
+ * Release makes the holder accountable:  DR 1104 / CR the cash source — company
+ * cash, or the owner's account when the owner handed over their own money.
  * Liquidation clears that accountability against actual receipts, settling any
- * difference in cash. Pure functions — no database, no Prisma.
+ * difference against the same source. Pure functions — no database, no Prisma.
  *
  * Line shape returned matches what glPost.post() accepts:
  *   { accountId?, accountCode?, debit?, credit?, description }
@@ -11,26 +12,33 @@
 
 const ADVANCES_ACCOUNT = '1104'; // Advances to Officers & Employees
 
-// ownerAccountId: the owner hands the cash straight to the holder, so company
-// cash is never touched — DR 1104 / CR owner account (e.g. Due To Owner).
-function buildReleaseEntry({ requestNo, amount, cashAccountCode, ownerAccountId }) {
+// Where released cash may come from. CASH is company money (the 1010–1099 range
+// the Expenses page also offers as payment accounts); OWNER is the owner's
+// personal money, booked as what the company owes them (e.g. 2540 Due To Owner).
+const OWNER_NAME = /\b(owner|stockholder|shareholder|proprietor|partner)/i;
+
+function cashSourceKind(account) {
+  if (!account || account.isActive === false) return null;
+  const code = Number(account.accountCode);
+  if (account.accountType === 'ASSET' && Number.isInteger(code) && code >= 1010 && code <= 1099) return 'CASH';
+  if (account.accountType === 'LIABILITY' && OWNER_NAME.test(account.accountName || '')) return 'OWNER';
+  return null;
+}
+
+// sourceKind: cashSourceKind() of the cash source; only changes the wording.
+function buildReleaseEntry({ requestNo, amount, cashAccountCode, sourceKind }) {
   const amt = Number(amount);
   if (!(amt > 0)) throw new Error('Released amount must be greater than zero');
-
-  if (ownerAccountId) {
-    return {
-      lines: [
-        { accountCode: ADVANCES_ACCOUNT,     debit: amt,  description: `Cash advance — ${requestNo}` },
-        { accountId: Number(ownerAccountId), credit: amt, description: `Owner funded cash — ${requestNo}` },
-      ],
-    };
-  }
-
   if (!cashAccountCode) throw new Error('A cash account is required to release cash');
+
   return {
     lines: [
-      { accountCode: ADVANCES_ACCOUNT, debit: amt,  description: `Cash advance — ${requestNo}` },
-      { accountCode: cashAccountCode,  credit: amt, description: `Cash released — ${requestNo}` },
+      { accountCode: ADVANCES_ACCOUNT, debit: amt, description: `Cash advance — ${requestNo}` },
+      {
+        accountCode: cashAccountCode,
+        credit: amt,
+        description: sourceKind === 'OWNER' ? `Owner funded cash — ${requestNo}` : `Cash released — ${requestNo}`,
+      },
     ],
   };
 }
@@ -80,4 +88,4 @@ function buildLiquidationEntry({
   return { lines: out, variance, mode };
 }
 
-module.exports = { buildReleaseEntry, buildLiquidationEntry, ADVANCES_ACCOUNT };
+module.exports = { buildReleaseEntry, buildLiquidationEntry, cashSourceKind, ADVANCES_ACCOUNT };
