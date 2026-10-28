@@ -2,7 +2,7 @@
 
 A client keeps their product list in Excel and needs to load it into Inventory and maintain it in bulk. Their sheet:
 
-| PRODUCT CODE | PRODUCTS | PRODUCTS | WEIGHT / PACK | PACKS / CASE | KG / CASE | PCS / PACK |
+| PRODUCT CODE | PRODUCTS | CATEGORY | WEIGHT / PACK | PACKS / CASE | KG / CASE | PCS / PACK |
 |---|---|---|---|---|---|---|
 | 1000012713 | MAESTRO SHOESTRING FRIES | FRIES | 1kg | 10 packs | 10 kg | N/A |
 | J000073-2 | MAESTRO HUNGARIAN SAUSAGE | SAUSAGE, H… | 1kg | 10 packs | 10 kg | 11 pcs |
@@ -43,7 +43,7 @@ The item form gets a **Packaging** section with the three fields and a read-only
 | Kg / Case | (checked only) | Kg per Case |
 | Pcs / Pack | `pcsPerPack` | Pieces per Pack, Pcs per Pack |
 
-Header matching ignores case and everything except letters and digits, so "WEIGHT / PACK" and "weightpack" are the same. Headers are taken left to right. Each one goes to the first field in table order that accepts it and is still free. So the client's first PRODUCTS becomes Item Name and the second becomes Category. Headers that match nothing are ignored and listed in the check result.
+Header matching ignores case and everything except letters and digits, so "WEIGHT / PACK" and "weightpack" are the same. Headers are taken left to right. Each one goes to the first field in table order that accepts it and is still free. So the client's sheet maps directly: PRODUCTS becomes Item Name and CATEGORY becomes Category. A sheet with two PRODUCTS columns (like the client's original) still works, because the second one falls through to Category. Headers that match nothing are ignored and listed in the check result.
 
 ## Reading the file (browser)
 
@@ -138,7 +138,7 @@ Header matching ignores case and everything except letters and digits, so "WEIGH
 ## Tests
 
 - **`inventoryImport` unit tests** cover:
-  - header normalisation and left-to-right assignment, including the client's two PRODUCTS columns
+  - header normalisation and left-to-right assignment: the client's PRODUCTS + CATEGORY sheet, and a sheet with two PRODUCTS columns
   - header-row detection under a title row
   - each value parser, including "1kg", "500g", "10 packs", "11 pcs", "N/A", "₱1,250.00", negatives and junk text
   - the Kg / Case warnings
