@@ -3,7 +3,7 @@ const { createError } = require('../middleware/errorHandler');
 const { recordAudit } = require('../utils/audit');
 const { nextDocNumber } = require('../utils/docNumber');
 const glPost = require('../utils/glPost');
-const { buildReleaseEntry, buildLiquidationEntry } = require('../utils/cashAdvance');
+const { buildReleaseEntry, buildLiquidationEntry, cashSourceKind } = require('../utils/cashAdvance');
 const { resolveCount, saveCount } = require('../utils/cashDenomination');
 const { matchAccountCode, KEYWORD_RULES, FALLBACK_ACCOUNT } = require('../utils/accountMap');
 
@@ -81,7 +81,13 @@ exports.getOne = async (req, res, next) => {
       },
       orderBy: { id: 'asc' },
     });
-    res.json({ ...cr, denominationCounts });
+    const cashAccount = cr.cashAccountCode
+      ? await prisma.account.findFirst({
+          where: { businessId: req.businessId, accountCode: cr.cashAccountCode },
+          select: { accountName: true },
+        })
+      : null;
+    res.json({ ...cr, denominationCounts, cashAccountName: cashAccount?.accountName ?? null });
   } catch (err) { next(err); }
 };
 
@@ -205,7 +211,14 @@ exports.cancel = transition(
 exports.release = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { releasedAmount, cashAccountCode, releasedBy, releasedDate, items, denominations, fundedByOwnerAccountId } = req.body;
+    const { releasedAmount, cashAccountCode, releasedBy, releasedDate, items, denominations } = req.body;
+
+    // A Release form loaded before Cash Source listed the owner's accounts still
+    // sends the old checkbox, with company cash as its cashAccountCode. Posting
+    // that would credit the wrong account, so make the user reload instead.
+    if (req.body.fundedByOwnerAccountId) {
+      throw createError("This page is out of date. Reload it and choose the owner's account under Cash Source.", 400);
+    }
 
     const cr = await prisma.cashRequest.findFirst({
       where: { id, businessId: req.businessId },
@@ -220,25 +233,19 @@ exports.release = async (req, res, next) => {
 
     const cashAccount = await prisma.account.findFirst({
       where: { accountCode: String(cashAccountCode), businessId: req.businessId },
-      select: { id: true },
+      select: { id: true, accountCode: true, accountName: true, accountType: true, isActive: true },
     });
     if (!cashAccount) throw createError(`Cash account ${cashAccountCode} does not exist`, 400);
+    const sourceKind = cashSourceKind(cashAccount);
+    if (!sourceKind) throw createError(`${cashAccountCode} can't be used as a cash source`, 400);
 
     // Throws on bad input before anything is written
-    let ownerAccountId = null;
-    if (fundedByOwnerAccountId) {
-      const owner = await prisma.account.findFirst({
-        where: { id: Number(fundedByOwnerAccountId), businessId: req.businessId, isActive: true },
-        select: { id: true },
-      });
-      if (!owner) throw createError('Owner account not found', 400);
-      ownerAccountId = owner.id;
-    }
-    const { lines } = buildReleaseEntry({ requestNo: cr.requestNo, amount, cashAccountCode, ownerAccountId });
+    const { lines } = buildReleaseEntry({ requestNo: cr.requestNo, amount, cashAccountCode, sourceKind });
 
-    // Cash handed over must be counted by denomination when the business enables it
-    // Owner-funded cash never passes through company cash, so nothing to count.
-    const count = ownerAccountId ? null : await resolveCount({
+    // Cash handed over must be counted by denomination when the business enables
+    // it. resolveCount returns null for anything that isn't physical cash, so an
+    // owner source never asks for a count.
+    const count = await resolveCount({
       businessId: req.businessId, accountCode: cashAccountCode, amount, denominations,
     }).catch((e) => { throw createError(e.message, e.status || 400); });
 
@@ -296,6 +303,22 @@ exports.release = async (req, res, next) => {
 // rules at liquidation, so this is a convenience, not the authority.
 exports.accountMap = (_req, res) => {
   res.json({ rules: KEYWORD_RULES, fallback: FALLBACK_ACCOUNT });
+};
+
+// The Release form's Cash Source list: company cash and the owner's personal
+// funds, decided by the same rule release() enforces.
+exports.cashSources = async (req, res, next) => {
+  try {
+    const accounts = await prisma.account.findMany({
+      where: { businessId: req.businessId, isActive: true, accountType: { in: ['ASSET', 'LIABILITY'] } },
+      select: { id: true, accountCode: true, accountName: true, accountType: true, isActive: true },
+      orderBy: { accountCode: 'asc' },
+    });
+    const pick = (kind) => accounts
+      .filter((a) => cashSourceKind(a) === kind)
+      .map(({ id, accountCode, accountName }) => ({ id, accountCode, accountName }));
+    res.json({ cash: pick('CASH'), owner: pick('OWNER') });
+  } catch (err) { next(err); }
 };
 
 // Fill in accountId for any line that arrived without one, using the same
