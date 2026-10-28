@@ -2,11 +2,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { inventory as inventoryApi, accounts as accountsApi } from '@/lib/api';
 import { printDocument, phpFmt } from '@/lib/print';
+import { kgPerCase, packagingLabel } from '@/lib/packaging';
+import ImportItemsModal, { downloadItemsFile } from '@/components/inventory/ImportItemsModal';
 import toast from 'react-hot-toast';
 import {
   Package, Plus, Search, RefreshCw, Printer, Edit2,
   Trash2, Tag, ChevronDown, X, Check, AlertTriangle,
-  Layers, Warehouse,
+  Layers, Warehouse, Box, Download, Upload,
 } from 'lucide-react';
 
 const UNITS = ['pcs', 'box', 'pack', 'set', 'kg', 'g', 'L', 'mL', 'sheet', 'roll', 'ream', 'pair', 'unit', 'lot'];
@@ -17,6 +19,7 @@ const BLANK_ITEM = {
   sku: '', name: '', description: '', categoryId: '',
   unit: 'pcs', costPrice: '', sellingPrice: '', reorderLevel: '',
   warehouseLocation: '', inventoryAccountId: '', cogsAccountId: '', revenueAccountId: '',
+  weightPerPackKg: '', packsPerCase: '', pcsPerPack: '',
 };
 
 const BLANK_CAT = { name: '', type: 'PRODUCT', description: '' };
@@ -95,6 +98,9 @@ function ItemModal({ item, categories, accounts, onClose, onSaved }) {
     inventoryAccountId: item.inventoryAccountId || '',
     cogsAccountId:      item.cogsAccountId || '',
     revenueAccountId:   item.revenueAccountId || '',
+    weightPerPackKg:    item.weightPerPackKg != null ? String(Number(item.weightPerPackKg)) : '',
+    packsPerCase:       item.packsPerCase ?? '',
+    pcsPerPack:         item.pcsPerPack ?? '',
   } : BLANK_ITEM);
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -180,6 +186,27 @@ function ItemModal({ item, categories, accounts, onClose, onSaved }) {
               <input className="input w-full" type="number" min="0" step="0.01" value={form.sellingPrice} onChange={set('sellingPrice')} placeholder="0.00" />
             </div>
 
+            {/* Packaging */}
+            <div className="col-span-2 text-xs font-bold uppercase tracking-wide text-blue-600 mt-2 mb-1 flex items-center gap-1">
+              <Box className="w-3.5 h-3.5" /> Packaging
+            </div>
+            <div>
+              <label className="label">Weight per Pack (kg)</label>
+              <input className="input w-full" type="number" min="0" step="0.001" value={form.weightPerPackKg} onChange={set('weightPerPackKg')} placeholder="e.g. 1" />
+            </div>
+            <div>
+              <label className="label">Packs per Case</label>
+              <input className="input w-full" type="number" min="0" step="1" value={form.packsPerCase} onChange={set('packsPerCase')} placeholder="e.g. 10" />
+            </div>
+            <div>
+              <label className="label">Pcs per Pack</label>
+              <input className="input w-full" type="number" min="0" step="1" value={form.pcsPerPack} onChange={set('pcsPerPack')} placeholder="e.g. 11" />
+            </div>
+            <div>
+              <label className="label">Kg per Case</label>
+              <div className="input w-full bg-gray-50 text-gray-600">{kgPerCase(form.weightPerPackKg, form.packsPerCase) ?? '—'}</div>
+            </div>
+
             {/* COA Linking */}
             <div className="col-span-2 text-xs font-bold uppercase tracking-wide text-blue-600 mt-2 mb-1 flex items-center gap-1">
               <Layers className="w-3.5 h-3.5" /> Chart of Accounts
@@ -228,6 +255,7 @@ export default function ItemsPage() {
   const [loading,    setLoading]    = useState(true);
   const [modal,      setModal]      = useState(null); // null | { type:'item'|'cat', data }
   const [catPanel,   setCatPanel]   = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,6 +290,13 @@ export default function ItemsPage() {
       toast.success('Item deactivated');
       load();
     } catch { toast.error('Failed'); }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try { await downloadItemsFile(); }
+    catch (err) { toast.error(err.response?.data?.error || err.message || 'Download failed'); }
+    finally { setDownloading(false); }
   };
 
   const handlePrint = async () => {
@@ -328,12 +363,18 @@ export default function ItemsPage() {
           <h1 className="page-title">Item Master</h1>
           <p className="page-subtitle">Manage inventory items & categories</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={() => setCatPanel(true)} className="btn-secondary flex items-center gap-2">
             <Tag className="w-4 h-4" /> Categories
           </button>
           <button onClick={handlePrint} className="btn-secondary flex items-center gap-2">
             <Printer className="w-4 h-4" /> Print
+          </button>
+          <button onClick={handleDownload} disabled={downloading} className="btn-secondary flex items-center gap-2">
+            <Download className="w-4 h-4" /> {downloading ? 'Preparing…' : 'Download'}
+          </button>
+          <button onClick={() => setModal({ type: 'import' })} className="btn-secondary flex items-center gap-2">
+            <Upload className="w-4 h-4" /> Upload
           </button>
           <button onClick={() => setModal({ type: 'item', data: null })} className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> New Item
@@ -404,6 +445,7 @@ export default function ItemsPage() {
                   <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.sku}</td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{item.name}</div>
+                    {packagingLabel(item) && <div className="text-xs text-gray-400 mt-0.5">{packagingLabel(item)}</div>}
                     {item.warehouseLocation && <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><Warehouse className="w-3 h-3" />{item.warehouseLocation}</div>}
                   </td>
                   <td className="px-4 py-3">
@@ -462,6 +504,12 @@ export default function ItemsPage() {
           cat={modal.data}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); }}
+        />
+      )}
+      {modal?.type === 'import' && (
+        <ImportItemsModal
+          onClose={() => setModal(null)}
+          onImported={() => { setModal(null); load(); }}
         />
       )}
 
