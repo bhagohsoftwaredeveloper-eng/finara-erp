@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { school as sApi, accounts as aApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/auth';
+import { parseCsv } from '@/lib/csv';
 import toast from 'react-hot-toast';
 import {
   Loader2, Plus, Calendar, Layers, Users, Receipt, Wallet, Copy, Save, Trash2,
@@ -148,37 +149,6 @@ function RevenuePolicy() {
 }
 
 // ── Student roster import ──────────────────────────────────────────────────
-/**
- * Parse a CSV into row objects.
- *
- * Handles quoted fields containing commas and escaped quotes, because a
- * Philippine address ("123 Rizal St., Tagum City") breaks a naive split and
- * would silently shift every column after it.
- */
-function parseCsv(text) {
-  const rows = [];
-  let row = [], field = '', inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
-      } else field += c;
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ',') {
-      row.push(field); field = '';
-    } else if (c === '\n') {
-      row.push(field); rows.push(row); row = []; field = '';
-    } else if (c !== '\r') {
-      field += c;
-    }
-  }
-  if (field.length || row.length) { row.push(field); rows.push(row); }
-  return rows.filter((r) => r.some((c) => String(c).trim() !== ''));
-}
 
 const IMPORT_COLUMNS = [
   'lastName', 'firstName', 'middleName', 'suffix', 'lrn', 'birthDate', 'gender',
