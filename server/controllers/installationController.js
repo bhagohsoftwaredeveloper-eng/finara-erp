@@ -6,6 +6,7 @@ const { timingSafeEqual } = require('crypto');
 const prisma = require('../config/database');
 const { createError } = require('../middleware/errorHandler');
 const { isDue, applyDueSuspension } = require('../utils/licenseSchedule');
+const { readModules } = require('./permissionsController');
 
 const CODE_RE = /^[A-Z0-9][A-Z0-9-]{2,19}$/;
 const MACHINE_RE = /^[0-9a-f]{32}\.[0-9a-f]{32}\.[0-9a-f]{32}$/i;
@@ -29,10 +30,12 @@ function readIdentity(body) {
 // What the installation needs to know: is it licensed right now?
 async function statusOf(biz) {
   if (isDue(biz) && (await applyDueSuspension(biz).catch(() => false))) biz = { ...biz, licenseStatus: 'SUSPENDED' };
+  // The operator controls the installed copy's modules from Settings > Businesses here; it applies them on its next check.
+  const modules = await readModules(biz.id).catch(() => undefined);
   if (biz.licenseStatus === 'ACTIVE') {
-    return { valid: true, licenseId: biz.code, isTrial: false, expiresAt: biz.paidUntil || null };
+    return { valid: true, licenseId: biz.code, isTrial: false, expiresAt: biz.paidUntil || null, modules };
   }
-  return { valid: false, reason: biz.licenseStatus === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING' };
+  return { valid: false, reason: biz.licenseStatus === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING', modules };
 }
 
 // Idempotent: a reinstall on the same PC returns the existing record; a code already bound to a
@@ -47,7 +50,14 @@ exports.register = async (req, res, next) => {
     let biz = await prisma.business.findUnique({ where: { code } });
     if (biz) {
       if (biz.machineId && biz.machineId !== machineId) throw createError('This business code is already registered on another computer.', 409);
-      if (!biz.machineId) biz = await prisma.business.update({ where: { id: biz.id }, data: { machineId } });
+      // Fill in what an earlier registration left out (e.g. the company type).
+      const optional = (k, max) => (req.body[k] ? String(req.body[k]).trim().slice(0, max) : null);
+      const fill = {};
+      if (!biz.machineId) fill.machineId = machineId;
+      for (const [k, max] of [['industry', 80], ['taxType', 20], ['tin', 30], ['email', 150], ['phone', 30], ['address', 2000]]) {
+        if (!biz[k] && optional(k, max)) fill[k] = optional(k, max);
+      }
+      if (Object.keys(fill).length) biz = await prisma.business.update({ where: { id: biz.id }, data: fill });
     } else {
       const optional = (k, max) => (req.body[k] ? String(req.body[k]).trim().slice(0, max) : null);
       biz = await prisma.business.create({

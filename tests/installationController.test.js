@@ -1,6 +1,7 @@
 jest.mock('../server/config/database', () => ({
   business: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
   licenseEvent: { create: jest.fn() },
+  systemSetting: { findUnique: jest.fn() },
 }));
 jest.mock('../server/utils/licenseSchedule', () => ({ isDue: jest.fn(() => false), applyDueSuspension: jest.fn() }));
 
@@ -15,6 +16,7 @@ const run = (fn, body, key = 'secret') => new Promise((resolve, reject) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  prisma.systemSetting.findUnique.mockResolvedValue(null);
   process.env.INSTALL_API_KEY = 'secret';
 });
 
@@ -63,5 +65,21 @@ describe('installations — status', () => {
     expect(await run(ctrl.status, { code: 'BIZ-1', machineId: MID })).toMatchObject({ valid: false, reason: 'NOT_FOUND' });
     prisma.business.findUnique.mockResolvedValue({ code: 'BIZ-1', machineId: OTHER, licenseStatus: 'ACTIVE' });
     expect(await run(ctrl.status, { code: 'BIZ-1', machineId: MID })).toMatchObject({ valid: false, reason: 'MACHINE_MISMATCH' });
+  });
+});
+
+describe('installations — modules and details', () => {
+  test('status carries the modules the operator turned off', async () => {
+    prisma.business.findUnique.mockResolvedValue({ id: 5, code: 'BIZ-1', machineId: MID, licenseStatus: 'ACTIVE', paidUntil: null });
+    prisma.systemSetting.findUnique.mockImplementation(async ({ where }) => (where.businessId_key.key === 'disabledModules' ? { value: '["payroll"]' } : null));
+    const res = await run(ctrl.status, { code: 'BIZ-1', machineId: MID });
+    expect(res.modules).toEqual({ disabled: ['payroll'], adminExempt: false });
+  });
+
+  test('registering again fills in the company type an earlier registration lacked', async () => {
+    prisma.business.findUnique.mockResolvedValue({ id: 5, code: 'BIZ-1', machineId: MID, industry: null, licenseStatus: 'PENDING' });
+    prisma.business.update.mockImplementation(({ data }) => Promise.resolve({ id: 5, code: 'BIZ-1', machineId: MID, licenseStatus: 'PENDING', ...data }));
+    await run(ctrl.register, { code: 'BIZ-1', name: 'X', machineId: MID, industry: 'School' });
+    expect(prisma.business.update.mock.calls[0][0].data).toEqual({ industry: 'School' });
   });
 });
