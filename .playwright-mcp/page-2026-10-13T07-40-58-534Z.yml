@@ -1,0 +1,406 @@
+- generic [ref=f8e1]:
+  - generic [ref=f8e2]:
+    - complementary [ref=f8e3]:
+      - generic [ref=f8e4]:
+        - img "Finara" [ref=f8e5]
+        - button "Collapse sidebar" [ref=f8e6] [cursor=pointer]
+      - navigation [ref=f8e10]:
+        - link "Dashboard" [ref=f8e13] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f8e19]:
+          - paragraph [ref=f8e20]: Accounting
+          - generic [ref=f8e21]:
+            - link "Chart of Accounts" [ref=f8e22] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=f8e26] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=f8e30] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=f8e36]:
+          - paragraph [ref=f8e37]: Sales
+          - generic [ref=f8e38]:
+            - button "Accounts Receivable" [ref=f8e40] [cursor=pointer]
+            - link "Cash Sales" [ref=f8e47] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=f8e51]:
+          - paragraph [ref=f8e52]: School
+          - button "School Billing" [ref=f8e55] [cursor=pointer]
+        - generic [ref=f8e62]:
+          - paragraph [ref=f8e63]: Purchases
+          - generic [ref=f8e64]:
+            - button "Accounts Payable" [ref=f8e66] [cursor=pointer]
+            - link "Purchase Orders" [ref=f8e72] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=f8e77] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=f8e81] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=f8e88]:
+          - paragraph [ref=f8e89]: Payroll
+          - button "Payroll" [ref=f8e92] [cursor=pointer]
+        - generic [ref=f8e101]:
+          - paragraph [ref=f8e102]: Inventory & Assets
+          - generic [ref=f8e103]:
+            - button "Inventory" [ref=f8e105] [cursor=pointer]
+            - link "Fixed Assets" [ref=f8e113] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=f8e118]:
+          - paragraph [ref=f8e119]: Banking & Compliance
+          - generic [ref=f8e120]:
+            - link "Bank Reconciliation" [ref=f8e121] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=f8e126] [cursor=pointer]
+            - generic [ref=f8e133]:
+              - button "Remittances" [ref=f8e134] [cursor=pointer]
+              - generic [ref=f8e140]:
+                - link "Dashboard" [ref=f8e141] [cursor=pointer]:
+                  - /url: /remittance
+                - link "Gov't Records" [ref=f8e142] [cursor=pointer]:
+                  - /url: /remittance/records
+                - link "Daily Report" [ref=f8e143] [cursor=pointer]:
+                  - /url: /remittance/daily
+        - generic [ref=f8e144]:
+          - paragraph [ref=f8e145]: Planning & Reports
+          - generic [ref=f8e146]:
+            - link "Budgeting" [ref=f8e147] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=f8e151] [cursor=pointer]
+      - generic [ref=f8e158]:
+        - link "My Businesses" [ref=f8e159] [cursor=pointer]:
+          - /url: /my-businesses
+        - link "Settings" [ref=f8e164] [cursor=pointer]:
+          - /url: /settings
+        - link "Opening Balances" [ref=f8e168] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - generic [ref=f8e173]:
+          - generic [ref=f8e174]: VB
+          - generic [ref=f8e266]:
+            - generic [ref=f8e267]: admin@ph-erp.com
+            - generic [ref=f8e268]: ADMIN
+          - button "Logout" [ref=f8e175] [cursor=pointer]
+        - paragraph [ref=f8e179]: Finara v1.0.0
+    - generic [ref=f8e180]:
+      - banner [ref=f8e181]:
+        - generic [ref=f8e182]:
+          - heading "Finara ERP" [level=1] [ref=f8e183]
+          - paragraph [ref=f8e184]: Oct 13, 2026
+        - button "Search… ⌘K" [ref=f8e185] [cursor=pointer]:
+          - generic [ref=f8e189]: Search…
+          - generic [ref=f8e190]: ⌘K
+        - button "Beulah Information Technology Services and Business Solutions, Inc." [ref=f8e269] [cursor=pointer]
+        - button "Toggle dark mode" [ref=f8e277] [cursor=pointer]
+        - button "25" [ref=f8e280] [cursor=pointer]
+      - main [ref=f8e203]:
+        - navigation "Breadcrumb" [ref=f8e204]:
+          - list [ref=f8e205]:
+            - listitem [ref=f8e206]:
+              - link "Dashboard" [ref=f8e207] [cursor=pointer]:
+                - /url: /dashboard
+            - listitem [ref=f8e211]:
+              - link "Remittance" [ref=f8e214] [cursor=pointer]:
+                - /url: /remittance
+            - listitem [ref=f8e215]:
+              - generic [ref=f8e218]: Daily
+        - generic [ref=f8e220]:
+          - generic [ref=f8e221]:
+            - generic [ref=f8e222]:
+              - heading "Daily Remittance Report" [level=1] [ref=f8e223]
+              - paragraph [ref=f8e226]: End-of-day summary of all sales, collections, expenses, and disbursements
+            - generic [ref=f8e227]:
+              - button "History" [ref=f8e228] [cursor=pointer]
+              - button "Print" [ref=f8e232] [cursor=pointer]
+          - generic [ref=f8e239]:
+            - generic [ref=f8e240]:
+              - generic [ref=f8e241]: Date
+              - textbox [ref=f8e242]: 2026-10-13
+            - button "Generate from Transactions" [ref=f8e243] [cursor=pointer]
+            - button "Update" [ref=f8e282] [cursor=pointer]
+            - button "Submit" [ref=f8e287] [cursor=pointer]
+            - button "Reset" [ref=f8e291] [cursor=pointer]
+            - generic [ref=f8e295]: DRAFT · Verify Bot
+          - generic [ref=f8e249]:
+            - heading "Cash Count — Start & End of Day" [level=2] [ref=f8e296]
+            - generic [ref=f8e297]:
+              - generic [ref=f8e298]:
+                - button "Cash on Hand (1010)" [ref=f8e299] [cursor=pointer]:
+                  - text: Cash on Hand
+                  - generic [ref=f8e300]: (1010)
+                - button "Petty Cash Fund (1011)" [ref=f8e301] [cursor=pointer]:
+                  - text: Petty Cash Fund
+                  - generic [ref=f8e302]: (1011)
+              - generic [ref=f8e303]:
+                - generic [ref=f8e304]:
+                  - generic [ref=f8e305]: Opening
+                  - generic [ref=f8e306]: ₱100.00
+                  - generic [ref=f8e307]: counted at start of day
+                - generic [ref=f8e308]:
+                  - generic [ref=f8e309]: + Cash in
+                  - generic [ref=f8e310]: ₱5.00
+                - generic [ref=f8e311]:
+                  - generic [ref=f8e312]: − Cash out
+                  - generic [ref=f8e313]: ₱11.00
+                - generic [ref=f8e314]:
+                  - generic [ref=f8e315]: = Expected closing
+                  - generic [ref=f8e316]: ₱94.00
+                - generic [ref=f8e317]:
+                  - generic [ref=f8e318]: Closing counted
+                  - generic [ref=f8e319]: ₱93.00
+                  - generic [ref=f8e320]: Short by ₱1.00
+              - generic [ref=f8e321]:
+                - button "Start of day" [ref=f8e322] [cursor=pointer]
+                - button "End of day (remit)" [ref=f8e326] [cursor=pointer]
+              - generic [ref=f8e330]:
+                - generic [ref=f8e331]:
+                  - heading "Start of day — count the Cash on Hand" [level=4] [ref=f8e332]
+                  - generic [ref=f8e333]:
+                    - generic [ref=f8e334]:
+                      - generic [ref=f8e335]: ₱1,000
+                      - generic [ref=f8e336]: ×
+                      - textbox "Count of ₱1000" [ref=f8e337]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e338]:
+                      - generic [ref=f8e339]: ₱500
+                      - generic [ref=f8e340]: ×
+                      - textbox "Count of ₱500" [ref=f8e341]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e342]:
+                      - generic [ref=f8e343]: ₱200
+                      - generic [ref=f8e344]: ×
+                      - textbox "Count of ₱200" [ref=f8e345]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e346]:
+                      - generic [ref=f8e347]: ₱100
+                      - generic [ref=f8e348]: ×
+                      - textbox "Count of ₱100" [ref=f8e349]:
+                        - /placeholder: "0"
+                        - text: "1"
+                      - generic [ref=f8e350]: ₱100.00
+                    - generic [ref=f8e351]:
+                      - generic [ref=f8e352]: ₱50
+                      - generic [ref=f8e353]: ×
+                      - textbox "Count of ₱50" [ref=f8e354]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e355]:
+                      - generic [ref=f8e356]: ₱20
+                      - generic [ref=f8e357]: ×
+                      - textbox "Count of ₱20" [ref=f8e358]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e359]:
+                      - generic [ref=f8e360]: ₱10
+                      - generic [ref=f8e361]: ×
+                      - textbox "Count of ₱10" [ref=f8e362]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e363]:
+                      - generic [ref=f8e364]: ₱5
+                      - generic [ref=f8e365]: ×
+                      - textbox "Count of ₱5" [ref=f8e366]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e367]:
+                      - generic [ref=f8e368]: ₱1
+                      - generic [ref=f8e369]: ×
+                      - textbox "Count of ₱1" [ref=f8e370]:
+                        - /placeholder: "0"
+                    - generic [ref=f8e371]:
+                      - generic [ref=f8e372]: ₱0.25
+                      - generic [ref=f8e373]: ×
+                      - textbox "Count of ₱0.25" [ref=f8e374]:
+                        - /placeholder: "0"
+                  - generic [ref=f8e375]: "Counted: ₱100.00"
+                - button "Update Count" [ref=f8e378] [cursor=pointer]
+              - generic [ref=f8e379]:
+                - generic [ref=f8e380]:
+                  - generic [ref=f8e381]:
+                    - heading "Good as cash — turned in by payment type" [level=4] [ref=f8e382]
+                    - paragraph [ref=f8e383]: "Cash collected today: ₱0.00 (counted by denomination above)"
+                  - button "Fill with recorded amounts" [ref=f8e384] [cursor=pointer]
+                - table [ref=f8e386]:
+                  - rowgroup [ref=f8e387]:
+                    - row [ref=f8e388]:
+                      - columnheader "Payment type" [ref=f8e389]
+                      - columnheader "Recorded today" [ref=f8e390]
+                      - columnheader "Turned in" [ref=f8e391]
+                      - columnheader "Difference" [ref=f8e392]
+                  - rowgroup [ref=f8e393]:
+                    - row [ref=f8e394]:
+                      - cell "Check Remove check Add check" [ref=f8e395]:
+                        - generic [ref=f8e396]: Check
+                        - generic [ref=f8e397]:
+                          - generic [ref=f8e398]:
+                            - textbox "Check no." [ref=f8e399]
+                            - textbox "Bank" [ref=f8e400]
+                            - textbox "0.00" [ref=f8e401]
+                            - button "Remove check" [ref=f8e402] [cursor=pointer]
+                          - button "Add check" [active] [ref=f8e406] [cursor=pointer]
+                      - cell "₱0.00" [ref=f8e408]
+                      - cell "₱0.00" [ref=f8e409]
+                      - cell "—" [ref=f8e410]
+                    - row [ref=f8e411]:
+                      - cell "GCash" [ref=f8e412]
+                      - cell "₱0.00" [ref=f8e414]
+                      - cell [ref=f8e415]:
+                        - textbox "0.00" [ref=f8e416]
+                      - cell "—" [ref=f8e417]
+                    - row [ref=f8e418]:
+                      - cell "Maya" [ref=f8e419]
+                      - cell "₱0.00" [ref=f8e421]
+                      - cell [ref=f8e422]:
+                        - textbox "0.00" [ref=f8e423]
+                      - cell "—" [ref=f8e424]
+                    - row [ref=f8e425]:
+                      - cell "Bank Transfer" [ref=f8e426]
+                      - cell "₱0.00" [ref=f8e428]
+                      - cell [ref=f8e429]:
+                        - textbox "0.00" [ref=f8e430]
+                      - cell "—" [ref=f8e431]
+                    - row [ref=f8e432]:
+                      - cell "Credit Card" [ref=f8e433]
+                      - cell "₱0.00" [ref=f8e435]
+                      - cell [ref=f8e436]:
+                        - textbox "0.00" [ref=f8e437]
+                      - cell "—" [ref=f8e438]
+                    - row [ref=f8e439]:
+                      - cell "Online" [ref=f8e440]
+                      - cell "₱0.00" [ref=f8e442]
+                      - cell [ref=f8e443]:
+                        - textbox "0.00" [ref=f8e444]
+                      - cell "—" [ref=f8e445]
+                  - rowgroup [ref=f8e446]:
+                    - row [ref=f8e447]:
+                      - cell "Total" [ref=f8e448]
+                      - cell "₱0.00" [ref=f8e449]
+                      - cell "₱0.00" [ref=f8e450]
+                      - cell "₱0.00" [ref=f8e451]
+                - button "Save Turn-over" [ref=f8e453] [cursor=pointer]
+          - generic [ref=f8e454]:
+            - generic [ref=f8e455]:
+              - generic [ref=f8e456]: Total Sales
+              - generic [ref=f8e462]: ₱0.00
+              - generic [ref=f8e463]: "VAT: ₱0.00"
+            - generic [ref=f8e464]:
+              - generic [ref=f8e465]: Cash Received
+              - generic [ref=f8e470]: ₱0.00
+              - generic [ref=f8e471]: AR Collections
+            - generic [ref=f8e472]:
+              - generic [ref=f8e473]: Expenses
+              - generic [ref=f8e478]: ₱9.00
+              - generic [ref=f8e479]: Bills incurred
+            - generic [ref=f8e480]:
+              - generic [ref=f8e481]: Cash Paid Out
+              - generic [ref=f8e485]: ₱6.00
+              - generic [ref=f8e486]: AP payments + vouchers
+            - generic [ref=f8e487]:
+              - generic [ref=f8e488]: Cash on Hand
+              - generic [ref=f8e493]: ₱5.00
+              - generic [ref=f8e494]: ₱11.00 Spent today · 0 vouchers
+            - generic [ref=f8e495]:
+              - generic [ref=f8e496]: Petty Cash – Cash
+              - generic [ref=f8e501]: ₱0.00
+              - generic [ref=f8e502]: ₱3.00 Spent today · 1 voucher
+            - generic [ref=f8e503]:
+              - generic [ref=f8e504]: Net Cash Flow
+              - generic [ref=f8e509]: ₱-6.00
+              - generic [ref=f8e510]: Collections − Disbursements (excl. petty cash)
+          - generic [ref=f8e511]:
+            - button "Sales Invoices 0 ₱0.00" [ref=f8e512] [cursor=pointer]:
+              - generic [ref=f8e513]:
+                - generic [ref=f8e519]: Sales Invoices
+                - generic [ref=f8e520]: "0"
+              - generic [ref=f8e521]: ₱0.00
+            - generic [ref=f8e525]: No sales invoices for this date
+          - generic [ref=f8e527]:
+            - button "Collections 0 ₱0.00" [ref=f8e528] [cursor=pointer]:
+              - generic [ref=f8e529]:
+                - generic [ref=f8e534]: Collections
+                - generic [ref=f8e535]: "0"
+              - generic [ref=f8e536]: ₱0.00
+            - generic [ref=f8e540]: No collections for this date
+          - generic [ref=f8e542]:
+            - button "Expenses / Bills 2 − ₱9.00" [ref=f8e543] [cursor=pointer]:
+              - generic [ref=f8e544]:
+                - generic [ref=f8e549]: Expenses / Bills
+                - generic [ref=f8e550]: "2"
+              - generic [ref=f8e551]: − ₱9.00
+            - table [ref=f8e556]:
+              - rowgroup [ref=f8e557]:
+                - row [ref=f8e558]:
+                  - columnheader "Reference" [ref=f8e559]
+                  - columnheader "Description" [ref=f8e560]
+                  - columnheader "Status" [ref=f8e561]
+                  - columnheader "Amount" [ref=f8e562]
+              - rowgroup [ref=f8e563]:
+                - row [ref=f8e564]:
+                  - cell "EV-000048" [ref=f8e565]
+                  - cell "[LIQUIDATION] CASH COUNT TEST - safe to delete — Liquidation of CR-000002 — CASH COUNT TEST - safe to delete" [ref=f8e566]
+                  - cell "PAID" [ref=f8e567]
+                  - cell "₱6.00" [ref=f8e569]
+                - row [ref=f8e570]:
+                  - cell "EV-000049" [ref=f8e571]
+                  - cell "[PETTY CASH] CASH COUNT TEST - safe to delete — CASH COUNT TEST - safe to delete" [ref=f8e572]
+                  - cell "PAID" [ref=f8e573]
+                  - cell "₱3.00" [ref=f8e575]
+              - rowgroup [ref=f8e576]:
+                - row [ref=f8e577]:
+                  - cell "Total" [ref=f8e578]
+                  - cell "₱9.00" [ref=f8e579]
+          - generic [ref=f8e580]:
+            - button "Disbursements 1 − ₱6.00" [ref=f8e581] [cursor=pointer]:
+              - generic [ref=f8e582]:
+                - generic [ref=f8e586]: Disbursements
+                - generic [ref=f8e587]: "1"
+              - generic [ref=f8e588]: − ₱6.00
+            - table [ref=f8e593]:
+              - rowgroup [ref=f8e594]:
+                - row [ref=f8e595]:
+                  - columnheader "Reference" [ref=f8e596]
+                  - columnheader "Description" [ref=f8e597]
+                  - columnheader "Method" [ref=f8e598]
+                  - columnheader "Amount" [ref=f8e599]
+              - rowgroup [ref=f8e600]:
+                - row [ref=f8e601]:
+                  - cell "EV-000048" [ref=f8e602]
+                  - cell "Paid — CASH COUNT TEST - safe to delete (EV-000048)" [ref=f8e603]
+                  - cell "—" [ref=f8e604]
+                  - cell "₱6.00" [ref=f8e605]
+              - rowgroup [ref=f8e606]:
+                - row [ref=f8e607]:
+                  - cell "Total" [ref=f8e608]
+                  - cell "₱6.00" [ref=f8e609]
+          - generic [ref=f8e610]:
+            - button "Petty Cash Disbursements 1 ₱3.00" [ref=f8e611] [cursor=pointer]:
+              - generic [ref=f8e612]:
+                - generic [ref=f8e617]: Petty Cash Disbursements
+                - generic [ref=f8e618]: "1"
+              - generic [ref=f8e619]: ₱3.00
+            - table [ref=f8e624]:
+              - rowgroup [ref=f8e625]:
+                - row [ref=f8e626]:
+                  - columnheader "Reference" [ref=f8e627]
+                  - columnheader "Description" [ref=f8e628]
+                  - columnheader "Amount" [ref=f8e629]
+              - rowgroup [ref=f8e630]:
+                - row [ref=f8e631]:
+                  - cell "EV-000049" [ref=f8e632]
+                  - cell "[Petty Cash] Paid — CASH COUNT TEST - safe to delete (EV-000049)" [ref=f8e633]
+                  - cell "₱3.00" [ref=f8e634]
+              - rowgroup [ref=f8e635]:
+                - row [ref=f8e636]:
+                  - cell "Total" [ref=f8e637]
+                  - cell "₱3.00" [ref=f8e638]
+          - generic [ref=f8e639]:
+            - button "Inventory Moves 0 ₱0.00" [ref=f8e640] [cursor=pointer]:
+              - generic [ref=f8e641]:
+                - generic [ref=f8e647]: Inventory Moves
+                - generic [ref=f8e648]: "0"
+              - generic [ref=f8e649]: ₱0.00
+            - generic [ref=f8e653]: No inventory moves for this date
+          - generic [ref=f8e655]:
+            - heading "Notes / Remarks" [level=2] [ref=f8e657]
+            - textbox "Add any notes, remarks, or discrepancies observed for this day…" [ref=f8e659]
+          - generic [ref=f8e662]:
+            - generic [ref=f8e663]:
+              - generic [ref=f8e664]: Prepared By
+              - generic [ref=f8e665]: Verify Bot
+            - generic [ref=f8e666]:
+              - generic [ref=f8e667]: Approved By
+              - generic [ref=f8e668]: —
+  - alert [ref=f8e265]

@@ -1,0 +1,9 @@
+- generic [ref=e4]:
+  - img "Paymongo" [ref=e6]
+  - generic [ref=e8]:
+    - heading "QRPH Test Payment Page" [level=1] [ref=e9]
+    - paragraph [ref=e10]: This is a test payment of ₱ 100.00.
+    - generic [ref=e11]:
+      - button "Authorize Test Payment" [ref=e12] [cursor=pointer]
+      - button "Fail Test Payment" [ref=e13] [cursor=pointer]
+      - button "Expire Test Payment" [ref=e14] [cursor=pointer]

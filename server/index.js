@@ -121,6 +121,7 @@ app.get('/api/diag/db', async (req, res) => {
 // ─── API Routes ────────────────────────────────────────────
 app.use('/api/auth',       authLimiter, routes.auth);
 app.use('/api/businesses', routes.businesses);
+app.use('/api/installations', rateLimit({ windowMs: 60 * 1000, max: 60 }), routes.installations);
 app.use('/api/accounts',   routes.accounts);
 app.use('/api/journal', routes.journal);
 app.use('/api/payable', routes.payable);

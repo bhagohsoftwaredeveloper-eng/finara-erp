@@ -1,0 +1,138 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - complementary [ref=f2e3]:
+      - generic [ref=f2e4]:
+        - img "Finara" [ref=f2e5]
+        - button "Collapse sidebar" [ref=f2e6] [cursor=pointer]
+      - navigation [ref=f2e10]:
+        - link "Dashboard" [ref=f2e13] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f2e19]:
+          - paragraph [ref=f2e20]: Accounting
+          - generic [ref=f2e21]:
+            - link "Chart of Accounts" [ref=f2e22] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=f2e26] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=f2e30] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=f2e36]:
+          - paragraph [ref=f2e37]: Sales
+          - generic [ref=f2e38]:
+            - button "Accounts Receivable" [ref=f2e40] [cursor=pointer]
+            - link "Cash Sales" [ref=f2e47] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=f2e51]:
+          - paragraph [ref=f2e52]: Purchases
+          - generic [ref=f2e53]:
+            - button "Accounts Payable" [ref=f2e55] [cursor=pointer]
+            - link "Purchase Orders" [ref=f2e61] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=f2e66] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=f2e70] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=f2e77]:
+          - paragraph [ref=f2e78]: Payroll
+          - button "Payroll" [ref=f2e81] [cursor=pointer]
+        - generic [ref=f2e90]:
+          - paragraph [ref=f2e91]: Inventory & Assets
+          - generic [ref=f2e92]:
+            - button "Inventory" [ref=f2e94] [cursor=pointer]
+            - link "Fixed Assets" [ref=f2e102] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=f2e107]:
+          - paragraph [ref=f2e108]: Banking & Compliance
+          - generic [ref=f2e109]:
+            - link "Bank Reconciliation" [ref=f2e110] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=f2e115] [cursor=pointer]
+            - button "Remittances" [ref=f2e123] [cursor=pointer]
+        - generic [ref=f2e129]:
+          - paragraph [ref=f2e130]: Planning & Reports
+          - generic [ref=f2e131]:
+            - link "Budgeting" [ref=f2e132] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=f2e136] [cursor=pointer]
+      - generic [ref=f2e143]:
+        - link "Settings" [ref=f2e144] [cursor=pointer]:
+          - /url: /settings
+        - link "Businesses" [ref=f2e148] [cursor=pointer]:
+          - /url: /settings/businesses
+        - link "Opening Balances" [ref=f2e153] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - generic [ref=f2e158]:
+          - generic [ref=f2e159]: RD
+          - generic [ref=f2e221]:
+            - generic [ref=f2e222]: rex@gmail.com
+            - generic [ref=f2e223]: SUPER_ADMIN
+          - button "Logout" [ref=f2e160] [cursor=pointer]
+    - generic [ref=f2e164]:
+      - banner [ref=f2e165]:
+        - generic [ref=f2e166]:
+          - heading "Finara ERP" [level=1] [ref=f2e167]
+          - paragraph [ref=f2e168]: Sep 16, 2026
+        - button "Search… ⌘K" [ref=f2e169] [cursor=pointer]:
+          - generic [ref=f2e173]: Search…
+          - generic [ref=f2e174]: ⌘K
+        - button "Beulah Information Technology Services and Business Solutions, Inc." [ref=f2e224] [cursor=pointer]
+        - button "Toggle dark mode" [ref=f2e232] [cursor=pointer]
+        - button "25" [ref=f2e235] [cursor=pointer]
+      - main [ref=f2e187]:
+        - generic [ref=f2e189]:
+          - generic [ref=f2e190]:
+            - generic [ref=f2e191]:
+              - heading "Cash Requests" [level=1] [ref=f2e192]
+              - paragraph [ref=f2e193]: Cash advances for purchases — request, approve, release, liquidate
+            - button "New Cash Request" [ref=f2e194] [cursor=pointer]
+          - generic [ref=f2e237]:
+            - generic [ref=f2e238]:
+              - paragraph [ref=f2e239]: Pending Approval
+              - paragraph [ref=f2e240]: "0"
+            - generic [ref=f2e241]:
+              - paragraph [ref=f2e242]: Awaiting Release
+              - paragraph [ref=f2e243]: "1"
+            - generic [ref=f2e244]:
+              - paragraph [ref=f2e245]: Unliquidated
+              - paragraph [ref=f2e246]: "0"
+            - generic [ref=f2e247]:
+              - paragraph [ref=f2e248]: Outstanding (1104)
+              - paragraph [ref=f2e249]: ₱0.00
+          - generic [ref=f2e197]:
+            - textbox "Search request no., name, or purpose…" [ref=f2e202]
+            - combobox [ref=f2e203] [cursor=pointer]:
+              - option "All statuses" [selected]
+              - option "DRAFT"
+              - option "SUBMITTED"
+              - option "APPROVED"
+              - option "RELEASED"
+              - option "LIQUIDATED"
+              - option "REJECTED"
+              - option "CANCELLED"
+          - table [ref=f2e206]:
+            - rowgroup [ref=f2e207]:
+              - row [ref=f2e208]:
+                - columnheader "Request No." [ref=f2e209]
+                - columnheader "Requested For" [ref=f2e210]
+                - columnheader "Purpose" [ref=f2e211]
+                - columnheader "Date" [ref=f2e212]
+                - columnheader "Requested" [ref=f2e213]
+                - columnheader "Released" [ref=f2e214]
+                - columnheader "Status" [ref=f2e215]
+                - columnheader "Actions" [ref=f2e216]
+            - rowgroup [ref=f2e217]:
+              - row [ref=f2e369]:
+                - cell "CR-000002" [ref=f2e370]
+                - cell "Juan Dela Cruz" [ref=f2e371]
+                - cell "Booth build materials" [ref=f2e372]
+                - cell "Sep 16, 2026" [ref=f2e373]
+                - cell "₱1,500.00" [ref=f2e374]
+                - cell "—" [ref=f2e375]
+                - cell "APPROVED" [ref=f2e376]
+                - cell [ref=f2e378]:
+                  - button "View" [ref=f2e379] [cursor=pointer]
+                  - button "Release" [ref=f2e383] [cursor=pointer]
+                  - button "Reject" [ref=f2e390] [cursor=pointer]
+                  - button "Cancel request" [ref=f2e394] [cursor=pointer]
+  - status [ref=f2e403]: Approved
+  - alert [ref=f2e220]

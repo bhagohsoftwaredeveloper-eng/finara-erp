@@ -45,6 +45,7 @@ export default function BusinessesPanel() {
   const [resetPhrase, setResetPhrase] = useState('');
   const [resetting,   setResetting]   = useState(false);
 
+  const [search,        setSearch]        = useState('');     // matches code, name or Machine ID
   const [licenseBiz,    setLicenseBiz]    = useState(null);   // business object for the license panel
   const [licenseAction, setLicenseAction] = useState(null);   // 'activate' | 'suspend'
   const [licenseNote,   setLicenseNote]   = useState('');
@@ -250,6 +251,15 @@ export default function BusinessesPanel() {
         </div>
       )}
 
+      {isSuperAdmin && (
+        <input
+          className="input mb-3 max-w-md"
+          placeholder="Search code, name or Machine ID (e.g. BIZ-0A7622)"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
+
       {loading ? (
         <div className="card card-body text-center text-gray-400 py-16">Loading…</div>
       ) : (
@@ -264,10 +274,16 @@ export default function BusinessesPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-              {list.map((biz) => (
+              {list.filter((biz) => {
+                const q = search.trim().toLowerCase();
+                return !q || [biz.code, biz.name, biz.machineId].some((v) => String(v || '').toLowerCase().includes(q));
+              }).map((biz) => (
                 <tr key={biz.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-600 dark:text-blue-400">{biz.code}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{biz.name}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                    {biz.name}
+                    {biz.machineId && <div className="font-mono text-[10px] font-normal text-gray-400 break-all" title="Machine ID of the installed PC">{biz.machineId}</div>}
+                  </td>
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{biz.industry || '—'}</td>
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{biz.tin || '—'}</td>
                   <td className="px-4 py-3">

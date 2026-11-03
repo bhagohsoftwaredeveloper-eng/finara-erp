@@ -1,0 +1,179 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img "Finara" [ref=e197]
+        - button "Collapse sidebar" [ref=e5] [cursor=pointer]
+      - navigation [ref=e9]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=e18]:
+          - paragraph [ref=e19]: Accounting
+          - generic [ref=e20]:
+            - link "Chart of Accounts" [ref=e21] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=e25] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=e29] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=e35]:
+          - paragraph [ref=e36]: Sales
+          - generic [ref=e37]:
+            - button "Accounts Receivable" [ref=e39] [cursor=pointer]
+            - link "Cash Sales" [ref=e46] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=e50]:
+          - paragraph [ref=e51]: Purchases
+          - generic [ref=e52]:
+            - button "Accounts Payable" [ref=e54] [cursor=pointer]
+            - link "Purchase Orders" [ref=e60] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=e65] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=e69] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=e76]:
+          - paragraph [ref=e77]: Payroll
+          - button "Payroll" [ref=e80] [cursor=pointer]
+        - generic [ref=e89]:
+          - paragraph [ref=e90]: Inventory & Assets
+          - generic [ref=e91]:
+            - button "Inventory" [ref=e93] [cursor=pointer]
+            - link "Fixed Assets" [ref=e101] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=e106]:
+          - paragraph [ref=e107]: Banking & Compliance
+          - generic [ref=e108]:
+            - link "Bank Reconciliation" [ref=e109] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=e114] [cursor=pointer]
+            - button "Remittances" [ref=e122] [cursor=pointer]
+        - generic [ref=e128]:
+          - paragraph [ref=e129]: Planning & Reports
+          - generic [ref=e130]:
+            - link "Budgeting" [ref=e131] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=e135] [cursor=pointer]
+      - generic [ref=e142]:
+        - link "Settings" [ref=e143] [cursor=pointer]:
+          - /url: /settings
+        - link "Businesses" [ref=e147] [cursor=pointer]:
+          - /url: /settings/businesses
+        - link "Opening Balances" [ref=e152] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - generic [ref=e157]:
+          - generic [ref=e158]: RD
+          - generic [ref=e198]:
+            - generic [ref=e199]: rex@gmail.com
+            - generic [ref=e200]: SUPER_ADMIN
+          - button "Logout" [ref=e159] [cursor=pointer]
+    - generic [ref=e163]:
+      - banner [ref=e164]:
+        - generic [ref=e165]:
+          - heading "Finara ERP" [level=1] [ref=e166]
+          - paragraph [ref=e167]: Sep 16, 2026
+        - button "Search… ⌘K" [ref=e168] [cursor=pointer]:
+          - generic [ref=e172]: Search…
+          - generic [ref=e173]: ⌘K
+        - button "Beulah Information Technology Services and Business Solutions, Inc." [ref=e201] [cursor=pointer]
+        - button "Toggle dark mode" [ref=e209] [cursor=pointer]
+        - button "25" [ref=e212] [cursor=pointer]
+      - main [ref=e186]:
+        - generic [ref=e188]:
+          - generic [ref=e189]:
+            - generic [ref=e190]:
+              - heading "Businesses" [level=1] [ref=e191]
+              - paragraph [ref=e192]: Manage businesses and user access for multi-business mode
+            - button "New Business" [ref=e193] [cursor=pointer]
+          - table [ref=e215]:
+            - rowgroup [ref=e216]:
+              - row [ref=e217]:
+                - columnheader "Code" [ref=e218]
+                - columnheader "Name" [ref=e219]
+                - columnheader "TIN" [ref=e220]
+                - columnheader "Status" [ref=e221]
+                - columnheader "License" [ref=e222]
+                - columnheader "Actions" [ref=e223]
+            - rowgroup [ref=e224]:
+              - row [ref=e225]:
+                - cell "BIZ-002" [ref=e226]
+                - cell "Beulah Information Technology Services and Business Solutions, Inc." [ref=e227]
+                - cell "—" [ref=e228]
+                - cell "Active" [ref=e229]
+                - cell "Active" [ref=e231]
+                - cell [ref=e233]:
+                  - generic [ref=e234]:
+                    - button "Edit" [ref=e235] [cursor=pointer]
+                    - button "Users" [ref=e239] [cursor=pointer]
+                    - button "License" [ref=e245] [cursor=pointer]
+              - row [ref=e249]:
+                - cell "BIZ-001" [ref=e250]
+                - cell "BFaith on Print Adverting & Tailoring Services" [ref=e251]
+                - cell "—" [ref=e252]
+                - cell "Active" [ref=e253]
+                - cell "Active" [ref=e255]
+                - cell [ref=e257]:
+                  - generic [ref=e258]:
+                    - button "Edit" [ref=e259] [cursor=pointer]
+                    - button "Users" [ref=e263] [cursor=pointer]
+                    - button "License" [ref=e269] [cursor=pointer]
+              - row [ref=e273]:
+                - cell "BRIDGES" [ref=e274]
+                - cell "BRIDGES ACADEMY OF TAGUM" [ref=e275]
+                - cell "—" [ref=e276]
+                - cell "Active" [ref=e277]
+                - cell "Active" [ref=e279]
+                - cell [ref=e281]:
+                  - generic [ref=e282]:
+                    - button "Edit" [ref=e283] [cursor=pointer]
+                    - button "Users" [ref=e287] [cursor=pointer]
+                    - button "License" [ref=e293] [cursor=pointer]
+              - row [ref=e297]:
+                - cell "BIZ-003" [ref=e298]
+                - cell "Demo" [ref=e299]
+                - cell "—" [ref=e300]
+                - cell "Active" [ref=e301]
+                - cell "Active" [ref=e303]
+                - cell [ref=e305]:
+                  - generic [ref=e306]:
+                    - button "Edit" [ref=e307] [cursor=pointer]
+                    - button "Users" [ref=e311] [cursor=pointer]
+                    - button "License" [ref=e317] [cursor=pointer]
+              - row [ref=e321]:
+                - cell "VERIFY-1" [ref=e322]
+                - cell "Verify License Client Co." [ref=e323]
+                - cell "—" [ref=e324]
+                - cell "Active" [ref=e325]
+                - cell "Suspended" [ref=e327]
+                - cell [ref=e329]:
+                  - generic [ref=e330]:
+                    - button "Edit" [ref=e331] [cursor=pointer]
+                    - button "Users" [ref=e335] [cursor=pointer]
+                    - button "License" [ref=e341] [cursor=pointer]
+          - generic [ref=e346]:
+            - generic [ref=e347]:
+              - heading "License — Verify License Client Co." [level=3] [ref=e348]
+              - button [ref=e349] [cursor=pointer]
+            - generic [ref=e353]:
+              - generic [ref=e354]: Suspended
+              - generic [ref=e356]:
+                - paragraph [ref=e357]: Generate Payment Link
+                - generic [ref=e361]:
+                  - generic [ref=e362]:
+                    - generic [ref=e363]: Amount (PHP)
+                    - spinbutton "15000" [ref=e364]: "100"
+                  - generic [ref=e365]:
+                    - generic [ref=e366]: Description
+                    - textbox "Optional" [ref=e367]: Finara license verification test
+                - button "Generate Link" [ref=e368] [cursor=pointer]
+                - generic [ref=e378]:
+                  - generic [ref=e379]: https://pm.link/org-H4WN3sHhyYRUvMWy7CiQLU1H/test/WhGO70c
+                  - button "Copy" [ref=e380] [cursor=pointer]
+                  - link "Send" [ref=e384] [cursor=pointer]:
+                    - /url: mailto:client@verify-license.test?subject=Finara%20license%20payment%20%E2%80%94%20Verify%20License%20Client%20Co.&body=https%3A%2F%2Fpm.link%2Forg-H4WN3sHhyYRUvMWy7CiQLU1H%2Ftest%2FWhGO70c
+              - generic [ref=e369]:
+                - paragraph [ref=e370]: Manual Activation (offline payment)
+                - button "Activate License" [ref=e372] [cursor=pointer]
+              - button "Close" [ref=e377] [cursor=pointer]
+  - status [ref=e393]: Payment link generated
+  - alert [ref=e196]

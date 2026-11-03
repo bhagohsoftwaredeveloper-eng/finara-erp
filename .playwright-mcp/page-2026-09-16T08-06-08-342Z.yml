@@ -1,0 +1,152 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e71]:
+    - complementary [ref=f1e72]:
+      - generic [ref=f1e73]:
+        - img "Finara" [ref=f1e74]
+        - button "Collapse sidebar" [ref=f1e75] [cursor=pointer]
+      - navigation [ref=f1e79]:
+        - link "Dashboard" [ref=f1e82] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f1e88]:
+          - paragraph [ref=f1e89]: Accounting
+          - generic [ref=f1e90]:
+            - link "Chart of Accounts" [ref=f1e91] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=f1e95] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=f1e99] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=f1e105]:
+          - paragraph [ref=f1e106]: Sales
+          - generic [ref=f1e107]:
+            - button "Accounts Receivable" [ref=f1e109] [cursor=pointer]
+            - link "Cash Sales" [ref=f1e116] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=f1e120]:
+          - paragraph [ref=f1e121]: Purchases
+          - generic [ref=f1e122]:
+            - button "Accounts Payable" [ref=f1e124] [cursor=pointer]
+            - link "Purchase Orders" [ref=f1e130] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=f1e135] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=f1e139] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=f1e146]:
+          - paragraph [ref=f1e147]: Payroll
+          - button "Payroll" [ref=f1e150] [cursor=pointer]
+        - generic [ref=f1e159]:
+          - paragraph [ref=f1e160]: Inventory & Assets
+          - generic [ref=f1e161]:
+            - button "Inventory" [ref=f1e163] [cursor=pointer]
+            - link "Fixed Assets" [ref=f1e171] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=f1e176]:
+          - paragraph [ref=f1e177]: Banking & Compliance
+          - generic [ref=f1e178]:
+            - link "Bank Reconciliation" [ref=f1e179] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=f1e184] [cursor=pointer]
+            - button "Remittances" [ref=f1e192] [cursor=pointer]
+        - generic [ref=f1e198]:
+          - paragraph [ref=f1e199]: Planning & Reports
+          - generic [ref=f1e200]:
+            - link "Budgeting" [ref=f1e201] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=f1e205] [cursor=pointer]
+      - generic [ref=f1e212]:
+        - link "Settings" [ref=f1e213] [cursor=pointer]:
+          - /url: /settings
+        - link "Businesses" [ref=f1e217] [cursor=pointer]:
+          - /url: /settings/businesses
+        - link "Opening Balances" [ref=f1e222] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - generic [ref=f1e227]:
+          - generic [ref=f1e228]: RD
+          - generic [ref=f1e229]:
+            - generic [ref=f1e230]: rex@gmail.com
+            - generic [ref=f1e231]: SUPER_ADMIN
+          - button "Logout" [ref=f1e232] [cursor=pointer]
+    - generic [ref=f1e236]:
+      - banner [ref=f1e237]:
+        - generic [ref=f1e238]:
+          - heading "Finara ERP" [level=1] [ref=f1e239]
+          - paragraph [ref=f1e240]: Sep 16, 2026
+        - button "Search… ⌘K" [ref=f1e241] [cursor=pointer]:
+          - generic [ref=f1e245]: Search…
+          - generic [ref=f1e246]: ⌘K
+        - button "Beulah Information Technology Services and Business Solutions, Inc." [ref=f1e248] [cursor=pointer]
+        - button "Toggle dark mode" [ref=f1e256] [cursor=pointer]
+        - button "25" [ref=f1e260] [cursor=pointer]
+      - main [ref=f1e265]:
+        - generic [ref=f1e267]:
+          - generic [ref=f1e270]:
+            - heading "Welcome to Finara Accounting System ERP" [level=2] [ref=f1e271]
+            - paragraph [ref=f1e272]: BIR • SSS • PhilHealth • Pag-IBIG Compliant System
+          - generic [ref=f1e277]:
+            - generic [ref=f1e283]:
+              - paragraph [ref=f1e284]: Total Sales
+              - paragraph [ref=f1e285]: ₱0.00
+              - paragraph [ref=f1e286]: This month
+            - generic [ref=f1e291]:
+              - paragraph [ref=f1e292]: Accounts Receivable
+              - paragraph [ref=f1e293]: ₱318,507.00
+              - paragraph [ref=f1e294]: 12 invoices outstanding
+            - generic [ref=f1e301]:
+              - paragraph [ref=f1e302]: Accounts Payable
+              - paragraph [ref=f1e303]: ₱235,335.39
+              - paragraph [ref=f1e304]: 10 bills outstanding
+            - generic [ref=f1e310]:
+              - paragraph [ref=f1e311]: Total Expenses
+              - paragraph [ref=f1e312]: ₱500.00
+              - paragraph [ref=f1e313]: This month
+            - generic [ref=f1e319]:
+              - paragraph [ref=f1e320]: Net Income (MTD)
+              - paragraph [ref=f1e321]: ₱-500.00
+          - generic [ref=f1e322]:
+            - generic [ref=f1e323]:
+              - generic [ref=f1e324]:
+                - heading "Month-to-Date P&L" [level=3] [ref=f1e325]
+                - generic [ref=f1e326]: Current Month
+              - generic [ref=f1e329]:
+                - img [ref=f1e330]:
+                  - generic [ref=f1e335]:
+                    - generic [ref=f1e336]: Revenue
+                    - generic [ref=f1e338]: Expenses
+                    - generic [ref=f1e340]: Net Income
+                  - generic [ref=f1e343]:
+                    - generic [ref=f1e344]: ₱0k
+                    - generic [ref=f1e346]: ₱0k
+                    - generic [ref=f1e348]: ₱0k
+                    - generic [ref=f1e350]: ₱0k
+                    - generic [ref=f1e352]: ₱1k
+                - generic:
+                  - generic:
+                    - paragraph: Net Income
+                    - list:
+                      - listitem: "amount : ₱0.00"
+            - generic [ref=f1e358]:
+              - heading "Alerts" [level=3] [ref=f1e360]
+              - generic [ref=f1e361]:
+                - generic [ref=f1e365]:
+                  - paragraph [ref=f1e366]: Overdue Receivables
+                  - paragraph [ref=f1e367]: ₱318,507.00 past due
+                - generic [ref=f1e371]:
+                  - paragraph [ref=f1e372]: Overdue Payables
+                  - paragraph [ref=f1e373]: ₱231,335.39 past due
+                - generic [ref=f1e378]:
+                  - paragraph [ref=f1e379]: Draft Journal Entries
+                  - paragraph [ref=f1e380]: 3 entries pending review
+          - generic [ref=f1e381]:
+            - generic [ref=f1e382]:
+              - paragraph [ref=f1e388]: "27"
+              - paragraph [ref=f1e389]: Active Customers
+            - generic [ref=f1e390]:
+              - paragraph [ref=f1e395]: "8"
+              - paragraph [ref=f1e396]: Active Vendors
+            - generic [ref=f1e397]:
+              - paragraph [ref=f1e403]: "2"
+              - paragraph [ref=f1e404]: Active Employees
+  - status [ref=f1e410]: Welcome back, Rex!
+  - alert [ref=f1e70]
+  - generic [aria-hidden] [ref=f1e411]: ₱0k

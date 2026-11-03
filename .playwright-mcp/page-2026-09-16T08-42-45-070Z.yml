@@ -1,0 +1,54 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - paragraph [ref=e7]: SG
+          - paragraph [ref=e8]: SN Gaming Hub
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Reference Number
+          - paragraph [ref=e12]: WhGO70c
+    - main [ref=e13]:
+      - generic [ref=e15]:
+        - heading "Link reference number WhGO70c" [level=1] [ref=e16]
+        - paragraph [ref=e17]: ₱ 100.00
+        - paragraph [ref=e19]: Finara license verification test
+        - generic [ref=e21]:
+          - paragraph [ref=e22]: Subtotal
+          - paragraph [ref=e23]: ₱ 100.00
+          - paragraph [ref=e24]: Fees
+          - generic [ref=e25]: Free
+        - generic [ref=e27]:
+          - paragraph [ref=e28]: Total Due
+          - paragraph [ref=e29]: ₱ 100.00
+      - generic [ref=e30]:
+        - generic [ref=e32]:
+          - generic [ref=e55]:
+            - generic [ref=e56]:
+              - generic [ref=e57]:
+                - paragraph [ref=e58]: Scan
+                - img "QRPH" [ref=e60]
+                - paragraph [ref=e61]: code to pay
+              - generic [ref=e62]:
+                - img "GCash" [ref=e64]
+                - img "Maya" [ref=e66]
+                - img "BPI" [ref=e68]
+                - img "GoTyme" [ref=e70]
+                - img "Home Credit" [ref=e72]
+              - button [ref=e73]:
+                - paragraph [ref=e75]: See all supported banks and e-wallets
+              - generic [ref=e78]:
+                - generic [ref=e79]:
+                  - img "QRPH code" [ref=e80]
+                  - paragraph [ref=e81]: 29:52
+                - button "Download QR Code" [ref=e82]
+                - link "Simulate Payment" [active] [ref=e83] [cursor=pointer]:
+                  - /url: https://secure-authentication.paymongo.com/sources?id=src_h3sirqcnq4DUAjsAqEFVTQPb&code_id=qr_4049d5d888d983164fbfbd12
+            - button "Use a different payment method" [ref=e84]
+          - paragraph [ref=e40]:
+            - text: By completing your purchase, you agree to PayMongo's
+            - link "Privacy Policy" [ref=e41] [cursor=pointer]:
+              - /url: https://www.paymongo.com/privacy
+            - text: .
+        - paragraph [ref=e43]: Powered by
+  - alert [ref=e54]

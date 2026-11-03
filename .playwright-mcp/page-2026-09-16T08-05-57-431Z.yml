@@ -1,0 +1,113 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img "Finara"
+        - button "Collapse sidebar" [ref=e5] [cursor=pointer]
+      - navigation [ref=e9]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=e18]:
+          - paragraph [ref=e19]: Accounting
+          - generic [ref=e20]:
+            - link "Chart of Accounts" [ref=e21] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=e25] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=e29] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=e35]:
+          - paragraph [ref=e36]: Sales
+          - generic [ref=e37]:
+            - button "Accounts Receivable" [ref=e39] [cursor=pointer]
+            - link "Cash Sales" [ref=e46] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=e50]:
+          - paragraph [ref=e51]: Purchases
+          - generic [ref=e52]:
+            - button "Accounts Payable" [ref=e54] [cursor=pointer]
+            - link "Purchase Orders" [ref=e60] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=e65] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=e69] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=e76]:
+          - paragraph [ref=e77]: Payroll
+          - button "Payroll" [ref=e80] [cursor=pointer]
+        - generic [ref=e89]:
+          - paragraph [ref=e90]: Inventory & Assets
+          - generic [ref=e91]:
+            - button "Inventory" [ref=e93] [cursor=pointer]
+            - link "Fixed Assets" [ref=e101] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=e106]:
+          - paragraph [ref=e107]: Banking & Compliance
+          - generic [ref=e108]:
+            - link "Bank Reconciliation" [ref=e109] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=e114] [cursor=pointer]
+            - button "Remittances" [ref=e122] [cursor=pointer]
+        - generic [ref=e128]:
+          - paragraph [ref=e129]: Planning & Reports
+          - generic [ref=e130]:
+            - link "Budgeting" [ref=e131] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=e135] [cursor=pointer]
+      - generic [ref=e142]:
+        - link "Settings" [ref=e143] [cursor=pointer]:
+          - /url: /settings
+        - link "Businesses" [ref=e147] [cursor=pointer]:
+          - /url: /settings/businesses
+        - link "Opening Balances" [ref=e152] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - generic [ref=e157]:
+          - generic [ref=e158]: VB
+          - generic [ref=e159]:
+            - generic [ref=e160]: admin@ph-erp.com
+            - generic [ref=e161]: ADMIN
+          - button "Logout" [ref=e162] [cursor=pointer]
+    - generic [ref=e166]:
+      - banner [ref=e167]:
+        - generic [ref=e168]:
+          - heading "Finara ERP" [level=1] [ref=e169]
+          - paragraph [ref=e170]: Sep 16, 2026
+        - button "Search… ⌘K" [ref=e171] [cursor=pointer]:
+          - generic [ref=e175]: Search…
+          - generic [ref=e176]: ⌘K
+        - generic [ref=e177]: Loading…
+        - button "Toggle dark mode" [ref=e183] [cursor=pointer]
+        - button "Notifications" [ref=e187] [cursor=pointer]
+      - main [ref=e191]:
+        - generic [ref=e193]:
+          - generic [ref=e194]:
+            - generic [ref=e195]:
+              - heading "Cash Requests" [level=1] [ref=e196]
+              - paragraph [ref=e197]: Cash advances for purchases — request, approve, release, liquidate
+            - button "New Cash Request" [ref=e198] [cursor=pointer]
+          - generic [ref=e201]:
+            - textbox "Search request no., name, or purpose…" [ref=e206]
+            - combobox [ref=e207] [cursor=pointer]:
+              - option "All statuses" [selected]
+              - option "DRAFT"
+              - option "SUBMITTED"
+              - option "APPROVED"
+              - option "RELEASED"
+              - option "LIQUIDATED"
+              - option "REJECTED"
+              - option "CANCELLED"
+          - table [ref=e210]:
+            - rowgroup [ref=e211]:
+              - row [ref=e212]:
+                - columnheader "Request No." [ref=e213]
+                - columnheader "Requested For" [ref=e214]
+                - columnheader "Purpose" [ref=e215]
+                - columnheader "Date" [ref=e216]
+                - columnheader "Requested" [ref=e217]
+                - columnheader "Released" [ref=e218]
+                - columnheader "Status" [ref=e219]
+                - columnheader "Actions" [ref=e220]
+            - rowgroup [ref=e221]:
+              - row [ref=e222]:
+                - cell "Loading…" [ref=e223]
+  - alert [ref=e224]

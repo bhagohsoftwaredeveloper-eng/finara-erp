@@ -1,0 +1,39 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - paragraph [ref=e7]: SG
+          - paragraph [ref=e8]: SN Gaming Hub
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Reference Number
+          - paragraph [ref=e12]: WhGO70c
+    - main [ref=e13]:
+      - generic [ref=e15]:
+        - heading "Link reference number WhGO70c" [level=1] [ref=e16]
+        - paragraph [ref=e17]: ₱ 100.00
+        - paragraph [ref=e19]: Finara license verification test
+        - generic [ref=e21]:
+          - paragraph [ref=e22]: Subtotal
+          - paragraph [ref=e23]: ₱ 100.00
+          - paragraph [ref=e24]: Fees
+          - generic [ref=e25]: Free
+        - generic [ref=e27]:
+          - paragraph [ref=e28]: Total Due
+          - paragraph [ref=e29]: ₱ 100.00
+      - generic [ref=e30]:
+        - generic [ref=e32]:
+          - generic [ref=e33]:
+            - heading "Payment Method" [level=2] [ref=e34]
+            - button [ref=e35]:
+              - paragraph [ref=e36]: Scan
+              - img "QRPH" [ref=e38]
+              - paragraph [ref=e39]: code to pay
+            - button "Continue" [disabled]
+          - paragraph [ref=e40]:
+            - text: By completing your purchase, you agree to PayMongo's
+            - link "Privacy Policy" [ref=e41] [cursor=pointer]:
+              - /url: https://www.paymongo.com/privacy
+            - text: .
+        - paragraph [ref=e43]: Powered by
+  - alert [ref=e54]

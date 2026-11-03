@@ -1,0 +1,118 @@
+- generic [active] [ref=f7e1]:
+  - generic [ref=f7e2]:
+    - complementary [ref=f7e3]:
+      - generic [ref=f7e4]:
+        - img "Finara" [ref=f7e5]
+        - button "Collapse sidebar" [ref=f7e6] [cursor=pointer]
+      - navigation [ref=f7e10]:
+        - link "Dashboard" [ref=f7e13] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f7e19]:
+          - paragraph [ref=f7e20]: Accounting
+          - generic [ref=f7e21]:
+            - link "Chart of Accounts" [ref=f7e22] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=f7e26] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=f7e30] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=f7e36]:
+          - paragraph [ref=f7e37]: Sales
+          - generic [ref=f7e38]:
+            - button "Accounts Receivable" [ref=f7e40] [cursor=pointer]
+            - link "Cash Sales" [ref=f7e47] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=f7e51]:
+          - paragraph [ref=f7e52]: School
+          - button "School Billing" [ref=f7e55] [cursor=pointer]
+        - generic [ref=f7e62]:
+          - paragraph [ref=f7e63]: Purchases
+          - generic [ref=f7e64]:
+            - button "Accounts Payable" [ref=f7e66] [cursor=pointer]
+            - link "Purchase Orders" [ref=f7e72] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=f7e77] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=f7e81] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=f7e88]:
+          - paragraph [ref=f7e89]: Payroll
+          - button "Payroll" [ref=f7e92] [cursor=pointer]
+        - generic [ref=f7e101]:
+          - paragraph [ref=f7e102]: Inventory & Assets
+          - generic [ref=f7e103]:
+            - button "Inventory" [ref=f7e105] [cursor=pointer]
+            - link "Fixed Assets" [ref=f7e113] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=f7e118]:
+          - paragraph [ref=f7e119]: Banking & Compliance
+          - generic [ref=f7e120]:
+            - link "Bank Reconciliation" [ref=f7e121] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=f7e126] [cursor=pointer]
+            - generic [ref=f7e133]:
+              - button "Remittances" [ref=f7e134] [cursor=pointer]
+              - generic [ref=f7e140]:
+                - link "Dashboard" [ref=f7e141] [cursor=pointer]:
+                  - /url: /remittance
+                - link "Gov't Records" [ref=f7e142] [cursor=pointer]:
+                  - /url: /remittance/records
+                - link "Daily Report" [ref=f7e143] [cursor=pointer]:
+                  - /url: /remittance/daily
+        - generic [ref=f7e144]:
+          - paragraph [ref=f7e145]: Planning & Reports
+          - generic [ref=f7e146]:
+            - link "Budgeting" [ref=f7e147] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=f7e151] [cursor=pointer]
+      - generic [ref=f7e158]:
+        - link "My Businesses" [ref=f7e159] [cursor=pointer]:
+          - /url: /my-businesses
+        - link "Settings" [ref=f7e164] [cursor=pointer]:
+          - /url: /settings
+        - link "Opening Balances" [ref=f7e168] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - button "Logout" [ref=f7e175] [cursor=pointer]
+        - paragraph [ref=f7e179]: Finara v1.0.0
+    - generic [ref=f7e180]:
+      - banner [ref=f7e181]:
+        - generic [ref=f7e182]:
+          - heading "Finara ERP" [level=1] [ref=f7e183]
+          - paragraph [ref=f7e184]: Oct 13, 2026
+        - button "Search… ⌘K" [ref=f7e185] [cursor=pointer]:
+          - generic [ref=f7e189]: Search…
+          - generic [ref=f7e190]: ⌘K
+        - generic [ref=f7e191]: Loading…
+        - button "Notifications" [ref=f7e199] [cursor=pointer]
+      - main [ref=f7e203]:
+        - navigation "Breadcrumb" [ref=f7e204]:
+          - list [ref=f7e205]:
+            - listitem [ref=f7e206]:
+              - link "Dashboard" [ref=f7e207] [cursor=pointer]:
+                - /url: /dashboard
+            - listitem [ref=f7e211]:
+              - link "Remittance" [ref=f7e214] [cursor=pointer]:
+                - /url: /remittance
+            - listitem [ref=f7e215]:
+              - generic [ref=f7e218]: Daily
+        - generic [ref=f7e220]:
+          - generic [ref=f7e221]:
+            - generic [ref=f7e222]:
+              - heading "Daily Remittance Report" [level=1] [ref=f7e223]
+              - paragraph [ref=f7e226]: End-of-day summary of all sales, collections, expenses, and disbursements
+            - generic [ref=f7e227]:
+              - button "History" [ref=f7e228] [cursor=pointer]
+              - button "Print" [disabled] [ref=f7e232]
+          - generic [ref=f7e239]:
+            - generic [ref=f7e240]:
+              - generic [ref=f7e241]: Date
+              - textbox [ref=f7e242]: 2026-10-13
+            - button "Generate from Transactions" [ref=f7e243] [cursor=pointer]
+          - generic [ref=f7e249]: Loading cash count…
+          - generic [ref=f7e254]:
+            - paragraph [ref=f7e257]:
+              - text: Select a date and click
+              - strong [ref=f7e258]: Generate from Transactions
+              - text: to pull all sales, collections, expenses, and disbursements for that day.
+            - button "Generate Report" [ref=f7e259] [cursor=pointer]
+  - alert [ref=f7e265]

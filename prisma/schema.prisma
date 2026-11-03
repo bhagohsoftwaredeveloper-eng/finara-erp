@@ -44,6 +44,8 @@ model Business {
   // Subscription paid-through date. Set when an add-business order is approved.
   // Null = legacy / free business (never locked). Expiry handling is Part 2.
   paidUntil   DateTime?
+  // Machine ID of the PC a local (installed) copy runs on; set when it registers online.
+  machineId   String?   @db.VarChar(120)
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

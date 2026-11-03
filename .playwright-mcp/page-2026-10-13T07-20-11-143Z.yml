@@ -1,0 +1,414 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - complementary [ref=f4e3]:
+      - generic [ref=f4e4]:
+        - img "Finara" [ref=f4e5]
+        - button "Collapse sidebar" [ref=f4e6] [cursor=pointer]
+      - navigation [ref=f4e10]:
+        - link "Dashboard" [ref=f4e13] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f4e19]:
+          - paragraph [ref=f4e20]: Accounting
+          - generic [ref=f4e21]:
+            - link "Chart of Accounts" [ref=f4e22] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=f4e26] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=f4e30] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=f4e36]:
+          - paragraph [ref=f4e37]: Sales
+          - generic [ref=f4e38]:
+            - button "Accounts Receivable" [ref=f4e40] [cursor=pointer]
+            - link "Cash Sales" [ref=f4e47] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=f4e51]:
+          - paragraph [ref=f4e52]: School
+          - button "School Billing" [ref=f4e55] [cursor=pointer]
+        - generic [ref=f4e62]:
+          - paragraph [ref=f4e63]: Purchases
+          - generic [ref=f4e64]:
+            - button "Accounts Payable" [ref=f4e66] [cursor=pointer]
+            - link "Purchase Orders" [ref=f4e72] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=f4e77] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=f4e81] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=f4e88]:
+          - paragraph [ref=f4e89]: Payroll
+          - button "Payroll" [ref=f4e92] [cursor=pointer]
+        - generic [ref=f4e101]:
+          - paragraph [ref=f4e102]: Inventory & Assets
+          - generic [ref=f4e103]:
+            - button "Inventory" [ref=f4e105] [cursor=pointer]
+            - link "Fixed Assets" [ref=f4e113] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=f4e118]:
+          - paragraph [ref=f4e119]: Banking & Compliance
+          - generic [ref=f4e120]:
+            - link "Bank Reconciliation" [ref=f4e121] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=f4e126] [cursor=pointer]
+            - button "Remittances" [ref=f4e134] [cursor=pointer]
+        - generic [ref=f4e140]:
+          - paragraph [ref=f4e141]: Planning & Reports
+          - generic [ref=f4e142]:
+            - link "Budgeting" [ref=f4e143] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=f4e147] [cursor=pointer]
+      - generic [ref=f4e154]:
+        - link "My Businesses" [ref=f4e155] [cursor=pointer]:
+          - /url: /my-businesses
+        - link "Settings" [ref=f4e160] [cursor=pointer]:
+          - /url: /settings
+        - link "Opening Balances" [ref=f4e164] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - generic [ref=f4e169]:
+          - generic [ref=f4e170]: VB
+          - generic [ref=f4e266]:
+            - generic [ref=f4e267]: admin@ph-erp.com
+            - generic [ref=f4e268]: ADMIN
+          - button "Logout" [ref=f4e171] [cursor=pointer]
+        - paragraph [ref=f4e175]: Finara v1.0.0
+    - generic [ref=f4e176]:
+      - banner [ref=f4e177]:
+        - generic [ref=f4e178]:
+          - heading "Finara ERP" [level=1] [ref=f4e179]
+          - paragraph [ref=f4e180]: Oct 13, 2026
+        - button "Search… ⌘K" [ref=f4e181] [cursor=pointer]:
+          - generic [ref=f4e185]: Search…
+          - generic [ref=f4e186]: ⌘K
+        - button "Beulah Information Technology Services and Business Solutions, Inc." [ref=f4e269] [cursor=pointer]
+        - button "Toggle dark mode" [ref=f4e277] [cursor=pointer]
+        - button "25" [ref=f4e280] [cursor=pointer]
+      - main [ref=f4e199]:
+        - navigation "Breadcrumb" [ref=f4e200]:
+          - list [ref=f4e201]:
+            - listitem [ref=f4e202]:
+              - link "Dashboard" [ref=f4e203] [cursor=pointer]:
+                - /url: /dashboard
+            - listitem [ref=f4e207]:
+              - generic [ref=f4e210]: Expense Vouchers
+        - generic [ref=f4e212]:
+          - generic [ref=f4e213]:
+            - generic [ref=f4e214]:
+              - heading "Expense Vouchers" [level=1] [ref=f4e215]
+              - paragraph [ref=f4e219]: Petty cash, reimbursements, direct payments, cash advances & liquidations
+            - generic [ref=f4e220]:
+              - button [ref=f4e221] [cursor=pointer]
+              - button "New Voucher" [ref=f4e227] [cursor=pointer]
+          - generic [ref=f4e282]:
+            - generic [ref=f4e283]:
+              - generic [ref=f4e284]: Pending Approval
+              - generic [ref=f4e285]: "0"
+              - generic [ref=f4e286]: ₱0.00
+            - generic [ref=f4e287]:
+              - generic [ref=f4e288]: Approved / For Payment
+              - generic [ref=f4e289]: "1"
+              - generic [ref=f4e290]: ₱250.00
+            - generic [ref=f4e291]:
+              - generic [ref=f4e292]: Paid This Month
+              - generic [ref=f4e293]: "15"
+              - generic [ref=f4e294]: ₱54,866.00
+            - generic [ref=f4e295]:
+              - generic [ref=f4e296]: Rejected
+              - generic [ref=f4e297]: "0"
+              - generic [ref=f4e298]: ₱0.00
+            - generic [ref=f4e299]:
+              - generic [ref=f4e300]: Drafts
+              - generic [ref=f4e301]: "0"
+              - generic [ref=f4e302]: ₱0.00
+          - generic [ref=f4e230]:
+            - generic [ref=f4e231]:
+              - button "All" [ref=f4e232] [cursor=pointer]
+              - button "Petty Cash" [ref=f4e233] [cursor=pointer]
+              - button "Reimbursement" [ref=f4e234] [cursor=pointer]
+              - button "Direct Payment" [ref=f4e235] [cursor=pointer]
+              - button "Cash Advance" [ref=f4e236] [cursor=pointer]
+              - button "Liquidation" [ref=f4e237] [cursor=pointer]
+            - generic [ref=f4e238]:
+              - textbox "Search voucher, payee, purpose…" [ref=f4e243]
+              - combobox [ref=f4e244]:
+                - option "All Statuses" [selected]
+                - option "DRAFT"
+                - option "SUBMITTED"
+                - option "APPROVED"
+                - option "PAID"
+                - option "REJECTED"
+                - option "VOID"
+              - textbox [ref=f4e245]:
+                - /placeholder: From
+              - textbox [ref=f4e246]:
+                - /placeholder: To
+          - table [ref=f4e249]:
+            - rowgroup [ref=f4e250]:
+              - row [ref=f4e251]:
+                - columnheader "Voucher No." [ref=f4e252]
+                - columnheader "Type" [ref=f4e253]
+                - columnheader "Date" [ref=f4e254]
+                - columnheader "Payee" [ref=f4e255]
+                - columnheader "Category" [ref=f4e256]
+                - columnheader "Purpose" [ref=f4e257]
+                - columnheader "Amount" [ref=f4e258]
+                - columnheader "Status" [ref=f4e259]
+                - columnheader "Requested By" [ref=f4e260]
+                - columnheader "Actions" [ref=f4e261]
+            - rowgroup [ref=f4e262]:
+              - row [ref=f4e860]:
+                - cell "EV-000049" [ref=f4e861]
+                - cell "Petty Cash" [ref=f4e862]
+                - cell "Oct 13, 2026" [ref=f4e864]
+                - cell "CASH COUNT TEST - safe to delete" [ref=f4e865]
+                - cell "MISCELLANEOUS" [ref=f4e866]
+                - cell "CASH COUNT TEST - safe to delete" [ref=f4e867]
+                - cell "₱3.00" [ref=f4e868]
+                - cell "PAID" [ref=f4e869]
+                - cell "—" [ref=f4e871]
+                - cell [ref=f4e872]:
+                  - generic [ref=f4e873]:
+                    - button "Void" [ref=f4e874] [cursor=pointer]
+                    - button "Print" [ref=f4e878] [cursor=pointer]
+                    - button "History" [ref=f4e883] [cursor=pointer]
+              - row [ref=f4e888]:
+                - cell "EV-000048" [ref=f4e889]
+                - cell "Liquidation" [ref=f4e890]
+                - cell "Oct 13, 2026" [ref=f4e892]
+                - cell "CASH COUNT TEST - safe to delete" [ref=f4e893]
+                - cell "MISCELLANEOUS" [ref=f4e894]
+                - cell "Liquidation of CR-000002 — CASH COUNT TEST - safe to delete" [ref=f4e895]
+                - cell "₱6.00" [ref=f4e896]
+                - cell "PAID" [ref=f4e897]
+                - cell "CASH COUNT TEST - safe to delete" [ref=f4e899]
+                - cell [ref=f4e900]:
+                  - generic [ref=f4e901]:
+                    - button "Void" [ref=f4e902] [cursor=pointer]
+                    - button "Print" [ref=f4e906] [cursor=pointer]
+                    - button "History" [ref=f4e911] [cursor=pointer]
+              - row [ref=f4e916]:
+                - cell "EV-000047" [ref=f4e917]
+                - cell "Petty Cash" [ref=f4e918]
+                - cell "Sep 7, 2026" [ref=f4e920]
+                - cell "SDD TEST — safe to delete" [ref=f4e921]
+                - cell "MISCELLANEOUS" [ref=f4e922]
+                - cell "Automated verification of the Void feature (subagent-driven-development) — safe to delete" [ref=f4e923]
+                - cell "₱1.00" [ref=f4e924]
+                - cell "VOID" [ref=f4e925]
+                - cell "Verify Bot" [ref=f4e927]
+                - cell [ref=f4e928]:
+                  - generic [ref=f4e929]:
+                    - button "Print" [ref=f4e930] [cursor=pointer]
+                    - button "History" [ref=f4e935] [cursor=pointer]
+              - row [ref=f4e940]:
+                - cell "EV-000036" [ref=f4e941]
+                - cell "Direct Payment" [ref=f4e942]
+                - cell "Aug 13, 2026" [ref=f4e944]
+                - cell "SHOPEE" [ref=f4e945]
+                - cell "OFFICE SUPPLIES" [ref=f4e946]
+                - cell "PRINTER" [ref=f4e947]
+                - cell "₱2,728.00" [ref=f4e948]
+                - cell "PAID" [ref=f4e949]
+                - cell "SHANA GRACE BARLES" [ref=f4e951]
+                - cell [ref=f4e952]:
+                  - generic [ref=f4e953]:
+                    - button "Void" [ref=f4e954] [cursor=pointer]
+                    - button "Print" [ref=f4e958] [cursor=pointer]
+                    - button "History" [ref=f4e963] [cursor=pointer]
+              - row [ref=f4e968]:
+                - cell "EV-000035" [ref=f4e969]
+                - cell "Direct Payment" [ref=f4e970]
+                - cell "Aug 13, 2026" [ref=f4e972]
+                - cell "DOUBLE R COMTECH" [ref=f4e973]
+                - cell "OFFICE SUPPLIES" [ref=f4e974]
+                - cell "DVR 8 CHANNEL" [ref=f4e975]
+                - cell "₱6,715.00" [ref=f4e976]
+                - cell "PAID" [ref=f4e977]
+                - cell "SHANA GRACE BARLES" [ref=f4e979]
+                - cell [ref=f4e980]:
+                  - generic [ref=f4e981]:
+                    - button "Void" [ref=f4e982] [cursor=pointer]
+                    - button "Print" [ref=f4e986] [cursor=pointer]
+                    - button "History" [ref=f4e991] [cursor=pointer]
+              - row [ref=f4e996]:
+                - cell "EV-000034" [ref=f4e997]
+                - cell "Reimbursement" [ref=f4e998]
+                - cell "Aug 13, 2026" [ref=f4e1000]
+                - cell "SHANA GRACE BARLES" [ref=f4e1001]
+                - cell "MISCELLANEOUS" [ref=f4e1002]
+                - cell "Reimbursement for Gasoline" [ref=f4e1003]
+                - cell "₱100.00" [ref=f4e1004]
+                - cell "PAID" [ref=f4e1005]
+                - cell "Lenny Carumayan" [ref=f4e1007]
+                - cell [ref=f4e1008]:
+                  - generic [ref=f4e1009]:
+                    - button "Void" [ref=f4e1010] [cursor=pointer]
+                    - button "Print" [ref=f4e1014] [cursor=pointer]
+                    - button "History" [ref=f4e1019] [cursor=pointer]
+              - row [ref=f4e1024]:
+                - cell "EV-000033" [ref=f4e1025]
+                - cell "Direct Payment" [ref=f4e1026]
+                - cell "Aug 13, 2026" [ref=f4e1028]
+                - cell "YANNIE TAGUM" [ref=f4e1029]
+                - cell "MISCELLANEOUS" [ref=f4e1030]
+                - cell "For CCTV" [ref=f4e1031]
+                - cell "₱800.00" [ref=f4e1032]
+                - cell "PAID" [ref=f4e1033]
+                - cell "Lenny Carumayan" [ref=f4e1035]
+                - cell [ref=f4e1036]:
+                  - generic [ref=f4e1037]:
+                    - button "Void" [ref=f4e1038] [cursor=pointer]
+                    - button "Print" [ref=f4e1042] [cursor=pointer]
+                    - button "History" [ref=f4e1047] [cursor=pointer]
+              - row [ref=f4e1052]:
+                - cell "EV-000029" [ref=f4e1053]
+                - cell "Reimbursement" [ref=f4e1054]
+                - cell "Aug 11, 2026" [ref=f4e1056]
+                - cell "LENNY CARUMAYAN" [ref=f4e1057]
+                - cell "TRANSPORTATION" [ref=f4e1058]
+                - cell "TRANSPORTATION" [ref=f4e1059]
+                - cell "₱150.00" [ref=f4e1060]
+                - cell "PAID" [ref=f4e1061]
+                - cell "SHANA GRACE BARLES" [ref=f4e1063]
+                - cell [ref=f4e1064]:
+                  - generic [ref=f4e1065]:
+                    - button "Void" [ref=f4e1066] [cursor=pointer]
+                    - button "Print" [ref=f4e1070] [cursor=pointer]
+                    - button "History" [ref=f4e1075] [cursor=pointer]
+              - row [ref=f4e1080]:
+                - cell "EV-000027" [ref=f4e1081]
+                - cell "Petty Cash" [ref=f4e1082]
+                - cell "Aug 10, 2026" [ref=f4e1084]
+                - cell "N.A" [ref=f4e1085]
+                - cell "TRANSPORTATION" [ref=f4e1086]
+                - cell "PAMASAHE SUNDO ILA JEARON" [ref=f4e1087]
+                - cell "₱130.00" [ref=f4e1088]
+                - cell "PAID" [ref=f4e1089]
+                - cell "SHANA GRACE BARLES" [ref=f4e1091]
+                - cell [ref=f4e1092]:
+                  - generic [ref=f4e1093]:
+                    - button "Void" [ref=f4e1094] [cursor=pointer]
+                    - button "Print" [ref=f4e1098] [cursor=pointer]
+                    - button "History" [ref=f4e1103] [cursor=pointer]
+              - row [ref=f4e1108]:
+                - cell "EV-000025" [ref=f4e1109]
+                - cell "Petty Cash" [ref=f4e1110]
+                - cell "Aug 10, 2026" [ref=f4e1112]
+                - cell "BEULAH'S EMPLOYEES" [ref=f4e1113]
+                - cell "PROFESSIONAL" [ref=f4e1114]
+                - cell "SALARY" [ref=f4e1115]
+                - cell "₱43,038.00" [ref=f4e1116]
+                - cell "PAID" [ref=f4e1117]
+                - cell "SHANA GRACE BARLES" [ref=f4e1119]
+                - cell [ref=f4e1120]:
+                  - generic [ref=f4e1121]:
+                    - button "Void" [ref=f4e1122] [cursor=pointer]
+                    - button "Print" [ref=f4e1126] [cursor=pointer]
+                    - button "History" [ref=f4e1131] [cursor=pointer]
+              - row [ref=f4e1136]:
+                - cell "EV-000024" [ref=f4e1137]
+                - cell "Direct Payment" [ref=f4e1138]
+                - cell "Aug 10, 2026" [ref=f4e1140]
+                - cell "7-ELEVEN" [ref=f4e1141]
+                - cell "MISCELLANEOUS" [ref=f4e1142]
+                - cell "BATTERY FOR TESTER" [ref=f4e1143]
+                - cell "₱270.00" [ref=f4e1144]
+                - cell "PAID" [ref=f4e1145]
+                - cell "Lenny Carumayan" [ref=f4e1147]
+                - cell [ref=f4e1148]:
+                  - generic [ref=f4e1149]:
+                    - button "Void" [ref=f4e1150] [cursor=pointer]
+                    - button "Print" [ref=f4e1154] [cursor=pointer]
+                    - button "History" [ref=f4e1159] [cursor=pointer]
+              - row [ref=f4e1164]:
+                - cell "EV-000022" [ref=f4e1165]
+                - cell "Direct Payment" [ref=f4e1166]
+                - cell "Aug 6, 2026" [ref=f4e1168]
+                - cell "R.A Vendor" [ref=f4e1169]
+                - cell "MEALS" [ref=f4e1170]
+                - cell "Snack" [ref=f4e1171]
+                - cell "₱70.00" [ref=f4e1172]
+                - cell "PAID" [ref=f4e1173]
+                - cell "Shana Grace Barles" [ref=f4e1175]
+                - cell [ref=f4e1176]:
+                  - generic [ref=f4e1177]:
+                    - button "Void" [ref=f4e1178] [cursor=pointer]
+                    - button "Print" [ref=f4e1182] [cursor=pointer]
+                    - button "History" [ref=f4e1187] [cursor=pointer]
+              - row [ref=f4e1192]:
+                - cell "EV-000021" [ref=f4e1193]
+                - cell "Direct Payment" [ref=f4e1194]
+                - cell "Aug 6, 2026" [ref=f4e1196]
+                - cell "DRIVER" [ref=f4e1197]
+                - cell "TRANSPORTATION" [ref=f4e1198]
+                - cell "FARE TO BIR" [ref=f4e1199]
+                - cell "₱80.00" [ref=f4e1200]
+                - cell "PAID" [ref=f4e1201]
+                - cell "Shana Grace Barles" [ref=f4e1203]
+                - cell [ref=f4e1204]:
+                  - generic [ref=f4e1205]:
+                    - button "Void" [ref=f4e1206] [cursor=pointer]
+                    - button "Print" [ref=f4e1210] [cursor=pointer]
+                    - button "History" [ref=f4e1215] [cursor=pointer]
+              - row [ref=f4e1220]:
+                - cell "EV-000010" [ref=f4e1221]
+                - cell "Petty Cash" [ref=f4e1222]
+                - cell "Aug 4, 2026" [ref=f4e1224]
+                - cell "DIY" [ref=f4e1225]
+                - cell "MISCELLANEOUS" [ref=f4e1226]
+                - cell "BATTERY FOR TESTER" [ref=f4e1227]
+                - cell "₱250.00" [ref=f4e1228]
+                - cell "APPROVED" [ref=f4e1229]
+                - cell "Lenny Carumayan" [ref=f4e1231]
+                - cell [ref=f4e1232]:
+                  - generic [ref=f4e1233]:
+                    - button "Mark Paid" [ref=f4e1234] [cursor=pointer]
+                    - button "Void" [ref=f4e1238] [cursor=pointer]
+                    - button "Print" [ref=f4e1242] [cursor=pointer]
+                    - button "History" [ref=f4e1247] [cursor=pointer]
+              - row [ref=f4e1252]:
+                - cell "EV-000005" [ref=f4e1253]
+                - cell "Petty Cash" [ref=f4e1254]
+                - cell "Jul 9, 2026" [ref=f4e1256]
+                - cell "Earrings 2pairs" [ref=f4e1257]
+                - cell "MISCELLANEOUS" [ref=f4e1258]
+                - cell "Earrings 2pairs" [ref=f4e1259]
+                - cell "₱100.00" [ref=f4e1260]
+                - cell "PAID" [ref=f4e1261]
+                - cell "Junah" [ref=f4e1263]
+                - cell [ref=f4e1264]:
+                  - generic [ref=f4e1265]:
+                    - button "Void" [ref=f4e1266] [cursor=pointer]
+                    - button "Print" [ref=f4e1270] [cursor=pointer]
+                    - button "History" [ref=f4e1275] [cursor=pointer]
+              - row [ref=f4e1280]:
+                - cell "EV-000004" [ref=f4e1281]
+                - cell "Petty Cash" [ref=f4e1282]
+                - cell "Jul 9, 2026" [ref=f4e1284]
+                - cell "Shoppee" [ref=f4e1285]
+                - cell "MISCELLANEOUS" [ref=f4e1286]
+                - cell "Shoppee" [ref=f4e1287]
+                - cell "₱428.00" [ref=f4e1288]
+                - cell "PAID" [ref=f4e1289]
+                - cell "Junah" [ref=f4e1291]
+                - cell [ref=f4e1292]:
+                  - generic [ref=f4e1293]:
+                    - button "Void" [ref=f4e1294] [cursor=pointer]
+                    - button "Print" [ref=f4e1298] [cursor=pointer]
+                    - button "History" [ref=f4e1303] [cursor=pointer]
+              - row [ref=f4e1308]:
+                - cell "EV-000003" [ref=f4e1309]
+                - cell "Petty Cash" [ref=f4e1310]
+                - cell "Jul 9, 2026" [ref=f4e1312]
+                - cell "Fruit Jearon" [ref=f4e1313]
+                - cell "MISCELLANEOUS" [ref=f4e1314]
+                - cell "Fruit Jearon" [ref=f4e1315]
+                - cell "₱248.00" [ref=f4e1316]
+                - cell "PAID" [ref=f4e1317]
+                - cell "Junah" [ref=f4e1319]
+                - cell [ref=f4e1320]:
+                  - generic [ref=f4e1321]:
+                    - button "Void" [ref=f4e1322] [cursor=pointer]
+                    - button "Print" [ref=f4e1326] [cursor=pointer]
+                    - button "History" [ref=f4e1331] [cursor=pointer]
+  - status [ref=f4e1341]: Voucher payd
+  - alert [ref=f4e265]

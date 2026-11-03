@@ -1,0 +1,83 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img "Finara"
+        - button "Collapse sidebar" [ref=e5] [cursor=pointer]
+      - navigation [ref=e9]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=e18]:
+          - paragraph [ref=e19]: Accounting
+          - generic [ref=e20]:
+            - link "Chart of Accounts" [ref=e21] [cursor=pointer]:
+              - /url: /accounts
+            - link "General Ledger" [ref=e25] [cursor=pointer]:
+              - /url: /journal
+            - link "Recurring Entries" [ref=e29] [cursor=pointer]:
+              - /url: /recurring
+        - generic [ref=e35]:
+          - paragraph [ref=e36]: Sales
+          - generic [ref=e37]:
+            - button "Accounts Receivable" [ref=e39] [cursor=pointer]
+            - link "Cash Sales" [ref=e46] [cursor=pointer]:
+              - /url: /receivable/cash-sales
+        - generic [ref=e50]:
+          - paragraph [ref=e51]: Purchases
+          - generic [ref=e52]:
+            - button "Accounts Payable" [ref=e54] [cursor=pointer]
+            - link "Purchase Orders" [ref=e60] [cursor=pointer]:
+              - /url: /purchase-orders
+            - link "Expense Vouchers" [ref=e65] [cursor=pointer]:
+              - /url: /expenses
+            - link "Cash Requests" [ref=e69] [cursor=pointer]:
+              - /url: /cash-requests
+        - generic [ref=e76]:
+          - paragraph [ref=e77]: Payroll
+          - button "Payroll" [ref=e80] [cursor=pointer]
+        - generic [ref=e89]:
+          - paragraph [ref=e90]: Inventory & Assets
+          - generic [ref=e91]:
+            - button "Inventory" [ref=e93] [cursor=pointer]
+            - link "Fixed Assets" [ref=e101] [cursor=pointer]:
+              - /url: /assets
+        - generic [ref=e106]:
+          - paragraph [ref=e107]: Banking & Compliance
+          - generic [ref=e108]:
+            - link "Bank Reconciliation" [ref=e109] [cursor=pointer]:
+              - /url: /bank
+            - button "BIR Compliance" [ref=e114] [cursor=pointer]
+            - button "Remittances" [ref=e122] [cursor=pointer]
+        - generic [ref=e128]:
+          - paragraph [ref=e129]: Planning & Reports
+          - generic [ref=e130]:
+            - link "Budgeting" [ref=e131] [cursor=pointer]:
+              - /url: /budget
+            - button "Reports" [ref=e135] [cursor=pointer]
+      - generic [ref=e142]:
+        - link "Settings" [ref=e143] [cursor=pointer]:
+          - /url: /settings
+        - link "Businesses" [ref=e147] [cursor=pointer]:
+          - /url: /settings/businesses
+        - link "Opening Balances" [ref=e152] [cursor=pointer]:
+          - /url: /settings/opening-balances
+        - button "Logout" [ref=e159] [cursor=pointer]
+    - generic [ref=e163]:
+      - banner [ref=e164]:
+        - generic [ref=e165]:
+          - heading "Finara ERP" [level=1] [ref=e166]
+          - paragraph [ref=e167]: Sep 16, 2026
+        - button "Search… ⌘K" [ref=e168] [cursor=pointer]:
+          - generic [ref=e172]: Search…
+          - generic [ref=e173]: ⌘K
+        - generic [ref=e174]: Loading…
+        - button "Notifications" [ref=e182] [cursor=pointer]
+      - main [ref=e186]:
+        - generic [ref=e188]:
+          - generic [ref=e189]:
+            - generic [ref=e190]:
+              - heading "Businesses" [level=1] [ref=e191]
+              - paragraph [ref=e192]: Manage businesses and user access for multi-business mode
+            - button "New Business" [ref=e193] [cursor=pointer]
+          - generic [ref=e195]: Loading…
+  - alert [ref=e196]
