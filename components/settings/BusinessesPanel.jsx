@@ -27,6 +27,10 @@ function Modal({ title, onClose, children }) {
 // A scheduled suspension: the license is still ACTIVE, with the date it will lock.
 const fmtDay = (d) => new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' });
 const isoDay = (offsetDays) => new Date(Date.now() + 8 * 3600 * 1000 + offsetDays * 86400000).toISOString().slice(0, 10);
+// The Windows/local build: the license is activated online by the operator, so here we only show the trial and the Machine ID.
+const LOCAL = process.env.NEXT_PUBLIC_LOCAL_EDITION === '1';
+const trialDaysLeft = (biz) => (biz.licenseIsTrial && biz.licenseExpiresAt
+  ? Math.ceil((new Date(biz.licenseExpiresAt) - Date.now()) / 86400000) : null);
 const licenseBadge = (biz) => (biz.licenseStatus === 'ACTIVE'
   ? (biz.suspendAt ? { cls: 'badge-yellow', text: `Active · suspends ${fmtDay(biz.suspendAt)}` } : { cls: 'badge-green', text: 'Active' })
   : biz.licenseStatus === 'SUSPENDED' ? { cls: 'badge-red', text: 'Suspended' } : { cls: 'badge-yellow', text: 'Pending' });
@@ -46,6 +50,7 @@ export default function BusinessesPanel() {
   const [resetting,   setResetting]   = useState(false);
 
   const [search,        setSearch]        = useState('');     // matches code, name or Machine ID
+  const [machineInput,  setMachineInput]  = useState('');       // Machine ID typed to activate/suspend an installed copy
   const [licenseBiz,    setLicenseBiz]    = useState(null);   // business object for the license panel
   const [licenseAction, setLicenseAction] = useState(null);   // 'activate' | 'suspend'
   const [licenseNote,   setLicenseNote]   = useState('');
@@ -131,6 +136,28 @@ export default function BusinessesPanel() {
       setSavingLicense(false);
     }
   }
+
+  // Installed copies are activated or suspended by confirming their Machine ID (the server checks it too).
+  async function machineLicenseAction(status) {
+    setSavingLicense(true);
+    try {
+      const { data } = await bizApi.updateLicense(licenseBiz.id, { status, machineId: machineInput.trim() });
+      toast.success(status === 'ACTIVE' ? 'License activated' : 'License suspended');
+      setLicenseBiz((b) => ({ ...b, ...data }));
+      setMachineInput('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update license');
+    } finally {
+      setSavingLicense(false);
+    }
+  }
+
+  function copyText(text) {
+    navigator.clipboard?.writeText(text).then(() => toast.success('Copied'), () => toast.error('Could not copy'));
+  }
+
+  useEffect(() => { setMachineInput(''); }, [licenseBiz?.id]);
 
   async function cancelScheduledSuspension() {
     if (!confirm(`Cancel the scheduled suspension of ${licenseBiz.name}?`)) return;
@@ -509,10 +536,67 @@ export default function BusinessesPanel() {
             )}
           </div>
 
+          {LOCAL && (
+            <div className="mb-4 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+              {licenseBiz.licenseIsTrial && licenseBiz.licenseExpiresAt && (
+                <p className="text-sm text-gray-800 dark:text-gray-200">
+                  30-day trial ends <strong>{fmtDay(licenseBiz.licenseExpiresAt)}</strong>
+                  {trialDaysLeft(licenseBiz) > 0 ? ` (${trialDaysLeft(licenseBiz)} day${trialDaysLeft(licenseBiz) === 1 ? '' : 's'} left)` : ' (ended)'}.
+                </p>
+              )}
+              {licenseBiz.machineId && (
+                <div>
+                  <label className="label">Machine ID</label>
+                  <p className="text-xs text-gray-500 mb-1">Send this to Finara to activate your license after the trial.</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-[11px] break-all bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 select-all">{licenseBiz.machineId}</code>
+                    <button className="btn-secondary text-xs flex items-center gap-1" onClick={() => copyText(licenseBiz.machineId)}>
+                      <Copy className="w-3 h-3" /> Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Both license-administration panels are SUPER_ADMIN-only — only a
               SUPER_ADMIN can see a non-ACTIVE business in this list at all, and the
               payment-link + manual-activation routes are both SUPER_ADMIN-gated. */}
-          {isSuperAdmin && (
+          {isSuperAdmin && !LOCAL && licenseBiz.machineId && (
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Installed copy &mdash; activate by Machine ID</p>
+              <p className="text-xs text-gray-500 mb-1">Registered Machine ID</p>
+              <div className="flex items-center gap-2 mb-3">
+                <code className="flex-1 text-[11px] break-all bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 select-all">{licenseBiz.machineId}</code>
+                <button className="btn-secondary text-xs flex items-center gap-1" onClick={() => copyText(licenseBiz.machineId)}>
+                  <Copy className="w-3 h-3" /> Copy
+                </button>
+              </div>
+              <label className="label">Machine ID</label>
+              <input className="input font-mono text-xs" value={machineInput} onChange={(e) => setMachineInput(e.target.value)}
+                placeholder="Paste the Machine ID to confirm" spellCheck={false} />
+              {machineInput.trim() && machineInput.trim().toLowerCase() !== licenseBiz.machineId.toLowerCase() && (
+                <p className="text-xs text-red-600 mt-1">Does not match this installation&apos;s Machine ID.</p>
+              )}
+              {(() => {
+                const matches = machineInput.trim().toLowerCase() === licenseBiz.machineId.toLowerCase();
+                return (
+                  <div className="flex gap-2 pt-3">
+                    <button className="btn-primary text-xs flex items-center gap-1" disabled={!matches || savingLicense || licenseBiz.licenseStatus === 'ACTIVE'}
+                      onClick={() => machineLicenseAction('ACTIVE')}>
+                      <ShieldCheck className="w-3 h-3" /> Activate
+                    </button>
+                    <button className="btn-danger text-xs flex items-center gap-1" disabled={!matches || savingLicense || licenseBiz.licenseStatus !== 'ACTIVE'}
+                      onClick={() => machineLicenseAction('SUSPENDED')}>
+                      <ShieldOff className="w-3 h-3" /> Suspend
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {isSuperAdmin && !LOCAL && !licenseBiz.machineId && (
             <>
               {licenseBiz.licenseStatus !== 'ACTIVE' && (
                 <div className="mb-5 border border-gray-200 dark:border-gray-700 rounded-lg p-4">

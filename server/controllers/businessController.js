@@ -246,6 +246,11 @@ exports.updateLicense = async (req, res, next) => {
     const biz = await prisma.business.findUnique({ where: { id } });
     if (!biz) throw createError('Business not found', 404);
 
+    // An installed copy is bound to its PC: activating or suspending it needs that PC's Machine ID.
+    if (biz.machineId && String(req.body.machineId || '').trim().toLowerCase() !== biz.machineId.toLowerCase()) {
+      throw createError('Machine ID does not match this installation', 400);
+    }
+
     const eventType = LICENSE_TRANSITIONS[biz.licenseStatus]?.[status];
     if (!eventType) {
       throw createError(`Cannot transition license from ${biz.licenseStatus} to ${status}`, 400);

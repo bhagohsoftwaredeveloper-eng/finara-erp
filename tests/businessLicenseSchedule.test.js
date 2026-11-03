@@ -109,3 +109,22 @@ describe('a scheduled suspension that has arrived', () => {
     expect(prisma.business.updateMany).toHaveBeenCalled();
   });
 });
+
+describe('installed copies (bound to a Machine ID)', () => {
+  const MID = `${'a'.repeat(32)}.${'b'.repeat(32)}.${'c'.repeat(32)}`;
+
+  test('activating needs the matching Machine ID', async () => {
+    prisma.business.findUnique.mockResolvedValue(active({ licenseStatus: 'PENDING', machineId: MID }));
+    await expect(call(ctrl.updateLicense, { status: 'ACTIVE' })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(call(ctrl.updateLicense, { status: 'ACTIVE', machineId: `${'1'.repeat(32)}.x.y` })).rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.business.update).not.toHaveBeenCalled();
+    await call(ctrl.updateLicense, { status: 'ACTIVE', machineId: ` ${MID.toUpperCase()} ` });
+    expect(prisma.business.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ licenseStatus: 'ACTIVE' }) }));
+  });
+
+  test('a business without a Machine ID is unaffected', async () => {
+    prisma.business.findUnique.mockResolvedValue(active({ licenseStatus: 'PENDING', machineId: null }));
+    await call(ctrl.updateLicense, { status: 'ACTIVE' });
+    expect(prisma.business.update).toHaveBeenCalled();
+  });
+});
