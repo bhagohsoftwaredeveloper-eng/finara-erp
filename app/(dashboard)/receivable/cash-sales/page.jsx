@@ -101,9 +101,10 @@ function NewSaleModal({ accounts, items: loadedItems, onClose, onSaved }) {
   };
   const lineTotal = (l) => Math.round((lineGross(l) - lineDiscount(l)) * 100) / 100;
   const discountTotal = cart.reduce((s, l) => s + lineDiscount(l), 0);
-  const subtotal = cart.reduce((s, l) => s + lineTotal(l), 0);
-  const vat = form.vatCode === 'VAT' ? Math.round(subtotal * 0.12 * 100) / 100 : 0;
-  const total = Math.round((subtotal + vat) * 100) / 100;
+  // Prices are VAT-inclusive: the cart sum is the total; subtotal is that less 12% VAT.
+  const total = Math.round(cart.reduce((s, l) => s + lineTotal(l), 0) * 100) / 100;
+  const subtotal = form.vatCode === 'VAT' ? Math.round((total / 1.12) * 100) / 100 : total;
+  const vat = Math.round((total - subtotal) * 100) / 100;
 
   const submit = async (e) => {
     e.preventDefault();

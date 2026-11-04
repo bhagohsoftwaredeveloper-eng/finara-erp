@@ -107,7 +107,7 @@ exports.create = async (req, res, next) => {
     }
     const lineAmounts = resolvedLines.map((l) => round2(l.quantity * l.unitPrice - l.discount));
     const subtotalRaw = round2(lineAmounts.reduce((s, a) => s + a, 0));
-    const v = vatCode === 'VAT' ? computeVAT(subtotalRaw) : { base: subtotalRaw, vat: 0 };
+    const v = vatCode === 'VAT' ? computeVAT(subtotalRaw, true) : { base: subtotalRaw, vat: 0 };
     // totalAmount is derived from the two already-rounded parts (not
     // computeVAT's own `total`) so subtotal + vatAmount === totalAmount is
     // guaranteed by construction — same pattern receivableController.js's

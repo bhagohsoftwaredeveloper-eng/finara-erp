@@ -26,7 +26,7 @@ function computeTotals(lines = []) {
   let subtotal = 0, vatAmount = 0;
   const processed = lines.map((l) => {
     const amt = Number(l.quantity) * Number(l.unitPrice);
-    const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
+    const v = l.vatCode === 'VAT' ? computeVAT(amt, true) : { base: amt, vat: 0, total: amt };
     subtotal += v.base; vatAmount += v.vat;
     return { ...l, amount: v.base };
   });
@@ -278,7 +278,7 @@ exports.convert = async (req, res, next) => {
       const accountId = accountFor(l);
       const sign = normalBalanceById.get(accountId) === 'DEBIT' ? -1 : 1;
       const amt = sign * Number(l.quantity) * Number(l.unitPrice);
-      const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
+      const v = l.vatCode === 'VAT' ? computeVAT(amt, true) : { base: amt, vat: 0, total: amt };
       subtotal += v.base; vatAmount += v.vat;
       return {
         accountId,

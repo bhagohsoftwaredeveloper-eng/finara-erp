@@ -39,7 +39,7 @@ const STATUS_ICON = {
 
 // ─── Helpers ──────────────────────────────────────────────────
 const computeVAT = (amount, code) =>
-  code === 'VAT' ? { base: amount, vat: amount * 0.12, total: amount * 1.12 }
+  code === 'VAT' ? { base: amount / 1.12, vat: amount - amount / 1.12, total: amount } // price is VAT-inclusive
                  : { base: amount, vat: 0, total: amount };
 
 // ─── Bill Detail Modal ────────────────────────────────────────
@@ -692,7 +692,7 @@ function CreateBillModal({ vendors, accounts, bill, onClose, onSaved, onVendorAd
                             </div>
                             {line.vatCode === 'VAT' && amt > 0 && (
                               <div className="text-right text-xs text-gray-400">
-                                Base: {formatCurrency(amt)}<br />VAT: {formatCurrency(v.vat)}
+                                Base: {formatCurrency(v.base)}<br />VAT: {formatCurrency(v.vat)}
                               </div>
                             )}
                           </td>

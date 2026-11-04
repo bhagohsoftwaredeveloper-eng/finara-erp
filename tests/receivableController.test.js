@@ -58,7 +58,7 @@ describe('updateInvoice — eligibility', () => {
 
   test('rejects when the edited total would drop below the amount already collected', async () => {
     prisma.invoice.findFirst.mockResolvedValue({ ...baseInvoice, status: 'PARTIAL', paidAmount: 900 });
-    // editBody totals to 1000 * 1.12 = 1120... use a body that totals below 900
+    // editBody totals to 1000 (VAT-inclusive)... use a body that totals below 900
     const smallBody = { ...editBody, lines: [{ accountId: 10, description: 'Item A', quantity: 1, unitPrice: 100, vatCode: 'EXEMPT' }] };
 
     await expect(run(ctrl.updateInvoice, { params: { id: '5' }, body: smallBody }))
@@ -102,17 +102,17 @@ describe('updateInvoice — recompute and status transitions', () => {
 
     await run(ctrl.updateInvoice, { params: { id: '5' }, body: editBody });
 
-    expect(updateArgs.data.subtotal).toBeCloseTo(1000, 2);
-    expect(updateArgs.data.vatAmount).toBeCloseTo(120, 2);
-    expect(updateArgs.data.totalAmount).toBeCloseTo(1120, 2);
+    expect(updateArgs.data.subtotal).toBeCloseTo(892.86, 2); // 1000 VAT-inclusive
+    expect(updateArgs.data.vatAmount).toBeCloseTo(107.14, 2);
+    expect(updateArgs.data.totalAmount).toBeCloseTo(1000, 2);
     expect(updateArgs.data.lines.deleteMany).toEqual({});
     expect(updateArgs.data.lines.create).toHaveLength(1);
     expect(updateArgs.data.lines.create[0]).toMatchObject({ accountId: 10, description: 'Item A' });
   });
 
   test('flips a PARTIAL invoice to PAID when the edited total exactly matches paidAmount', async () => {
-    prisma.invoice.findFirst.mockResolvedValue({ ...baseInvoice, status: 'PARTIAL', paidAmount: 112 });
-    const smallBody = { ...editBody, lines: [{ accountId: 10, description: 'Item A', quantity: 1, unitPrice: 100, vatCode: 'VAT' }] }; // totals to 112
+    prisma.invoice.findFirst.mockResolvedValue({ ...baseInvoice, status: 'PARTIAL', paidAmount: 100 });
+    const smallBody = { ...editBody, lines: [{ accountId: 10, description: 'Item A', quantity: 1, unitPrice: 100, vatCode: 'VAT' }] }; // VAT-inclusive, totals to 100
     let updateArgs;
     prisma.invoice.update.mockImplementation((args) => {
       updateArgs = args;
@@ -136,7 +136,7 @@ describe('updateInvoice — recompute and status transitions', () => {
     prisma.journalEntry.findFirst.mockResolvedValue(null);
     glPost.safePost.mockResolvedValue({ id: 99 });
 
-    await run(ctrl.updateInvoice, { params: { id: '5' }, body: editBody }); // totals to 1120, paid 100, remaining 1020
+    await run(ctrl.updateInvoice, { params: { id: '5' }, body: editBody }); // totals to 1000, paid 100, remaining 900
 
     expect(updateArgs.data.status).toBe('PARTIAL');
   });

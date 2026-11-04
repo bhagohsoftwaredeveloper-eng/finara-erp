@@ -122,7 +122,9 @@ describe('cash sale multi-item cart — create', () => {
     expect(txns.map((t) => t.txnNo)).toEqual(['INV-TXN-000001', 'INV-TXN-000002']);
 
     expect(savedSale.description).toBe('Widget +2 more');
-    expect(Number(savedSale.subtotal)).toBeCloseTo(280, 2); // 200 + 60 + 20
+    expect(Number(savedSale.totalAmount)).toBeCloseTo(280, 2); // 200 + 60 + 20, VAT-inclusive
+    expect(Number(savedSale.subtotal)).toBeCloseTo(250, 2); // 280 / 1.12
+    expect(Number(savedSale.vatAmount)).toBeCloseTo(30, 2);
 
     expect(glPost.safePost).toHaveBeenCalledTimes(2); // cash-sale entry + one combined COGS entry
     const cogsCall = glPost.safePost.mock.calls.find((c) => c[0].description.includes('Inventory OUT'));

@@ -46,7 +46,7 @@ describe('priceLines', () => {
   test('when the delivered quantity differs from the invoiced one the amount follows the delivered quantity', () => {
     const dr = { lines: [line('Widget', 3)], invoice: { lines: [invLine('Widget', 10, 50, 500)] } };
 
-    expect(priceLines(dr).lines[0]).toMatchObject({ unitPrice: 50, amount: 150 });
+    expect(priceLines(dr).lines[0]).toMatchObject({ unitPrice: 50, amount: 133.93 }); // 3 x 50 is VAT-inclusive; amount is the base (150 / 1.12)
   });
 
   test('the same invoice line is not used twice', () => {

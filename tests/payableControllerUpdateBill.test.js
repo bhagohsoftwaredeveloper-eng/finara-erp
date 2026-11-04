@@ -100,17 +100,17 @@ describe('updateBill — recompute and status transitions', () => {
 
     await run(ctrl.updateBill, { params: { id: '7' }, body: editBody });
 
-    expect(updateArgs.data.subtotal).toBeCloseTo(1000, 2);
-    expect(updateArgs.data.vatAmount).toBeCloseTo(120, 2);
-    expect(updateArgs.data.totalAmount).toBeCloseTo(1120, 2);
+    expect(updateArgs.data.subtotal).toBeCloseTo(892.86, 2); // 1000 VAT-inclusive
+    expect(updateArgs.data.vatAmount).toBeCloseTo(107.14, 2);
+    expect(updateArgs.data.totalAmount).toBeCloseTo(1000, 2);
     expect(updateArgs.data.lines.deleteMany).toEqual({});
     expect(updateArgs.data.lines.create).toHaveLength(1);
     expect(updateArgs.data.lines.create[0]).toMatchObject({ accountId: 10, description: 'Item A' });
   });
 
   test('flips a PARTIAL bill to PAID when the edited total exactly matches paidAmount', async () => {
-    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PARTIAL', paidAmount: 112 });
-    const smallBody = { ...editBody, lines: [{ accountId: 10, description: 'Item A', quantity: 1, unitPrice: 100, vatCode: 'VAT' }] }; // totals to 112
+    prisma.bill.findFirst.mockResolvedValue({ ...baseBill, status: 'PARTIAL', paidAmount: 100 });
+    const smallBody = { ...editBody, lines: [{ accountId: 10, description: 'Item A', quantity: 1, unitPrice: 100, vatCode: 'VAT' }] }; // VAT-inclusive, totals to 100
     let updateArgs;
     prisma.bill.update.mockImplementation((args) => {
       updateArgs = args;
@@ -134,7 +134,7 @@ describe('updateBill — recompute and status transitions', () => {
     prisma.journalEntry.findMany.mockResolvedValue([]);
     glPost.safePost.mockResolvedValue({ id: 99 });
 
-    await run(ctrl.updateBill, { params: { id: '7' }, body: editBody }); // totals to 1120, paid 100, remaining 1020
+    await run(ctrl.updateBill, { params: { id: '7' }, body: editBody }); // totals to 1000, paid 100, remaining 900
 
     expect(updateArgs.data.status).toBe('PARTIAL');
   });

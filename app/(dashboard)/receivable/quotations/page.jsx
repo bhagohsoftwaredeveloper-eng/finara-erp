@@ -27,7 +27,7 @@ const STATUS_BADGE = {
 
 const computeVAT = (amount, code) =>
   code === 'VAT'
-    ? { base: amount, vat: amount * 0.12, total: amount * 1.12 }
+    ? { base: amount / 1.12, vat: amount - amount / 1.12, total: amount } // price is VAT-inclusive
     : { base: amount, vat: 0, total: amount };
 
 const todayStr  = () => new Date().toISOString().split('T')[0];

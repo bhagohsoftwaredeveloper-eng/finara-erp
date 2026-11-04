@@ -47,7 +47,7 @@ async function computeBillTotals(lines) {
   const processedLines = lines.map((l) => {
     const sign = normalBalanceById.get(Number(l.accountId)) === 'CREDIT' ? -1 : 1;
     const amt = sign * Number(l.quantity) * Number(l.unitPrice);
-    const v = l.vatCode === 'VAT' ? computeVAT(amt) : { base: amt, vat: 0, total: amt };
+    const v = l.vatCode === 'VAT' ? computeVAT(amt, true) : { base: amt, vat: 0, total: amt };
     subtotal += v.base; vatAmount += v.vat;
     return { ...l, amount: v.base };
   });
