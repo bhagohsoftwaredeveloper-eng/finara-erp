@@ -30,7 +30,7 @@ async function recordAudit({ req, action, entity, entityId, summary, changes, us
         businessId: businessId ?? req?.businessId ?? null,
         action,
         entity,
-        entityId:  entityId != null ? String(entityId) : null,
+        entityId:  entityId != null ? String(entityId).slice(0, 40) : null, // VarChar(40)
         summary:   summary ? String(summary).slice(0, 255) : null,
         changes:   changes ?? undefined,
         ipAddress: ip ? String(ip).slice(0, 60) : null,

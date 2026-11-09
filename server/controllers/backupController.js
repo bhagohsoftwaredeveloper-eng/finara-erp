@@ -127,11 +127,11 @@ const MODULE_DEFS = {
     exportFilter: {
       inventoryCategory:    (biz) => ({ businessId: biz }),
       inventoryItem:        (biz) => ({ businessId: biz }),
-      inventoryTransaction: (biz) => ({ businessId: biz }),
+      inventoryTransaction: (biz) => ({ item: { businessId: biz } }),
     },
     insertOrder:    ['inventoryCategory', 'inventoryItem', 'inventoryTransaction'],
     deleteSequence: [
-      { model: 'inventoryTransaction' },
+      { model: 'inventoryTransaction', parentModel: 'inventoryItem', fk: 'itemId' },
       { model: 'inventoryItem' },
       { model: 'inventoryCategory' },
     ],

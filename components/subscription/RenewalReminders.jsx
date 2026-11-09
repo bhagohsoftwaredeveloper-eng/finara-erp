@@ -43,8 +43,7 @@ export default function RenewalReminders() {
   if (!canPay || due.length === 0) return null;
 
   return (
-    <>
-      <div className="space-y-3">
+    <div className="space-y-3">
         {due.map(({ biz, s }) => {
           const danger = s.level === 'danger';
           const open = orders.find((o) => o.businessId === biz.id && OPEN_ORDER.includes(o.status));
@@ -67,12 +66,6 @@ export default function RenewalReminders() {
             </div>
           );
         })}
-      </div>
-
-      {renewBiz && (
-        <RenewBusinessModal business={renewBiz} onClose={() => setRenewBiz(null)}
-          onDone={() => { setRenewBiz(null); loadOrders(); }} />
-      )}
-    </>
+    </div>
   );
 }
