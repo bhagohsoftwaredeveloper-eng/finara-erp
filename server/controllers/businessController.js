@@ -247,8 +247,16 @@ exports.updateLicense = async (req, res, next) => {
     if (!biz) throw createError('Business not found', 404);
 
     // An installed copy is bound to its PC: activating or suspending it needs that PC's Machine ID.
-    if (biz.machineId && String(req.body.machineId || '').trim().toLowerCase() !== biz.machineId.toLowerCase()) {
-      throw createError('Machine ID does not match this installation', 400);
+    // `rebind` lets the operator bind the license to the ID the PC reports now, when the PC's
+    // fingerprint drifted from what was first registered (adapter / PowerShell lookup changed).
+    const givenMachineId = String(req.body.machineId || '').trim().toLowerCase();
+    let rebindNote = null;
+    if (biz.machineId && givenMachineId !== biz.machineId.toLowerCase()) {
+      if (req.body.rebind === true && status === 'ACTIVE' && /^[0-9a-f]{32}\.[0-9a-f]{32}\.[0-9a-f]{32}$/.test(givenMachineId)) {
+        rebindNote = `Machine ID re-bound from ${biz.machineId} to ${givenMachineId}`;
+      } else {
+        throw createError('Machine ID does not match this installation', 400);
+      }
     }
 
     const eventType = LICENSE_TRANSITIONS[biz.licenseStatus]?.[status];
@@ -278,12 +286,12 @@ exports.updateLicense = async (req, res, next) => {
     const updated = await prisma.business.update({
       where: { id },
       data: isActivating
-        ? { licenseStatus: status, licenseActivatedAt: new Date(), licenseActivatedBy: req.user.id }
+        ? { licenseStatus: status, licenseActivatedAt: new Date(), licenseActivatedBy: req.user.id, ...(rebindNote && { machineId: givenMachineId }) }
         : { licenseStatus: status, ...(biz.suspendAt && { suspendAt: null }) },
     });
 
     await prisma.licenseEvent.create({
-      data: { businessId: id, eventType, note: note || null, actorUserId: req.user.id },
+      data: { businessId: id, eventType, note: [note, rebindNote].filter(Boolean).join('. ') || null, actorUserId: req.user.id },
     });
 
     const requester = biz.createdByUserId

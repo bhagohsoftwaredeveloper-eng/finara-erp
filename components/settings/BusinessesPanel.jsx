@@ -138,10 +138,10 @@ export default function BusinessesPanel() {
   }
 
   // Installed copies are activated or suspended by confirming their Machine ID (the server checks it too).
-  async function machineLicenseAction(status) {
+  async function machineLicenseAction(status, rebind = false) {
     setSavingLicense(true);
     try {
-      const { data } = await bizApi.updateLicense(licenseBiz.id, { status, machineId: machineInput.trim() });
+      const { data } = await bizApi.updateLicense(licenseBiz.id, { status, machineId: machineInput.trim(), ...(rebind && { rebind: true }) });
       toast.success(status === 'ACTIVE' ? 'License activated' : 'License suspended');
       setLicenseBiz((b) => ({ ...b, ...data }));
       setMachineInput('');
@@ -590,6 +590,12 @@ export default function BusinessesPanel() {
                       onClick={() => machineLicenseAction('SUSPENDED')}>
                       <ShieldOff className="w-3 h-3" /> Suspend
                     </button>
+                    {!matches && /^[0-9a-f]{32}\.[0-9a-f]{32}\.[0-9a-f]{32}$/i.test(machineInput.trim()) && licenseBiz.licenseStatus !== 'ACTIVE' && (
+                      <button className="btn-secondary text-xs" disabled={savingLicense}
+                        onClick={() => { if (window.confirm('Re-bind this license to the pasted Machine ID and activate? Only do this if it is the same PC.')) machineLicenseAction('ACTIVE', true); }}>
+                        Re-bind &amp; Activate
+                      </button>
+                    )}
                   </div>
                 );
               })()}
